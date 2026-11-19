@@ -11,6 +11,7 @@ var aim_assist := true     # visa var förra pinnen landade + lång siktlinje
 var power_meter := true    # mätare under svepet
 var wobble := 0.5          # PS1-darr 0..1
 var volume := 0.8
+var music := 0.6
 var fullscreen := false
 var rules := "real"        # "real" eller "simple"
 var show_hints := true
@@ -33,6 +34,7 @@ func load_settings() -> void:
 	wobble = cf.get_value("grafik", "wobble", wobble)
 	fullscreen = cf.get_value("grafik", "fullscreen", fullscreen)
 	volume = cf.get_value("ljud", "volume", volume)
+	music = cf.get_value("ljud", "music", music)
 	rules = cf.get_value("spel", "rules", rules)
 	show_hints = cf.get_value("spel", "show_hints", show_hints)
 	throw_mode = cf.get_value("kast", "throw_mode", throw_mode)
@@ -48,6 +50,7 @@ func save() -> void:
 	cf.set_value("grafik", "wobble", wobble)
 	cf.set_value("grafik", "fullscreen", fullscreen)
 	cf.set_value("ljud", "volume", volume)
+	cf.set_value("ljud", "music", music)
 	cf.set_value("spel", "rules", rules)
 	cf.set_value("spel", "show_hints", show_hints)
 	cf.set_value("kast", "throw_mode", throw_mode)

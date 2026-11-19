@@ -38,9 +38,37 @@ func _ready() -> void:
 
 
 var _caw_t := 25.0
+var _music: AudioStreamPlayer
+var _music_thread: Thread
+var _music_stream: AudioStreamWAV
+
+# Spöklik dragspelsvals i a-moll (egen melodi), spelad långsamt och ostadigt.
+const BPM := 66.0
+const MELODY := [  # [taktslag, längd, midi]
+	[0, 1, 76], [1, 1, 69], [2, 1, 72],
+	[3, 1.5, 74], [4.5, 0.5, 77], [5, 1, 76],
+	[6, 1, 71], [7, 1, 68], [8, 1, 71],
+	[9, 3, 69],
+	[12, 1, 72], [13, 1, 77], [14, 1, 81],
+	[15, 1.5, 79], [16.5, 0.5, 77], [17, 1, 74],
+	[18, 1, 76], [19, 1, 74], [20, 1, 71],
+	[21, 2, 69],
+]
+const BASS := [45, 50, 40, 45, 41, 50, 40, 45]
+const CHORDS := [[57, 60, 64], [57, 62, 65], [56, 59, 64], [57, 60, 64], [57, 60, 65], [57, 62, 65], [56, 59, 64], [57, 60, 64]]
 
 
 func _process(dt: float) -> void:
+	if _music_stream and _music == null:
+		_music = AudioStreamPlayer.new()
+		_music.stream = _music_stream
+		add_child(_music)
+		_music.play()
+	if _music:
+		_music.volume_db = linear_to_db(maxf(Settings.music * 0.55, 0.0001))
+		# slowmotion: dragspelet saktar ner med tiden
+		var want := clampf(0.55 + 0.45 * Engine.time_scale, 0.5, 1.0) * (0.8 if get_tree().paused else 1.0)
+		_music.pitch_scale = lerpf(_music.pitch_scale, want, clampf(dt * 6.0, 0.0, 1.0))
 	# en kråka någonstans i skogen, då och då
 	if _ambient and _ambient.playing:
 		_caw_t -= dt
@@ -50,6 +78,9 @@ func _process(dt: float) -> void:
 
 
 func start_ambience() -> void:
+	if _music_thread == null:
+		_music_thread = Thread.new()
+		_music_thread.start(_build_music)
 	if not _ambient.playing:
 		_ambient.play()
 		_drone.play()
@@ -171,3 +202,79 @@ func _caw(t: float, _d: float, st: Dictionary) -> float:
 	var saw := fmod(t * f, 1.0) * 2.0 - 1.0
 	st.lp = lerpf(st.lp, st.rng.randf_range(-1, 1), 0.3)
 	return (saw * 0.5 + st.lp * 0.5) * sin(PI * local / 0.26) * 0.6
+
+
+func _build_music() -> void:
+	var beats := 24.0
+	var secs := beats * 60.0 / BPM
+	var st := _make_rate(secs, _accordion, 11025, true)
+	call_deferred("_music_ready", st)
+
+
+func _music_ready(st: AudioStreamWAV) -> void:
+	_music_thread.wait_to_finish()
+	_music_stream = st
+
+
+func _make_rate(seconds: float, fn: Callable, rate: int, loop: bool) -> AudioStreamWAV:
+	var n := int(seconds * rate)
+	var data := PackedByteArray()
+	data.resize(n * 2)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 7
+	var state := {"rng": rng, "lp": 0.0, "lp2": 0.0, "rate": float(rate)}
+	for i in n:
+		var t := float(i) / rate
+		var v: float = clampf(fn.call(t, seconds, state), -1.0, 1.0)
+		data.encode_s16(i * 2, int(v * 30000.0))
+	var s := AudioStreamWAV.new()
+	s.format = AudioStreamWAV.FORMAT_16_BITS
+	s.mix_rate = rate
+	s.stereo = false
+	s.data = data
+	if loop:
+		s.loop_mode = AudioStreamWAV.LOOP_FORWARD
+		s.loop_end = n
+	return s
+
+
+static func _midi(m: float) -> float:
+	return 440.0 * pow(2.0, (m - 69.0) / 12.0)
+
+
+## En dragspelston: tre lite ostämda tungor (musette) och en oktav under.
+static func _reed(f: float, t: float) -> float:
+	var a := fmod(t * f * 0.996, 1.0) * 2.0 - 1.0
+	var b := fmod(t * f * 1.005, 1.0) * 2.0 - 1.0
+	var c := 1.0 if fmod(t * f * 0.5, 1.0) < 0.5 else -1.0
+	return a * 0.45 + b * 0.4 + c * 0.2
+
+
+func _accordion(t: float, d: float, st: Dictionary) -> float:
+	var bps := BPM / 60.0
+	# bandet som går för sakta: tonhöjden svajar och sjunker lite i slutet
+	var wob := 1.0 + 0.012 * sin(TAU * 0.13 * t) - 0.02 * pow(t / d, 3.0)
+	var beat := t * bps
+	var v := 0.0
+	for m in MELODY:
+		var s0: float = m[0]
+		var s1: float = s0 + m[1]
+		if beat >= s0 and beat < s1 + 0.15:
+			var nt := (beat - s0) / bps
+			var env := minf(nt / 0.05, 1.0) * (1.0 if beat < s1 else maxf(1.0 - (beat - s1) / 0.15, 0.0))
+			v += _reed(_midi(m[2]) * wob, t) * env * 0.42
+	var bar := int(beat / 3.0) % 8
+	var bb := fmod(beat, 3.0)
+	if bb < 0.8:
+		var env := minf(bb / 0.03, 1.0) * (1.0 - bb / 0.8)
+		v += _reed(_midi(BASS[bar]) * wob, t) * env * 0.4
+	elif bb >= 1.0:
+		var cb := fmod(bb - 1.0, 1.0)
+		if cb < 0.45:
+			var env := minf(cb / 0.03, 1.0) * (1.0 - cb / 0.45)
+			for n in CHORDS[bar]:
+				v += _reed(_midi(n) * wob, t) * env * 0.13
+	# bälgen andas
+	v *= 0.85 + 0.15 * sin(TAU * 5.2 * t)
+	st.lp = lerpf(st.lp, v, 0.35)
+	return st.lp * 1.0 + st.rng.randf_range(-1, 1) * 0.01

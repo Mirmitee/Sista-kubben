@@ -2,7 +2,7 @@
 
 Läskig (men mest rolig) roguelike-kubb i PS1-stil. Haunted midsommar: en äng i skymningen under en blodröd måne, och Vedgubben väntar på andra sidan planen.
 
-Version **v0.8**: runs över tre nätter med riktiga kubbregler, en kubblek med 50 specialkubbar, 30 pinnar att låsa upp och ett träningsläge där du kastar på Gösta, en ful hund som ingen äger.
+Version **v0.9**: runs över tre nätter med riktiga kubbregler, en kubblek med 50 specialkubbar, 30 pinnar att låsa upp och ett träningsläge där du kastar på Gösta, en ful hund som ingen äger.
 
 ## Kör spelet
 
@@ -12,13 +12,17 @@ Version **v0.8**: runs över tre nätter med riktiga kubbregler, en kubblek med 
 
 ## En run
 
-- **Tre nätter, två matcher per natt:** Vedgubben och sen bossen Tjock-Leffe, som äter upp en av dina pinnar varje tur. Natten gör motståndarna bättre. Förlorar du är hela runnen slut.
+- **Karta:** varje natt väljer du väg genom fem steg: match (Vedgubben eller Birgit), Kråkmors bod, Ödesstenen (gratis ödeskort), Gravgården (gräv efter tänder eller begrav en kubb), en elitmatch (svårare, 50 % fler tänder) och sist bossen Tjock-Leffe, som äter upp en av dina pinnar varje tur. Natten gör motståndarna bättre, och de är svåra. Förlorar du är hela runnen slut.
+- **Den oändliga natten:** klarar du tre nätter kan du fortsätta in i natt 4, 5, 6 ... så länge du överlever.
+- **Birgit:** tant i midsommarklänning som stickar och nynnar (kraftmätaren går fortare) och stickar en extra pinne åt sig natt 2 och 3.
+- **Hans specialkubbar:** motståndaren smyger in egna kubbar på sin baslinje (slump, fler senare nätter). De straffar dig: Taggkubben tar tänder, Kådakubben stoppar pinnen, Spegelvända fäller en av dina egna, Slukaren äter en pinne.
 - **Riktiga kubbregler:** du kastar dina pinnar, motståndaren kastar in kubbarna du fällde på din planhalva (fältkubbar) och kastar sen sina pinnar på dig. Fältkubbar måste fällas först. Står fältkubbar kvar efter en tur får den andra kliva fram och kasta från linjen genom den fältkubb som står närmast mitten (röd linje på marken). Motståndaren går alltid på fältkubbarna först. Kubbar han fäller kastar du in på hans planhalva (ett klick för kraft). När alla kubbar på en planhalva ligger får man kasta på kungen. Rör man kungen för tidigt dör man, och gör han det vinner du.
 - **Tänder:** för fällda kubbar, kombos (flera kubbar på ett kast), perfekta kast, kungen och vunna matcher.
 - **Kubbleken (istället för kort):** upp till 5 specialkubbar. Varje match ställs de upp på motståndarens baslinje, och när du träffar eller fäller dem händer saker: Krutkubben exploderar, Dominokubben drar med sig grannarna, Åskkubben kallar på blixten, Tandkubben är full av tänder, Spökkubben flyr. Vissa har passiva effekter (fler pinnar, bredare grönt). Kubbarna följer med när de kastas in som fältkubbar, så samma kubb kan ge effekt flera gånger. 50 kubbar, varav 10 förbannade. Färg och runband visar vilken kubb det är; en spets ovanpå betyder träffeffekt, en platta betyder fällningseffekt.
-- **Ödeskort:** varje kast där du fäller något drar ett kort. Det kan ge en ny kubb till leken, en lånad pinne resten av matchen (även låsta), en extra pinne, tänder, dubbla tänder, en blixt, välsignelser eller förbannelser för matchen. Håll **Tab** under matchen för att se din lek, pinne och aktiva effekter.
+- **Ödesleken:** du har en egen lek med ödeskort som du bygger på i boden (köp nya, bränn dåliga). Var tredje fälld kubb drar du två kort och väljer ett. Korten kan ge en ny kubb till leken, en lånad pinne resten av matchen (även låsta), en extra pinne, tänder, dubbla tänder, en blixt, välsignelser eller förbannelser för matchen. Håll **Tab** under matchen för att se din lek, pinne och aktiva effekter.
 - **Kråkmors bod** mellan matcherna: tre kubbar att köpa, en gratis förbannad kubb, nya kubbar för tänder, sälj kubbar.
 - **30 pinnar** med egen vikt, längd, färg, spår, studs, svävning och specialeffekter (Krutpinnen, Åskpinnen, Fjäderpinnen, Leffes revben ...). De flesta låses upp mellan runs genom att vinna matcher, fälla kubbar, göra perfekta kast och kombos, tjäna tänder och besegra Leffe. Låsta pinnar visar vad som krävs.
+- **Musik:** en spöklik dragspelsvals som spelar för långsamt och saktar ner ännu mer vid slowmotion.
 - **Effekter:** träflisor vid träff, damm när pinnar och kubbar slår i marken, gnistor vid perfekta kast, explosioner, blixtar, konfetti när du vinner och ett blodrött utbrott när någon rör kungen.
 
 ## Så kastar du

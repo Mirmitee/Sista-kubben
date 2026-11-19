@@ -244,6 +244,7 @@ func _page_settings() -> void:
 	_slider(_t("MUSKÄNSLIGHET", "MOUSE SENS"), "sensitivity", 0.3, 2.5, 0.1)
 	_slider(_t("KASTKRAFT", "THROW POWER"), "power", 0.5, 1.5, 0.05)
 	_slider(_t("VOLYM", "VOLUME"), "volume", 0.0, 1.0, 0.05)
+	_slider(_t("MUSIK", "MUSIC"), "music", 0.0, 1.0, 0.05)
 	_slider(_t("PS1-DARR", "PS1 WOBBLE"), "wobble", 0.0, 1.0, 0.1)
 	_toggle(_t("HELSKÄRM", "FULLSCREEN"), "fullscreen")
 	_toggle(_t("SIKTHJÄLP", "AIM ASSIST"), "aim_assist")

@@ -1674,6 +1674,12 @@ func _run_autotest() -> void:
 		while state == State.FLYING or state == State.BUSY:
 			await get_tree().physics_frame
 	print("TEST hundträffar %d/3" % dog.hits)
+	var mt := Time.get_ticks_msec()
+	while Sfx._music_stream == null and Time.get_ticks_msec() - mt < 20000:
+		await get_tree().process_frame
+	print("TEST musik klar: %s (%.1f s ljud)" % [Sfx._music_stream != null, Sfx._music_stream.get_length() if Sfx._music_stream else 0.0])
+	if Sfx._music_stream and OS.get_environment("MUSIK_WAV") != "":
+		Sfx._music_stream.save_to_wav(OS.get_environment("MUSIK_WAV"))
 	print("TEST klart")
 	get_tree().quit()
 
@@ -1692,10 +1698,29 @@ func _screenshots(prefix: String) -> void:
 	for i in 5:
 		await get_tree().process_frame
 	vp.get_texture().get_image().save_png(prefix + "_butik.png")
+	Run.choose(0)
+	Run.step_done()
+	menu.open("map")
+	for i in 5:
+		await get_tree().process_frame
+	vp.get_texture().get_image().save_png(prefix + "_karta.png")
 	menu.open("baton")
 	for i in 5:
 		await get_tree().process_frame
 	vp.get_texture().get_image().save_png(prefix + "_pinne.png")
+	Run.node = {"type": "match", "opp": "birgit"}
+	_start(Mode.MATCH, true)
+	thrower.mouse_aim = false
+	for i in 40:
+		await get_tree().process_frame
+	hud.choose_fate(_fate_view("gront"), _fate_view("darr"))
+	for i in 20:
+		await get_tree().process_frame
+	vp.get_texture().get_image().save_png(prefix + "_birgit.png")
+	hud.fate_chosen.emit(0)
+	for i in 200:
+		await get_tree().process_frame
+	vp.get_texture().get_image().save_png(prefix + "_birgit2.png")
 	Run.node = {"type": "boss", "opp": "tjock_leffe"}
 	_start(Mode.MATCH, true)
 	thrower.mouse_aim = false
