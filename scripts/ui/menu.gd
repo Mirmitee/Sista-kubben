@@ -199,6 +199,13 @@ func _page_rules() -> void:
 
 func _page_settings() -> void:
 	_title(_t("INSTÄLLNINGAR", "SETTINGS"), 12)
+	var mb := _button("", func(): pass)
+	var upd_mode := func():
+		mb.text = _t("KASTSÄTT: ", "THROW STYLE: ") + (_t("MÄTARE (TAJMING)", "METER (TIMING)") if Settings.throw_mode == "meter" else _t("MUSDRAG", "MOUSE SWIPE"))
+	upd_mode.call()
+	mb.pressed.connect(func():
+		Settings.set_value("throw_mode", "drag" if Settings.throw_mode == "meter" else "meter")
+		upd_mode.call())
 	_slider(_t("MUSKÄNSLIGHET", "MOUSE SENS"), "sensitivity", 0.3, 2.5, 0.1)
 	_slider(_t("KASTKRAFT", "THROW POWER"), "power", 0.5, 1.5, 0.05)
 	_slider(_t("VOLYM", "VOLUME"), "volume", 0.0, 1.0, 0.05)
@@ -212,7 +219,10 @@ func _page_settings() -> void:
 
 func _page_controls() -> void:
 	_title(_t("KONTROLLER", "CONTROLS"), 12)
-	_text(_t("MUS / TANGENTBORD", "MOUSE / KEYBOARD"), Color(0.9, 0.3, 0.2))
+	_text(_t("KASTSÄTT MÄTARE (STANDARD)", "THROW STYLE METER (DEFAULT)"), Color(0.9, 0.3, 0.2))
+	_text(_t("Klick / mellanslag / A: 1) ta sats  2) lås kraften  3) släpp i gröna",
+		"Click / space / A: 1) wind up  2) lock power  3) release in the green"))
+	_text(_t("KASTSÄTT MUSDRAG", "THROW STYLE MOUSE SWIPE"), Color(0.9, 0.3, 0.2))
 	_text(_t("Flytta musen i sidled ... sikta\nHåll vänster knapp, dra NER ... ta sats\nSvep UPP och släpp ... kasta\nHöger knapp ... zooma\nA / D ... gå längs baslinjen\nR ... ny runda    H ... visa tips\nL ... språk    F11 ... helskärm    Esc ... paus",
 		"Move mouse sideways ... aim\nHold left button, drag DOWN ... wind up\nSwipe UP and let go ... throw\nRight button ... zoom\nA / D ... walk along the baseline\nR ... new round    H ... show tips\nL ... language    F11 ... fullscreen    Esc ... pause"))
 	_text("GAMEPAD", Color(0.9, 0.3, 0.2))

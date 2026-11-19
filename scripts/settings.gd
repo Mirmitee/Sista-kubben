@@ -14,6 +14,7 @@ var volume := 0.8
 var fullscreen := false
 var rules := "real"        # "real" eller "simple"
 var show_hints := true
+var throw_mode := "meter"  # "meter" (tajmade tryck) eller "drag" (musdrag)
 
 
 func _ready() -> void:
@@ -34,6 +35,7 @@ func load_settings() -> void:
 	volume = cf.get_value("ljud", "volume", volume)
 	rules = cf.get_value("spel", "rules", rules)
 	show_hints = cf.get_value("spel", "show_hints", show_hints)
+	throw_mode = cf.get_value("kast", "throw_mode", throw_mode)
 	Lang.current = cf.get_value("spel", "lang", Lang.current)
 
 
@@ -48,6 +50,7 @@ func save() -> void:
 	cf.set_value("ljud", "volume", volume)
 	cf.set_value("spel", "rules", rules)
 	cf.set_value("spel", "show_hints", show_hints)
+	cf.set_value("kast", "throw_mode", throw_mode)
 	cf.set_value("spel", "lang", Lang.current)
 	cf.save(PATH)
 

@@ -35,6 +35,18 @@ const MAX_AIM := 0.30
 const SWEET_SPEED := 8.7
 const PAD_SCALE := 0.45    # gamepad-spakar är snabbare än en mus
 
+## Mätarläget (standard), som i gamla RPG- och golfspel:
+## tryck 1 = börja ta sats, kraftmätaren fylls (och töms igen),
+## tryck 2 = lås kraften, armen svingar framåt och en markör sveper
+##           över precisionsmätaren,
+## tryck 3 = släpp. Mitt i det gröna = rakt. Långt ut = snett, och
+##           längst ut tappar du greppet och det blir helikopter.
+const METER_TIME := 1.0    # sekunder från tom till full kraft
+const ACC_TIME := 0.6      # sekunder för markören att svepa över
+const METER_ANGLE := 0.62  # kastvinkel i mätarläget (~35°)
+const ACC_AIM_ERR := 0.07  # rad sidofel vid markören längst ut
+const PERFECT := 0.12      # |markör| under detta = perfekt
+
 var stand_x := 0.0
 var aim := 0.0             # positiv = höger
 var theta := 0.0           # armvinkel, 0 = rakt ner, positiv = framåt
@@ -43,6 +55,10 @@ var baton: Baton
 var mouse_aim := true      # av i autotest/skärmdumpar
 var input_enabled := true
 var meter := 0.0           # 0..1, för kraftmätaren
+var meter_phase := 0       # 0 vila, 1 kraft, 2 precision
+var meter_power := 0.0
+var meter_cursor := -1.0   # -1..1 på precisionsmätaren
+var _meter_t := 0.0
 
 var _drag := Vector2.ZERO
 var _frame_d := Vector2.ZERO
@@ -72,11 +88,15 @@ func give_baton(b: Baton) -> void:
 	b.hold()
 	holding = false
 	theta = 0.0
+	meter_phase = 0
+	meter = 0.0
+	meter_cursor = -1.0
 	_hist.clear()
 	_update_pose()
 
 
 func cancel_hold() -> void:
+	meter_phase = 0
 	if holding:
 		holding = false
 		_pad_holding = false
@@ -88,6 +108,14 @@ func _unhandled_input(e: InputEvent) -> void:
 	if e is InputEventMouseMotion and e.screen_relative.length() > 2.0:
 		_using_pad = false
 	if baton == null or not input_enabled:
+		return
+	if Settings.throw_mode == "meter":
+		var press: bool = (e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT) \
+			or (e is InputEventKey and e.pressed and not e.echo and e.keycode == KEY_SPACE) \
+			or (e is InputEventJoypadButton and e.pressed and e.button_index == JOY_BUTTON_A)
+		if press:
+			get_viewport().set_input_as_handled()
+			_meter_press()
 		return
 	if e is InputEventMouseButton and e.button_index == MOUSE_BUTTON_LEFT:
 		if e.pressed and not holding:
@@ -109,8 +137,13 @@ func _physics_process(dt: float) -> void:
 		_update_pose()
 		return
 	var k := PX_TO_RAD * Settings.sensitivity
-	_poll_pad(dt, k)
-	if holding:
+	if Settings.throw_mode == "meter":
+		_meter_tick(dt)
+	else:
+		_poll_pad(dt, k)
+	if meter_phase > 0:
+		pass
+	elif holding:
 		_drag.y = clampf(_drag.y, -THETA_MAX / k, -THETA_MIN / k)
 		theta = -_drag.y * k
 	else:
@@ -134,7 +167,8 @@ func _physics_process(dt: float) -> void:
 	_frame_d = Vector2.ZERO
 	while _hist.size() > WINDOW + SMOOTH:
 		_hist.pop_front()
-	meter = clampf(_speed_for(_smoothed(_hist.size() - 1).y) / MAX_SPEED, 0.0, 1.0) if holding else 0.0
+	if Settings.throw_mode != "meter":
+		meter = clampf(_speed_for(_smoothed(_hist.size() - 1).y) / MAX_SPEED, 0.0, 1.0) if holding else 0.0
 	_update_pose()
 
 
@@ -167,6 +201,86 @@ func _poll_pad(_dt: float, k: float) -> void:
 		_pad_last_drag = d
 		_pad_last_x = sx
 		_drag.y = d
+
+
+func _meter_press() -> void:
+	match meter_phase:
+		0:
+			meter_phase = 1
+			_meter_t = 0.0
+			holding = true
+		1:
+			meter_power = meter
+			meter_phase = 2
+			_meter_t = 0.0
+		2:
+			_meter_launch()
+
+
+func _meter_tick(dt: float) -> void:
+	if meter_phase == 1:
+		_meter_t += dt
+		var x := _meter_t / METER_TIME
+		if x >= 2.0:
+			# mätaren hann tömmas: du tappar pinnen
+			meter_phase = 0
+			holding = false
+			meter = 0.0
+			_drop()
+			return
+		meter = x if x <= 1.0 else 2.0 - x
+		theta = -1.35 * meter
+	elif meter_phase == 2:
+		_meter_t += dt
+		var x := _meter_t / ACC_TIME
+		meter_cursor = -1.0 + 2.0 * x
+		theta = lerpf(-1.35 * meter_power, METER_ANGLE, clampf(x, 0.0, 1.0))
+		if meter_cursor > 1.25:
+			_meter_launch()  # för sent: kastet går iväg ändå, snett
+
+
+## Resultatet av precisionen, för texten på skärmen.
+func grade_for(c: float) -> String:
+	var a := absf(c)
+	if a < PERFECT:
+		return "perfect"
+	if a < 0.4:
+		return "good"
+	if a < 0.85:
+		return "off"
+	return "fumble"
+
+
+func _meter_launch() -> void:
+	var c := meter_cursor
+	meter_phase = 0
+	holding = false
+	meter = meter_power
+	launch_meter(meter_power, c)
+
+
+## Mätarkast: kraft 0..1, markörens läge -1..1. Används också av autotestet.
+func launch_meter(power01: float, cursor: float) -> void:
+	var speed := MAX_SPEED * clampf(power01, 0.0, 1.0) * Settings.power
+	var grade := grade_for(cursor)
+	var err := cursor if absf(cursor) >= PERFECT else 0.0
+	var th := METER_ANGLE + err * 0.08
+	var saved := aim
+	aim += err * ACC_AIM_ERR + randf_range(-0.004, 0.004)
+	theta = th
+	_update_pose()
+	var f := forward()
+	var r := f.cross(Vector3.UP)
+	var v := (f * cos(th) + Vector3.UP * sin(th)) * speed
+	var w := r * speed * SPIN_FACTOR
+	if grade == "fumble":
+		w += Vector3.UP * signf(cursor) * 7.0  # greppet släpper: helikopter
+	var b := baton
+	baton = null
+	aim = saved
+	b.launch(v, w)
+	_aim_line.visible = false
+	thrown.emit(b, {"speed": v.length(), "angle": rad_to_deg(th), "lat": 0.0, "grade": grade})
 
 
 func forward() -> Vector3:

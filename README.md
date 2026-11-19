@@ -12,6 +12,13 @@ Det här är **kastprototypen** (v0.2): huvudmeny, en runda mot Vedgubben med ri
 
 ## Så kastar du
 
+**Mätare (standard), som i gamla RPG- och golfspel:** sikta med musen och klicka (eller mellanslag / A) tre gånger.
+1. Första klicket: du tar sats och kraftmätaren fylls. Den töms igen om du väntar för länge.
+2. Andra klicket: kraften låses. Det gröna fältet är kraften som når baslinjen.
+3. Tredje klicket: en markör sveper över precisionsmätaren. Mitt i det gröna blir PERFEKT, längre ut blir kastet snett, och längst ut tappar du greppet (helikopter).
+
+**Musdrag** (välj i Inställningar):
+
 | Gör | Vad händer |
 | --- | --- |
 | Flytta musen i sidled | Sikta (den ljusa linjen på marken) |

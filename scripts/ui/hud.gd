@@ -23,6 +23,8 @@ var _meter_root: Control
 var _meter_fill: ColorRect
 var _meter_peak: ColorRect
 var _meter_label: Label
+var _acc_root: Control
+var _acc_cursor: ColorRect
 var _fade: ColorRect
 var _speech_tween: Tween
 var _peak := 0.0
@@ -56,7 +58,7 @@ func _ready() -> void:
 	_flash = _label(14, Color(1.0, 0.85, 0.2), Vector2(0, 70), Vector2(384, 20))
 	_flash.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	var ver := _label(8, Color(0.8, 0.15, 0.1), Vector2(300, 277))
-	ver.text = "SISTA KUBBEN v0.2"
+	ver.text = "SISTA KUBBEN v0.3"
 
 	# golf-kraftmätare: stapel med fyllning, söt punkt och toppmarkering
 	_meter_root = Control.new()
@@ -83,6 +85,23 @@ func _ready() -> void:
 	_meter_peak.color = Color(1, 0.95, 0.6)
 	_meter_root.add_child(_meter_peak)
 	_meter_label = _label(8, Color(0.9, 0.8, 0.7), Vector2(254, 188))
+
+	# precisionsmätare för mätarläget: smal grön mitt, gula sidor, röda kanter
+	_acc_root = Control.new()
+	_acc_root.position = Vector2(254, 214)
+	_play_root.add_child(_acc_root)
+	for seg in [[0.0, 1.0, Color(0.55, 0.08, 0.05)], [0.075, 0.925, Color(0.75, 0.55, 0.15)], [0.3, 0.7, Color(0.6, 0.65, 0.2)], [0.44, 0.56, Color(0.25, 0.8, 0.3)]]:
+		var r := ColorRect.new()
+		r.position = Vector2(1 + 120.0 * seg[0], 1)
+		r.size = Vector2(120.0 * (seg[1] - seg[0]), 6)
+		r.color = seg[2]
+		_acc_root.add_child(r)
+	_acc_cursor = ColorRect.new()
+	_acc_cursor.size = Vector2(2, 10)
+	_acc_cursor.position = Vector2(1, -1)
+	_acc_cursor.color = Color(1, 1, 1)
+	_acc_root.add_child(_acc_cursor)
+	_acc_root.visible = false
 
 	_fade = ColorRect.new()
 	_fade.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -137,7 +156,10 @@ func refresh(training: bool, left: int, total: int, fallen: Array[bool], dog_hit
 		lines.append(Lang.t("last") % [last.speed, int(last.angle), last_dist])
 	_info.text = "\n".join(lines)
 	_hint.visible = Settings.show_hints
-	_hint.text = Lang.t("hint1") + " " + Lang.t("hint2") + "\n" + Lang.t("hint3")
+	if Settings.throw_mode == "meter":
+		_hint.text = Lang.t("hint_meter1") + "\n" + Lang.t("hint_meter2") + "  " + Lang.t("hint3")
+	else:
+		_hint.text = Lang.t("hint1") + " " + Lang.t("hint2") + "\n" + Lang.t("hint3")
 	_meter_root.visible = Settings.power_meter
 	_meter_label.visible = Settings.power_meter
 
@@ -156,6 +178,32 @@ func update_meter(v: float, holding: bool, angle_deg: float) -> void:
 	_meter_peak.position.x = 1.0 + 120.0 * _peak
 	var sweet := ThrowController.SWEET_SPEED / ThrowController.MAX_SPEED
 	var d := absf((v if holding else _peak) - sweet)
+	_meter_fill.color = Color(0.3, 0.85, 0.3) if d < 0.05 else (Color(0.9, 0.7, 0.2) if d < 0.12 else Color(0.85, 0.2, 0.1))
+
+
+## Mätarläget: fas 1 = kraft fylls, fas 2 = markören sveper.
+func update_timing(phase: int, live: float, locked: float, cursor: float) -> void:
+	_meter_root.visible = true
+	_acc_root.visible = phase == 2 or _meter_hold < 1.5
+	if phase == 1:
+		_meter_hold = 0.0
+		_peak = live
+		_meter_label.text = Lang.t("meter_idle")
+	elif phase == 2:
+		_meter_hold = 0.0
+		_peak = locked
+		_acc_cursor.position.x = 1.0 + 120.0 * clampf((cursor + 1.0) * 0.5, 0.0, 1.0)
+		_meter_label.text = Lang.t("meter_acc")
+	else:
+		_meter_hold += get_process_delta_time()
+		if _meter_hold > 2.0:
+			_peak = 0.0
+			_meter_label.text = Lang.t("meter_idle")
+			_acc_root.visible = false
+	_meter_fill.size.x = 120.0 * _peak
+	_meter_peak.position.x = 1.0 + 120.0 * _peak
+	var sweet := ThrowController.SWEET_SPEED / ThrowController.MAX_SPEED
+	var d := absf(_peak - sweet)
 	_meter_fill.color = Color(0.3, 0.85, 0.3) if d < 0.05 else (Color(0.9, 0.7, 0.2) if d < 0.12 else Color(0.85, 0.2, 0.1))
 
 

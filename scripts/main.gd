@@ -253,6 +253,10 @@ func _on_thrown(b: Baton, info: Dictionary) -> void:
 	state = State.FLYING
 	Sfx.play("whoosh", -4.0, 0.8 + info.speed * 0.04)
 	hud.show_throw(info.speed / ThrowController.MAX_SPEED)
+	if info.has("grade"):
+		hud.flash(Lang.t("grade_" + info.grade))
+		if info.grade == "perfect":
+			Sfx.play("click", -2.0, 1.6)
 	_refresh_ui()
 
 
@@ -492,7 +496,10 @@ func _process(dt: float) -> void:
 	else:
 		opponent.look_at_x(current.global_position.x if current else sx)
 	if mode != Mode.MENU:
-		hud.update_meter(thrower.meter, thrower.holding, rad_to_deg(thrower.theta))
+		if Settings.throw_mode == "meter":
+			hud.update_timing(thrower.meter_phase, thrower.meter, thrower.meter_power, thrower.meter_cursor)
+		else:
+			hud.update_meter(thrower.meter, thrower.holding, rad_to_deg(thrower.theta))
 
 
 func _unhandled_input(e: InputEvent) -> void:
@@ -556,6 +563,7 @@ func _wait_ready() -> void:
 
 func _run_autotest() -> void:
 	thrower.mouse_aim = false
+	Settings.throw_mode = "drag"
 	for i in 240:
 		await get_tree().physics_frame
 	var standing := 0
@@ -595,6 +603,40 @@ func _run_autotest() -> void:
 		while state == State.FLYING:
 			await get_tree().physics_frame
 		print("   slut %s heli=%s yaw=%.2f luft=%.2fs" % [str(b.global_position.snapped(Vector3.ONE * 0.01)), b.helicopter, b.yaw_accum, b.air_time])
+	# mätarläget
+	Settings.throw_mode = "meter"
+	var sweet := ThrowController.SWEET_SPEED / ThrowController.MAX_SPEED
+	for mc in [[sweet, 0.0, -0.18, "mätare perfekt"], [sweet, 0.5, -0.18, "mätare snett"], [sweet, 0.95, 0.0, "mätare fummel"], [0.5, 0.0, 0.0, "mätare halv kraft"]]:
+		while state == State.FLYING:
+			await get_tree().physics_frame
+		_new_round()
+		await _wait_ready()
+		thrower.stand_x = mc[2]
+		thrower.aim = 0.0
+		await get_tree().physics_frame
+		print("TEST %s" % mc[3])
+		thrower.launch_meter(mc[0], mc[1])
+		var mb := batons[-1]
+		await get_tree().physics_frame
+		while state == State.FLYING:
+			await get_tree().physics_frame
+		print("   slut %s heli=%s" % [str(mb.global_position.snapped(Vector3.ONE * 0.01)), mb.helicopter])
+	# tajmingflödet med riktiga tryck
+	while state == State.FLYING:
+		await get_tree().physics_frame
+	_new_round()
+	await _wait_ready()
+	thrower._meter_press()
+	for i in 100:
+		await get_tree().physics_frame
+	thrower._meter_press()
+	for i in 36:
+		await get_tree().physics_frame
+	print("TEST tajming: kraft %.2f markör %.2f" % [thrower.meter_power, thrower.meter_cursor])
+	thrower._meter_press()
+	while state == State.FLYING or thrower.baton == null:
+		await get_tree().physics_frame
+	Settings.throw_mode = "drag"
 	# träning: kasta på hunden
 	_start(Mode.TRAINING, true)
 	for i in 3:
@@ -632,12 +674,15 @@ func _screenshots(prefix: String) -> void:
 	thrower.theta = -0.9
 	thrower.set_physics_process(false)
 	thrower._update_pose()
-	hud.update_meter(0.72, true, -50)
+	thrower.meter_phase = 2
+	thrower.meter_power = 0.81
+	thrower.meter_cursor = -0.25
 	for i in 3:
 		await get_tree().process_frame
 	vp.get_texture().get_image().save_png(prefix + "_sats.png")
 	thrower.set_physics_process(true)
-	thrower.launch_with(0.6, 2900.0, 0.0)
+	thrower.meter_phase = 0
+	thrower.launch_meter(0.83, 0.05)
 	for i in 45:
 		await get_tree().process_frame
 	vp.get_texture().get_image().save_png(prefix + "_flygning.png")
