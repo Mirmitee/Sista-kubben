@@ -71,6 +71,7 @@ var _pad_last_x := 0.0
 var _using_pad := false
 var _hand: MeshInstance3D
 var _aim_line: MeshInstance3D
+var _land_mark: MeshInstance3D
 
 
 func _ready() -> void:
@@ -81,6 +82,9 @@ func _ready() -> void:
 	add_child(_hand)
 	_aim_line = PS1.box(Vector3(0.02, 0.005, 1.0), PS1.mat(null, Color(0.9, 0.85, 0.6), Vector2.ONE, 0.6))
 	add_child(_aim_line)
+	_land_mark = PS1.box(Vector3(0.18, 0.006, 0.05), PS1.mat(null, Color(0.3, 1.0, 0.35), Vector2.ONE, 1.0))
+	_land_mark.visible = false
+	add_child(_land_mark)
 
 
 func give_baton(b: Baton) -> void:
@@ -263,10 +267,12 @@ func _meter_launch() -> void:
 func launch_meter(power01: float, cursor: float) -> void:
 	var speed := MAX_SPEED * clampf(power01, 0.0, 1.0) * Settings.power
 	var grade := grade_for(cursor)
-	var err := cursor if absf(cursor) >= PERFECT else 0.0
+	# I det gröna går pinnen exakt dit siktlinjen pekar. Utanför växer felet
+	# från noll vid kanten av det gröna.
+	var err := signf(cursor) * maxf(absf(cursor) - PERFECT, 0.0) / (1.0 - PERFECT)
 	var th := METER_ANGLE + err * 0.08
 	var saved := aim
-	aim += err * ACC_AIM_ERR + randf_range(-0.004, 0.004)
+	aim += err * ACC_AIM_ERR
 	theta = th
 	_update_pose()
 	var f := forward()
@@ -306,6 +312,15 @@ func _update_pose() -> void:
 	var length := 8.6 if Settings.aim_assist else 3.0
 	var start := Vector3(stand_x + SHOULDER.x, 0.012, 0.0)
 	_aim_line.global_transform = Transform3D(Basis(Vector3.UP, -aim).scaled(Vector3(1, 1, length)), start + f * length * 0.5)
+	# sikthjälp: var pinnen landar med den kraft du låst
+	_land_mark.visible = baton != null and Settings.aim_assist and meter_phase == 2
+	if _land_mark.visible:
+		var v := MAX_SPEED * meter_power * Settings.power
+		var vy := v * sin(METER_ANGLE)
+		var vx := v * cos(METER_ANGLE)
+		var h := 0.75
+		var d := vx * (vy + sqrt(vy * vy + 2.0 * 9.81 * h)) / 9.81 - 0.2
+		_land_mark.global_transform = Transform3D(Basis(Vector3.UP, -aim), start + f * d + Vector3(0, 0.004, 0))
 
 
 ## Medelvärde av (theta, vy, vx) över SMOOTH tick som slutar vid i.
