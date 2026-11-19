@@ -1,0 +1,250 @@
+## Huvudmeny, regelval, inställningar, kontroller och pausmeny.
+## Allt byggs i kod och byggs om när språket byts.
+class_name Menu
+extends CanvasLayer
+
+signal play_pressed
+signal training_pressed
+signal resume_pressed
+signal restart_pressed
+signal main_menu_pressed
+
+var page := "title"
+var paused_menu := false
+var _root: Control
+var _box: VBoxContainer
+var _theme: Theme
+
+
+func _ready() -> void:
+	layer = 10
+	process_mode = Node.PROCESS_MODE_ALWAYS
+	_theme = _make_theme()
+	_root = Control.new()
+	_root.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_root.theme = _theme
+	add_child(_root)
+	Lang.changed.connect(func(): show_page(page))
+
+
+func _make_theme() -> Theme:
+	var t := Theme.new()
+	t.default_font_size = 8
+	var normal := StyleBoxFlat.new()
+	normal.bg_color = Color(0.07, 0.02, 0.03, 0.85)
+	normal.border_color = Color(0.45, 0.08, 0.06)
+	normal.set_border_width_all(1)
+	normal.content_margin_left = 6
+	normal.content_margin_right = 6
+	normal.content_margin_top = 2
+	normal.content_margin_bottom = 2
+	var hover := normal.duplicate()
+	hover.bg_color = Color(0.30, 0.05, 0.04, 0.95)
+	hover.border_color = Color(0.95, 0.3, 0.2)
+	t.set_stylebox("normal", "Button", normal)
+	t.set_stylebox("hover", "Button", hover)
+	t.set_stylebox("focus", "Button", hover)
+	t.set_stylebox("pressed", "Button", hover)
+	t.set_color("font_color", "Button", Color(0.9, 0.8, 0.7))
+	t.set_color("font_hover_color", "Button", Color(1, 0.95, 0.8))
+	t.set_color("font_focus_color", "Button", Color(1, 0.95, 0.8))
+	t.set_color("font_color", "Label", Color(0.9, 0.82, 0.72))
+	t.set_color("font_shadow_color", "Label", Color(0, 0, 0, 0.9))
+	t.set_constant("shadow_offset_x", "Label", 1)
+	t.set_constant("shadow_offset_y", "Label", 1)
+	var panel := StyleBoxFlat.new()
+	panel.bg_color = Color(0.03, 0.01, 0.02, 0.78)
+	panel.border_color = Color(0.35, 0.06, 0.05)
+	panel.set_border_width_all(1)
+	panel.set_content_margin_all(8)
+	t.set_stylebox("panel", "PanelContainer", panel)
+	var grab := StyleBoxFlat.new()
+	grab.bg_color = Color(0.2, 0.04, 0.04)
+	grab.content_margin_top = 2
+	grab.content_margin_bottom = 2
+	t.set_stylebox("slider", "HSlider", grab)
+	var fill := StyleBoxFlat.new()
+	fill.bg_color = Color(0.75, 0.12, 0.08)
+	fill.content_margin_top = 2
+	fill.content_margin_bottom = 2
+	t.set_stylebox("grabber_area", "HSlider", fill)
+	t.set_stylebox("grabber_area_highlight", "HSlider", fill)
+	return t
+
+
+func open(p: String) -> void:
+	visible = true
+	show_page(p)
+
+
+func close() -> void:
+	visible = false
+
+
+func show_page(p: String) -> void:
+	page = p
+	for c in _root.get_children():
+		c.queue_free()
+	var center := CenterContainer.new()
+	center.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_root.add_child(center)
+	var panel := PanelContainer.new()
+	center.add_child(panel)
+	_box = VBoxContainer.new()
+	_box.add_theme_constant_override("separation", 3)
+	panel.add_child(_box)
+	match p:
+		"title": _page_title()
+		"rules": _page_rules()
+		"settings": _page_settings()
+		"controls": _page_controls()
+		"pause": _page_pause()
+	# första knappen får fokus så att tangentbord och gamepad funkar
+	await get_tree().process_frame
+	for c in _box.get_children():
+		if c is Button or c is HSlider or c is CheckButton:
+			c.grab_focus()
+			break
+
+
+func _t(sv: String, en: String) -> String:
+	return sv if Lang.current == "sv" else en
+
+
+func _title(text: String, size := 16, color := Color(0.85, 0.12, 0.08)) -> void:
+	var l := Label.new()
+	l.text = text
+	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	l.add_theme_font_size_override("font_size", size)
+	l.add_theme_color_override("font_color", color)
+	_box.add_child(l)
+
+
+func _text(text: String, color := Color(0.75, 0.65, 0.6)) -> void:
+	var l := Label.new()
+	l.text = text
+	l.add_theme_color_override("font_color", color)
+	_box.add_child(l)
+
+
+func _button(text: String, cb: Callable) -> Button:
+	var b := Button.new()
+	b.text = text
+	b.pressed.connect(func():
+		Sfx.play("click", -8.0)
+		cb.call())
+	b.focus_entered.connect(func(): Sfx.play("click", -18.0, 0.7))
+	_box.add_child(b)
+	return b
+
+
+func _slider(label: String, key: String, lo: float, hi: float, step: float) -> void:
+	var row := HBoxContainer.new()
+	var l := Label.new()
+	l.custom_minimum_size.x = 92
+	row.add_child(l)
+	var s := HSlider.new()
+	s.min_value = lo
+	s.max_value = hi
+	s.step = step
+	s.value = Settings.get(key)
+	s.custom_minimum_size = Vector2(110, 10)
+	s.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	var upd := func(v: float):
+		l.text = "%s %.1f" % [label, v]
+	upd.call(s.value)
+	s.value_changed.connect(func(v: float):
+		upd.call(v)
+		Settings.set_value(key, v))
+	row.add_child(s)
+	_box.add_child(row)
+
+
+func _toggle(label: String, key: String) -> void:
+	var b := _button("", func(): pass)
+	var upd := func():
+		b.text = "%s: %s" % [label, _t("PÅ", "ON") if Settings.get(key) else _t("AV", "OFF")]
+	upd.call()
+	b.pressed.connect(func():
+		Settings.set_value(key, not Settings.get(key))
+		upd.call())
+
+
+func _page_title() -> void:
+	_title("SISTA KUBBEN", 24)
+	_title(_t("en midsommar du aldrig glömmer", "a midsummer you'll never forget"), 8, Color(0.7, 0.5, 0.45))
+	_box.add_child(HSeparator.new())
+	_button(_t("SPELA", "PLAY"), func(): show_page("rules"))
+	_button(_t("TRÄNA PÅ GÖSTA (HUNDEN)", "PRACTICE ON GÖSTA (THE DOG)"), func(): training_pressed.emit())
+	_button(_t("INSTÄLLNINGAR", "SETTINGS"), func(): show_page("settings"))
+	_button(_t("KONTROLLER", "CONTROLS"), func(): show_page("controls"))
+	_button(_t("SPRÅK: SVENSKA", "LANGUAGE: ENGLISH"), func():
+		Lang.toggle()
+		Settings.save())
+	_button(_t("AVSLUTA", "QUIT"), func(): get_tree().quit())
+
+
+func _page_rules() -> void:
+	_title(_t("VÄLJ REGLER", "CHOOSE RULES"), 12)
+	_button(_t("RIKTIG KUBB", "REAL KUBB"), func():
+		Settings.set_value("rules", "real")
+		play_pressed.emit())
+	_text(_t("  6 pinnar. Fäller du kungen för tidigt förlorar du.", "  6 batons. Fell the king too early and you lose."))
+	_button(_t("FÖRENKLAD", "SIMPLIFIED"), func():
+		Settings.set_value("rules", "simple")
+		play_pressed.emit())
+	_text(_t("  8 pinnar. Kungen reser sig om du råkar fälla honom.", "  8 batons. The king gets back up if you hit him."))
+	_button(_t("TILLBAKA", "BACK"), func(): show_page("pause" if paused_menu else "title"))
+
+
+func _page_settings() -> void:
+	_title(_t("INSTÄLLNINGAR", "SETTINGS"), 12)
+	_slider(_t("MUSKÄNSLIGHET", "MOUSE SENS"), "sensitivity", 0.3, 2.5, 0.1)
+	_slider(_t("KASTKRAFT", "THROW POWER"), "power", 0.5, 1.5, 0.05)
+	_slider(_t("VOLYM", "VOLUME"), "volume", 0.0, 1.0, 0.05)
+	_slider(_t("PS1-DARR", "PS1 WOBBLE"), "wobble", 0.0, 1.0, 0.1)
+	_toggle(_t("HELSKÄRM", "FULLSCREEN"), "fullscreen")
+	_toggle(_t("SIKTHJÄLP", "AIM ASSIST"), "aim_assist")
+	_toggle(_t("KRAFTMÄTARE", "POWER METER"), "power_meter")
+	_toggle(_t("TIPS PÅ SKÄRMEN", "ON-SCREEN TIPS"), "show_hints")
+	_button(_t("TILLBAKA", "BACK"), func(): show_page("pause" if paused_menu else "title"))
+
+
+func _page_controls() -> void:
+	_title(_t("KONTROLLER", "CONTROLS"), 12)
+	_text(_t("MUS / TANGENTBORD", "MOUSE / KEYBOARD"), Color(0.9, 0.3, 0.2))
+	_text(_t("Flytta musen i sidled ... sikta\nHåll vänster knapp, dra NER ... ta sats\nSvep UPP och släpp ... kasta\nHöger knapp ... zooma\nA / D ... gå längs baslinjen\nR ... ny runda    H ... visa tips\nL ... språk    F11 ... helskärm    Esc ... paus",
+		"Move mouse sideways ... aim\nHold left button, drag DOWN ... wind up\nSwipe UP and let go ... throw\nRight button ... zoom\nA / D ... walk along the baseline\nR ... new round    H ... show tips\nL ... language    F11 ... fullscreen    Esc ... pause"))
+	_text("GAMEPAD", Color(0.9, 0.3, 0.2))
+	_text(_t("Vänster spak ... sikta    LB / RB ... gå\nHåll A eller RT, höger spak NER ... ta sats\nKnuffa höger spak UPP och släpp ... kasta\nStart ... paus",
+		"Left stick ... aim    LB / RB ... walk\nHold A or RT, right stick DOWN ... wind up\nFlick right stick UP and let go ... throw\nStart ... pause"))
+	_button(_t("TILLBAKA", "BACK"), func(): show_page("pause" if paused_menu else "title"))
+
+
+func _page_pause() -> void:
+	_title(_t("PAUS", "PAUSED"), 16)
+	_text(_t("Vedgubben väntar. Han är bra på att vänta.", "The Woodman waits. He's good at waiting."))
+	_button(_t("FORTSÄTT", "RESUME"), func(): resume_pressed.emit())
+	_button(_t("BÖRJA OM RUNDAN", "RESTART ROUND"), func(): restart_pressed.emit())
+	_button(_t("INSTÄLLNINGAR", "SETTINGS"), func(): show_page("settings"))
+	_button(_t("KONTROLLER", "CONTROLS"), func(): show_page("controls"))
+	_button(_t("TILL HUVUDMENYN", "MAIN MENU"), func(): main_menu_pressed.emit())
+	_button(_t("AVSLUTA SPELET", "QUIT GAME"), func(): get_tree().quit())
+
+
+func _unhandled_input(e: InputEvent) -> void:
+	if not visible or not paused_menu:
+		return
+	var esc: bool = e.is_action_pressed("ui_cancel") or (e is InputEventJoypadButton and e.pressed and e.button_index == JOY_BUTTON_START)
+	if esc:
+		get_viewport().set_input_as_handled()
+		if not back():
+			resume_pressed.emit()
+
+
+func back() -> bool:
+	## Esc i menyn. Returnerar true om den hanterades.
+	if page in ["settings", "controls", "rules"]:
+		show_page("pause" if paused_menu else "title")
+		return true
+	return false

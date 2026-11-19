@@ -8,7 +8,7 @@ uniform bool use_texture = true;
 uniform vec4 tint : source_color = vec4(1.0);
 uniform vec2 uv_scale = vec2(1.0);
 uniform float emission = 0.0;      // 1 = lyser själv, ignorerar ljus
-uniform float snap_res = 120.0;    // lägre = mer darrig geometri
+global uniform float ps1_snap;     // lägre = mer darrig geometri (Inställningar)
 uniform float fog_start = 5.0;
 uniform float fog_end = 38.0;
 
@@ -35,7 +35,7 @@ void vertex() {
 	v_fog = clamp((length(view.xyz) - fog_start) / (fog_end - fog_start), 0.0, 1.0);
 	vec4 clip = PROJECTION_MATRIX * view;
 	if (clip.w > 0.05) {
-		vec2 grid = vec2(snap_res * 4.0 / 3.0, snap_res);
+		vec2 grid = vec2(ps1_snap * 4.0 / 3.0, ps1_snap);
 		clip.xy = round(clip.xy / clip.w * grid) / grid * clip.w;
 	}
 	POSITION = clip;

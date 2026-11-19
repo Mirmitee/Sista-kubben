@@ -1,0 +1,195 @@
+## Allt som ritas ovanpå spelet: repliker, pinnar, kubbikoner,
+## golf-kraftmätare, tips, popup-text, vinjett och toningar.
+class_name Hud
+extends CanvasLayer
+
+const VIGNETTE := """
+shader_type canvas_item;
+void fragment() {
+	float v = smoothstep(0.82, 0.32, length(UV - 0.5));
+	float scan = mod(FRAGCOORD.y, 2.0) < 1.0 ? 0.88 : 1.0;
+	COLOR = vec4(0.0, 0.0, 0.0, 1.0 - v * scan);
+}
+"""
+
+var _play_root: Control
+var _speech: Label
+var _info: Label
+var _icons: Label
+var _hint: Label
+var _center: Label
+var _flash: Label
+var _meter_root: Control
+var _meter_fill: ColorRect
+var _meter_peak: ColorRect
+var _meter_label: Label
+var _fade: ColorRect
+var _speech_tween: Tween
+var _peak := 0.0
+var _meter_hold := 0.0
+
+
+func _ready() -> void:
+	layer = 5
+	process_mode = Node.PROCESS_MODE_ALWAYS
+	var vig := ColorRect.new()
+	vig.set_anchors_preset(Control.PRESET_FULL_RECT)
+	vig.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var sh := Shader.new()
+	sh.code = VIGNETTE
+	var sm := ShaderMaterial.new()
+	sm.shader = sh
+	vig.material = sm
+	add_child(vig)
+
+	_play_root = Control.new()
+	_play_root.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_play_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_play_root)
+	_speech = _label(8, Color(0.95, 0.85, 0.75), Vector2(8, 6), Vector2(368, 40))
+	_speech.autowrap_mode = TextServer.AUTOWRAP_WORD
+	_info = _label(8, Color(0.9, 0.9, 0.8), Vector2(8, 228))
+	_icons = _label(8, Color(0.95, 0.75, 0.5), Vector2(8, 218))
+	_hint = _label(8, Color(0.75, 0.6, 0.6), Vector2(8, 256))
+	_center = _label(12, Color(1.0, 0.3, 0.2), Vector2(0, 90), Vector2(384, 100))
+	_center.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_flash = _label(14, Color(1.0, 0.85, 0.2), Vector2(0, 70), Vector2(384, 20))
+	_flash.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	var ver := _label(8, Color(0.8, 0.15, 0.1), Vector2(300, 277))
+	ver.text = "SISTA KUBBEN v0.2"
+
+	# golf-kraftmätare: stapel med fyllning, söt punkt och toppmarkering
+	_meter_root = Control.new()
+	_meter_root.position = Vector2(254, 200)
+	_play_root.add_child(_meter_root)
+	var bg := ColorRect.new()
+	bg.color = Color(0.05, 0.01, 0.02, 0.85)
+	bg.size = Vector2(122, 12)
+	_meter_root.add_child(bg)
+	_meter_fill = ColorRect.new()
+	_meter_fill.position = Vector2(1, 1)
+	_meter_fill.size = Vector2(0, 10)
+	_meter_fill.color = Color(0.85, 0.2, 0.1)
+	_meter_root.add_child(_meter_fill)
+	var sweet := ColorRect.new()
+	var sx := 1.0 + 120.0 * ThrowController.SWEET_SPEED / ThrowController.MAX_SPEED
+	sweet.position = Vector2(sx - 6, 0)
+	sweet.size = Vector2(12, 12)
+	sweet.color = Color(0.3, 0.8, 0.3, 0.45)
+	_meter_root.add_child(sweet)
+	_meter_peak = ColorRect.new()
+	_meter_peak.size = Vector2(2, 14)
+	_meter_peak.position = Vector2(1, -1)
+	_meter_peak.color = Color(1, 0.95, 0.6)
+	_meter_root.add_child(_meter_peak)
+	_meter_label = _label(8, Color(0.9, 0.8, 0.7), Vector2(254, 188))
+
+	_fade = ColorRect.new()
+	_fade.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_fade.color = Color(0, 0, 0, 1)
+	_fade.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_fade)
+
+
+func _label(size: int, color: Color, pos: Vector2, sz := Vector2.ZERO) -> Label:
+	var l := Label.new()
+	var ls := LabelSettings.new()
+	ls.font_size = size
+	ls.font_color = color
+	ls.shadow_color = Color(0, 0, 0, 0.9)
+	ls.shadow_offset = Vector2(1, 1)
+	l.label_settings = ls
+	l.position = pos
+	if sz != Vector2.ZERO:
+		l.size = sz
+	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_play_root.add_child(l)
+	return l
+
+
+func set_playing(on: bool) -> void:
+	_play_root.visible = on
+
+
+func fade_out() -> void:
+	var tw := create_tween()
+	tw.tween_property(_fade, "color:a", 1.0, 0.35)
+	await tw.finished
+
+
+func fade_in() -> void:
+	var tw := create_tween()
+	tw.tween_property(_fade, "color:a", 0.0, 0.6)
+
+
+func refresh(training: bool, left: int, total: int, fallen: Array[bool], dog_hits: int, last: Dictionary, last_dist: float) -> void:
+	var lines: Array[String] = []
+	if training:
+		lines.append(Lang.t("training_hud") % dog_hits)
+		_icons.text = ""
+	else:
+		lines.append(Lang.t("hud") % [left, total])
+		var s := Lang.t("kubbs") + " "
+		for f in fallen:
+			s += "[X]" if f else "[ ]"
+		_icons.text = s
+	if not last.is_empty():
+		lines.append(Lang.t("last") % [last.speed, int(last.angle), last_dist])
+	_info.text = "\n".join(lines)
+	_hint.visible = Settings.show_hints
+	_hint.text = Lang.t("hint1") + " " + Lang.t("hint2") + "\n" + Lang.t("hint3")
+	_meter_root.visible = Settings.power_meter
+	_meter_label.visible = Settings.power_meter
+
+
+func update_meter(v: float, holding: bool, angle_deg: float) -> void:
+	if holding:
+		_peak = maxf(_peak, v)
+		_meter_hold = 0.0
+		_meter_label.text = Lang.t("meter") % int(angle_deg)
+	else:
+		_meter_hold += get_process_delta_time()
+		if _meter_hold > 2.0:
+			_peak = 0.0
+			_meter_label.text = Lang.t("meter_idle")
+	_meter_fill.size.x = 120.0 * (v if holding else _peak)
+	_meter_peak.position.x = 1.0 + 120.0 * _peak
+	var sweet := ThrowController.SWEET_SPEED / ThrowController.MAX_SPEED
+	var d := absf((v if holding else _peak) - sweet)
+	_meter_fill.color = Color(0.3, 0.85, 0.3) if d < 0.05 else (Color(0.9, 0.7, 0.2) if d < 0.12 else Color(0.85, 0.2, 0.1))
+
+
+func show_throw(v: float) -> void:
+	_peak = v
+	_meter_hold = 0.0
+
+
+func speech(who: String, text: String) -> void:
+	_speech.text = who + ": " + text
+	_speech.visible_ratio = 0.0
+	if _speech_tween:
+		_speech_tween.kill()
+	_speech_tween = create_tween()
+	_speech_tween.tween_property(_speech, "visible_ratio", 1.0, 0.025 * _speech.text.length())
+
+
+func center(text: String) -> void:
+	_center.text = text
+
+
+func flash(text: String) -> void:
+	_flash.text = text
+	_flash.modulate.a = 1.0
+	var tw := create_tween()
+	tw.tween_interval(1.2)
+	tw.tween_property(_flash, "modulate:a", 0.0, 0.5)
+
+
+func popup(at: Vector2, text: String) -> void:
+	var l := _label(12, Color(1.0, 0.9, 0.3), at - Vector2(20, 10))
+	l.text = text
+	var tw := create_tween()
+	tw.set_parallel(true)
+	tw.tween_property(l, "position:y", l.position.y - 24, 0.9)
+	tw.tween_property(l, "modulate:a", 0.0, 0.9)
+	tw.chain().tween_callback(l.queue_free)

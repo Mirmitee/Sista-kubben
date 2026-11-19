@@ -18,6 +18,8 @@ config/features=PackedStringArray("4.3", "GL Compatibility")
 [autoload]
 
 Lang="*res://scripts/lang.gd"
+Settings="*res://scripts/settings.gd"
+Sfx="*res://scripts/sfx.gd"
 
 [display]
 
@@ -44,3 +46,10 @@ textures/canvas_textures/default_texture_filter=0
 renderer/rendering_method="gl_compatibility"
 renderer/rendering_method.mobile="gl_compatibility"
 anti_aliasing/quality/msaa_3d=0
+
+[shader_globals]
+
+ps1_snap={
+"type": "float",
+"value": 240.0
+}

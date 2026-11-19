@@ -1,10 +1,14 @@
 ## Spelarens arm. Wii-bowling-kast med musen:
 ##  - Sikta genom att flytta musen i sidled (utan att hålla in).
 ##  - Håll vänster knapp och dra NER: armen svingar bakåt (sats).
-##  - Svep UPP och släpp: pinnen följer armens fart och vinkel.
-## Fart = hur snabbt du sveper. Kastvinkel = var i svingen du släpper.
-## Sidledsryck i svepet ger sidofart och snurr runt lodlinjen, och för
-## mycket av det blir ett (förbjudet) helikopterkast.
+##  - Svep UPP och släpp.
+##
+## Kraften kommer från svepets TOPPFART under de senaste 0,2 sekunderna,
+## genom en mjuk kurva, så små skillnader i fart ger små skillnader i
+## längd. Kastvinkeln är armens vinkel i just det ögonblicket. Därför gör
+## det inget om du hinner stanna innan du släpper knappen.
+## Sneda svep ger lite sidofart och snurr runt lodlinjen (efter en
+## dödzon), och riktigt sneda svep blir förbjudna helikopterkast.
 class_name ThrowController
 extends Node3D
 
@@ -13,30 +17,42 @@ signal dropped(baton: Baton)
 
 const ARM_LEN := 0.62
 const SHOULDER := Vector3(0.18, 1.38, 0.45)  # relativt spelarens plats
-const THETA_MIN := -1.5   # längst bak i satsen
-const THETA_MAX := 2.3    # rakt upp och lite till
-const HIST := 6           # fysiktick att mäta svepets fart över
-const MAX_SPEED := 16.0
-const SPIN_FACTOR := 0.7  # ände-över-ände-snurr i förhållande till armen
-const SIDE_K := 0.0008    # m/s sidofart per px/s sidledssvep
-const YAW_K := 0.003      # rad/s helikoptersnurr per px/s sidledssvep
-const MAX_AIM := 0.32
+const THETA_MIN := -1.5    # längst bak i satsen
+const THETA_MAX := 2.3     # rakt upp och lite till
+const PX_TO_RAD := 0.0036  # armens rörelse per pixel (vid känslighet 1)
+const WINDOW := 24         # fysiktick (0,2 s) att leta toppfart i
+const SMOOTH := 5          # tick att medla farten över
+const MAX_SPEED := 10.5    # m/s, kurvans tak (räcker till ~11 m)
+const SPEED_K := 1600.0    # px/s där kurvan nått ~63 %
+const MIN_PX_S := 350.0    # långsammare än så = du tappar pinnen
+const SPIN_FACTOR := 0.75  # ände-över-ände-snurr (rad/s per m/s)
+const LAT_DEAD := 450.0    # px/s sidled som ignoreras helt
+const SIDE_K := 0.00025    # m/s sidofart per px/s utöver dödzonen
+const YAW_K := 0.0025      # rad/s helikoptersnurr per px/s utöver dödzonen
+const MAX_AIM := 0.30
+## Fart för att nå motståndarens baslinje med ett normalt kast (~35°),
+## visas som "söt punkt" på kraftmätaren.
+const SWEET_SPEED := 8.7
+const PAD_SCALE := 0.45    # gamepad-spakar är snabbare än en mus
 
-var sens := 1.0           # justeras med +/-
-var power_gain := 1.0
-var mouse_aim := true     # av i autotestet
 var stand_x := 0.0
-var aim := 0.0            # positiv = höger
-var theta := 0.0          # armvinkel, 0 = rakt ner, positiv = framåt
+var aim := 0.0             # positiv = höger
+var theta := 0.0           # armvinkel, 0 = rakt ner, positiv = framåt
 var holding := false
 var baton: Baton
+var mouse_aim := true      # av i autotest/skärmdumpar
+var input_enabled := true
+var meter := 0.0           # 0..1, för kraftmätaren
 
 var _drag := Vector2.ZERO
-var _frame_dx := 0.0
-var _theta_hist: Array[float] = []
-var _latx_hist: Array[float] = []
+var _frame_d := Vector2.ZERO
+var _hist: Array[Vector3] = []  # (theta, vy px/s, vx px/s) per tick
 var _press_mouse := Vector2.ZERO
 var _arm: MeshInstance3D
+var _pad_holding := false
+var _pad_last_drag := 0.0
+var _pad_last_x := 0.0
+var _using_pad := false
 var _hand: MeshInstance3D
 var _aim_line: MeshInstance3D
 
@@ -47,12 +63,8 @@ func _ready() -> void:
 	add_child(_arm)
 	_hand = PS1.box(Vector3(0.08, 0.09, 0.06), skin)
 	add_child(_hand)
-	_aim_line = PS1.box(Vector3(0.025, 0.005, 5.0), PS1.mat(null, Color(0.9, 0.85, 0.6), Vector2.ONE, 0.6))
+	_aim_line = PS1.box(Vector3(0.02, 0.005, 1.0), PS1.mat(null, Color(0.9, 0.85, 0.6), Vector2.ONE, 0.6))
 	add_child(_aim_line)
-
-
-func px_to_rad() -> float:
-	return 0.0055 * sens
 
 
 func give_baton(b: Baton) -> void:
@@ -60,25 +72,35 @@ func give_baton(b: Baton) -> void:
 	b.hold()
 	holding = false
 	theta = 0.0
-	_theta_hist.clear()
-	_latx_hist.clear()
+	_hist.clear()
 	_update_pose()
 
 
+func cancel_hold() -> void:
+	if holding:
+		holding = false
+		_pad_holding = false
+		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+		_drag = Vector2.ZERO
+
+
 func _unhandled_input(e: InputEvent) -> void:
-	if baton == null:
+	if e is InputEventMouseMotion and e.screen_relative.length() > 2.0:
+		_using_pad = false
+	if baton == null or not input_enabled:
 		return
 	if e is InputEventMouseButton and e.button_index == MOUSE_BUTTON_LEFT:
 		if e.pressed and not holding:
 			holding = true
 			_drag = Vector2.ZERO
+			_hist.clear()
 			_press_mouse = get_viewport().get_mouse_position()
 			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 		elif not e.pressed and holding:
 			_release()
 	elif e is InputEventMouseMotion and holding:
 		_drag += e.screen_relative
-		_frame_dx += e.screen_relative.x
+		_frame_d += e.screen_relative
 
 
 func _physics_process(dt: float) -> void:
@@ -86,25 +108,65 @@ func _physics_process(dt: float) -> void:
 		theta = lerpf(theta, 0.0, 0.06)
 		_update_pose()
 		return
+	var k := PX_TO_RAD * Settings.sensitivity
+	_poll_pad(dt, k)
 	if holding:
-		var k := px_to_rad()
 		_drag.y = clampf(_drag.y, -THETA_MAX / k, -THETA_MIN / k)
 		theta = -_drag.y * k
 	else:
-		var mv := float(Input.is_key_pressed(KEY_D)) - float(Input.is_key_pressed(KEY_A))
-		stand_x = clampf(stand_x + mv * 1.6 * dt, -2.3, 2.3)
-		if mouse_aim:
+		if input_enabled:
+			var mv := float(Input.is_key_pressed(KEY_D)) - float(Input.is_key_pressed(KEY_A))
+			mv += float(Input.is_joy_button_pressed(0, JOY_BUTTON_DPAD_RIGHT) or Input.is_joy_button_pressed(0, JOY_BUTTON_RIGHT_SHOULDER))
+			mv -= float(Input.is_joy_button_pressed(0, JOY_BUTTON_DPAD_LEFT) or Input.is_joy_button_pressed(0, JOY_BUTTON_LEFT_SHOULDER))
+			stand_x = clampf(stand_x + mv * 1.6 * dt, -2.3, 2.3)
+		if _using_pad and input_enabled:
+			var ax := Input.get_joy_axis(0, JOY_AXIS_LEFT_X)
+			if absf(ax) > 0.15:
+				aim = clampf(aim + ax * 0.35 * dt, -MAX_AIM, MAX_AIM)
+		elif mouse_aim and input_enabled:
 			var vp := get_viewport()
 			var mx := vp.get_mouse_position().x / maxf(vp.get_visible_rect().size.x, 1.0)
-			aim = clampf((mx - 0.5) * 2.0, -1.0, 1.0) * MAX_AIM
+			var target := clampf((mx - 0.5) * 2.0, -1.0, 1.0) * MAX_AIM
+			aim = lerpf(aim, target, clampf(dt * 10.0, 0.0, 1.0))
 		theta = lerpf(theta, 0.0, 0.15)
-	_theta_hist.push_back(theta)
-	_latx_hist.push_back(_frame_dx)
-	_frame_dx = 0.0
-	while _theta_hist.size() > HIST + 1:
-		_theta_hist.pop_front()
-		_latx_hist.pop_front()
+	# fart i px/s uppåt (positiv = svep upp) och i sidled
+	_hist.push_back(Vector3(theta, -_frame_d.y / dt, _frame_d.x / dt))
+	_frame_d = Vector2.ZERO
+	while _hist.size() > WINDOW + SMOOTH:
+		_hist.pop_front()
+	meter = clampf(_speed_for(_smoothed(_hist.size() - 1).y) / MAX_SPEED, 0.0, 1.0) if holding else 0.0
 	_update_pose()
+
+
+## Gamepad: håll A eller höger avtryckare, dra höger spak ner för sats
+## och knuffa upp för att kasta. Vänster spak siktar, LB/RB flyttar.
+func _poll_pad(_dt: float, k: float) -> void:
+	if Input.get_connected_joypads().is_empty() or baton == null or not input_enabled:
+		return
+	if absf(Input.get_joy_axis(0, JOY_AXIS_LEFT_X)) > 0.3 or absf(Input.get_joy_axis(0, JOY_AXIS_RIGHT_Y)) > 0.3:
+		_using_pad = true
+	var grab := Input.is_joy_button_pressed(0, JOY_BUTTON_A) or Input.get_joy_axis(0, JOY_AXIS_TRIGGER_RIGHT) > 0.5
+	var sy := Input.get_joy_axis(0, JOY_AXIS_RIGHT_Y)
+	var sx := Input.get_joy_axis(0, JOY_AXIS_RIGHT_X)
+	if grab and not holding:
+		holding = true
+		_pad_holding = true
+		_hist.clear()
+		_pad_last_drag = 0.0
+		_pad_last_x = sx
+		_drag = Vector2.ZERO
+	elif not grab and _pad_holding:
+		_pad_holding = false
+		_release()
+		return
+	if _pad_holding:
+		var th := sy * THETA_MIN if sy > 0.0 else -sy * 1.6
+		var d := -th / k
+		_frame_d.y += (d - _pad_last_drag) * PAD_SCALE
+		_frame_d.x += (sx - _pad_last_x) * 300.0
+		_pad_last_drag = d
+		_pad_last_x = sx
+		_drag.y = d
 
 
 func forward() -> Vector3:
@@ -127,29 +189,48 @@ func _update_pose() -> void:
 	if baton:
 		baton.global_transform = Transform3D(b, hand + dir * (Baton.LENGTH * 0.5 - 0.03))
 	_aim_line.visible = baton != null
+	var length := 8.6 if Settings.aim_assist else 3.0
 	var start := Vector3(stand_x + SHOULDER.x, 0.012, 0.0)
-	_aim_line.global_transform = Transform3D(Basis(Vector3.UP, -aim), start + f * 3.0)
+	_aim_line.global_transform = Transform3D(Basis(Vector3.UP, -aim).scaled(Vector3(1, 1, length)), start + f * length * 0.5)
+
+
+## Medelvärde av (theta, vy, vx) över SMOOTH tick som slutar vid i.
+func _smoothed(i: int) -> Vector3:
+	var a := maxi(0, i - SMOOTH + 1)
+	var s := Vector3.ZERO
+	for j in range(a, i + 1):
+		s += _hist[j]
+	s /= float(i - a + 1)
+	s.x = _hist[i].x  # vinkeln tar vi exakt
+	return s
+
+
+func _speed_for(px_s: float) -> float:
+	if px_s <= 0.0:
+		return 0.0
+	return MAX_SPEED * (1.0 - exp(-px_s * Settings.sensitivity / SPEED_K)) * Settings.power
 
 
 func _release() -> void:
 	holding = false
-	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
-	get_viewport().warp_mouse(_press_mouse)
-	var dt := 1.0 / Engine.physics_ticks_per_second
-	var n := _theta_hist.size()
-	var k := mini(HIST, n - 1)
-	if k <= 0:
+	if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+		get_viewport().warp_mouse(_press_mouse)
+	if _hist.size() < 2:
 		_drop()
 		return
-	var omega := (_theta_hist[n - 1] - _theta_hist[n - 1 - k]) / (k * dt)
-	var lat := 0.0
-	for i in range(n - k, n):
-		lat += _latx_hist[i]
-	lat /= k * dt
-	if omega < 2.0 or theta < 0.0:
+	# hitta toppfarten i fönstret
+	var best := Vector3.ZERO
+	var best_i := -1
+	for i in range(maxi(0, _hist.size() - WINDOW), _hist.size()):
+		var s := _smoothed(i)
+		if s.y > best.y:
+			best = s
+			best_i = i
+	if best_i < 0 or best.y * Settings.sensitivity < MIN_PX_S or best.x < -0.1:
 		_drop()
-	else:
-		launch_with(theta, omega, lat)
+		return
+	launch_with(clampf(best.x, 0.0, THETA_MAX), best.y, best.z)
 
 
 func _drop() -> void:
@@ -159,17 +240,18 @@ func _drop() -> void:
 	dropped.emit(b)
 
 
-## Själva kastet. Används också av autotestet.
-func launch_with(th: float, omega: float, lat_px_s: float) -> void:
+## Själva kastet: armvinkel, svepfart uppåt (px/s), svepfart i sidled (px/s).
+## Används också av autotestet.
+func launch_with(th: float, up_px_s: float, lat_px_s: float) -> void:
 	theta = th
 	_update_pose()
 	var f := forward()
 	var r := f.cross(Vector3.UP)
-	var radius := ARM_LEN + Baton.LENGTH * 0.5 - 0.03
 	var tangent := f * cos(th) + Vector3.UP * sin(th)
-	var speed := minf(omega * radius * power_gain, MAX_SPEED)
-	var v := tangent * speed + r * lat_px_s * SIDE_K
-	var w := r * omega * SPIN_FACTOR + Vector3.UP * lat_px_s * YAW_K
+	var speed := _speed_for(up_px_s)
+	var lat := signf(lat_px_s) * maxf(absf(lat_px_s) - LAT_DEAD, 0.0)
+	var v := tangent * speed + r * lat * SIDE_K
+	var w := r * speed * SPIN_FACTOR + Vector3.UP * lat * YAW_K
 	var b := baton
 	baton = null
 	b.launch(v, w)

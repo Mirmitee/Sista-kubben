@@ -2,6 +2,9 @@
 class_name Kubb
 extends RigidBody3D
 
+## när kubben slår i något med viss fart (för ljud)
+signal landed(speed: float)
+
 const SIZE := Vector3(0.07, 0.15, 0.07)
 const KING_SIZE := Vector3(0.09, 0.30, 0.09)
 
@@ -27,6 +30,12 @@ func setup(king: bool, seed := 1) -> void:
 	pm.bounce = 0.12
 	physics_material_override = pm
 	can_sleep = true
+	contact_monitor = true
+	max_contacts_reported = 2
+	body_entered.connect(func(_b):
+		var v := linear_velocity.length()
+		if v > 0.5:
+			landed.emit(v))
 	if king:
 		# krona av fyra pinnar och en spets
 		var cm := PS1.mat(PS1.wood(9, Color(0.75, 0.58, 0.30)))
