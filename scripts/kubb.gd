@@ -11,6 +11,10 @@ const KING_SIZE := Vector3(0.09, 0.30, 0.09)
 var is_king := false
 var home: Transform3D
 var was_fallen := false
+var side := "theirs"      # planhalvan den står på: "theirs" eller "mine"
+var field := false        # fältkubb (inkastad) eller baslinjekubb
+var in_flight := false
+var touched := false
 
 
 func setup(king: bool, seed := 1) -> void:
@@ -36,6 +40,7 @@ func setup(king: bool, seed := 1) -> void:
 	contact_monitor = true
 	max_contacts_reported = 2
 	body_entered.connect(func(_b):
+		touched = true
 		var v := linear_velocity.length()
 		if v > 0.5:
 			landed.emit(v))
@@ -70,3 +75,34 @@ func teleport(t: Transform3D) -> void:
 func go_home() -> void:
 	teleport(home)
 	was_fallen = false
+
+
+# ---- när kubben kastas över till andra planhalvan
+
+func hold() -> void:
+	freeze_mode = RigidBody3D.FREEZE_MODE_KINEMATIC
+	freeze = true
+	collision_layer = 0
+	collision_mask = 0
+	in_flight = false
+
+
+func launch(v: Vector3, w: Vector3) -> void:
+	collision_layer = 1
+	collision_mask = 1
+	freeze = false
+	touched = false
+	linear_velocity = v
+	angular_velocity = w
+	in_flight = true
+
+
+func is_settled() -> bool:
+	return touched and linear_velocity.length() < 0.12 and angular_velocity.length() < 0.6
+
+
+## Res kubben där den landade (som fältkubb).
+func raise_at(p: Vector3) -> void:
+	in_flight = false
+	teleport(Transform3D(Basis(Vector3.UP, randf() * TAU), Vector3(p.x, height() * 0.5, p.z)))
+	field = true

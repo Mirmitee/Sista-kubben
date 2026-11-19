@@ -5,6 +5,10 @@ extends Opponent
 
 func _init() -> void:
 	display_name = {"sv": "VEDGUBBEN", "en": "THE WOODMAN"}
+	error_yaw = 0.022
+	error_speed = 0.035
+	rule_text = {"sv": "Natt 2 och 3: han stirrar på dig. Precisionsmarkören går 15 % fortare.",
+		"en": "Nights 2 and 3: he stares at you. The accuracy cursor is 15% faster."}
 	lines = {
 		"start": {
 			"sv": ["Kasta då. Jag har stått här sen 1700-talet.", "Välkommen till ängen. Ingen går hem.", "Glad midsommar. Ta en pinne.", "Sex pinnar. Fem kubbar. En kung. Noll chans.", "Har du ätit sill? Det märks.", "Jag har väntat på dig. Inte länge. Bara i trehundra år."],
@@ -58,6 +62,30 @@ func _init() -> void:
 			"sv": ["...du rörde honom.", "Nej. Nej nej nej. Inte kungen.", "Det där borde du inte ha gjort."],
 			"en": ["...you touched him.", "No. No no no. Not the king.", "You shouldn't have done that."],
 		},
+		"my_turn": {
+			"sv": ["Min tur. Stå still. Det gör ont mindre då.", "Nu kastar jag. Jag har övat sen svartedöden.", "Titta inte. Eller titta. Det spelar ingen roll."],
+			"en": ["My turn. Stand still. It hurts less.", "Now I throw. I've practised since the Black Death.", "Don't look. Or look. It doesn't matter."],
+		},
+		"opp_hit": {
+			"sv": ["Klonk. Det lät som din framtid.", "En till ditt hål i marken.", "Jag är bättre än jag ser ut. Jag ser ut som en vedtrave."],
+			"en": ["Clonk. That sounded like your future.", "Another one for your hole in the ground.", "I'm better than I look. I look like a woodpile."],
+		},
+		"opp_miss": {
+			"sv": ["Det var vinden.", "Jag missade med flit. Av medlidande.", "Mina fingrar är av björk. De är stela."],
+			"en": ["That was the wind.", "I missed on purpose. Out of pity.", "My fingers are birch. They're stiff."],
+		},
+		"toss": {
+			"sv": ["Här, ta dina kubbar. Jag vill inte ha dem.", "Fältkubbar till dig. Med kärlek. Nej."],
+			"en": ["Here, take your kubbs. I don't want them.", "Field kubbs for you. With love. No."],
+		},
+		"opp_king_death": {
+			"sv": ["...jag rörde kungen. Jag rörde min egen pappa. Du vinner.", "Nej. Jag har förlorat. Säg inget till mamma."],
+			"en": ["...I touched the king. I touched my own father. You win.", "No. I lost. Don't tell mother."],
+		},
+		"lose": {
+			"sv": ["Sådär. Nu är du en av oss. Ta en plats på ängen.", "Kungen faller. Du också."],
+			"en": ["There. Now you're one of us. Take a spot on the meadow.", "The king falls. So do you."],
+		},
 		"king_simple": {
 			"sv": ["Kungen reser sig. Han är förlåtande. Ikväll.", "Vi låtsas att det där inte hände. Förenklade regler, för förenklade människor."],
 			"en": ["The king gets back up. He's forgiving. Tonight.", "We'll pretend that didn't happen. Simplified rules, for simplified people."],
@@ -77,20 +105,30 @@ func _init() -> void:
 	}
 
 
+func mods_for_night(night: int) -> Dictionary:
+	return {"acc_time_mult": 0.85} if night >= 2 else {}
+
+
 func _ready() -> void:
 	var robe := PS1.mat(PS1.cloth(), Color(0.8, 0.75, 0.75), Vector2(2, 4))
 	var body := PS1.cylinder(0.42, 2.1, robe, 6, 0.22)
 	body.position.y = 1.05
 	add_child(body)
 	var bark := PS1.mat(PS1.wood(21, Color(0.45, 0.36, 0.27)))
+	_arm_len = 1.7
 	for s in [-1.0, 1.0]:  # alldeles för långa armar
+		var pivot := Node3D.new()
+		pivot.position = Vector3(s * 0.38, 2.0, 0.05)
+		pivot.rotation.z = s * 0.06
+		add_child(pivot)
 		var arm := PS1.box(Vector3(0.09, 1.55, 0.09), bark)
-		arm.position = Vector3(s * 0.38, 1.25, 0.05)
-		arm.rotation.z = s * 0.08
-		add_child(arm)
+		arm.position.y = -0.78
+		pivot.add_child(arm)
 		var fingers := PS1.box(Vector3(0.12, 0.22, 0.05), bark)
-		fingers.position = Vector3(s * 0.44, 0.40, 0.05)
-		add_child(fingers)
+		fingers.position.y = -1.62
+		pivot.add_child(fingers)
+		if s > 0:
+			_arm_pivot = pivot
 	_head = Node3D.new()
 	_head.position.y = 2.15
 	add_child(_head)

@@ -3,7 +3,8 @@
 class_name Menu
 extends CanvasLayer
 
-signal play_pressed
+signal run_start(baton_id: String)
+signal shop_done
 signal training_pressed
 signal resume_pressed
 signal restart_pressed
@@ -14,6 +15,9 @@ var paused_menu := false
 var _root: Control
 var _box: VBoxContainer
 var _theme: Theme
+var _offers: Array[String] = []
+var _curse := ""
+var _reroll := 2
 
 
 func _ready() -> void:
@@ -74,7 +78,18 @@ func _make_theme() -> Theme:
 
 func open(p: String) -> void:
 	visible = true
+	if p == "shop":
+		_reroll = 2
+		_gen_shop()
 	show_page(p)
+
+
+func _gen_shop() -> void:
+	var pool := Run.shop_pool()
+	pool.shuffle()
+	_offers.assign(pool.slice(0, 3))
+	var cp := Run.cursed_pool()
+	_curse = cp[randi() % cp.size()] if not cp.is_empty() and randf() < 0.85 else ""
 
 
 func close() -> void:
@@ -99,6 +114,9 @@ func show_page(p: String) -> void:
 		"settings": _page_settings()
 		"controls": _page_controls()
 		"pause": _page_pause()
+		"baton": _page_baton()
+		"shop": _page_shop()
+		"victory": _page_victory()
 	# första knappen får fokus så att tangentbord och gamepad funkar
 	await get_tree().process_frame
 	for c in _box.get_children():
@@ -188,12 +206,12 @@ func _page_rules() -> void:
 	_title(_t("VÄLJ REGLER", "CHOOSE RULES"), 12)
 	_button(_t("RIKTIG KUBB", "REAL KUBB"), func():
 		Settings.set_value("rules", "real")
-		play_pressed.emit())
-	_text(_t("  6 pinnar. Fäller du kungen för tidigt förlorar du.", "  6 batons. Fell the king too early and you lose."))
+		show_page("baton"))
+	_text(_t("  6 pinnar per tur. Rör du kungen för tidigt dör du.", "  6 batons per turn. Touch the king too early and you die."))
 	_button(_t("FÖRENKLAD", "SIMPLIFIED"), func():
 		Settings.set_value("rules", "simple")
-		play_pressed.emit())
-	_text(_t("  8 pinnar. Kungen reser sig om du råkar fälla honom.", "  8 batons. The king gets back up if you hit him."))
+		show_page("baton"))
+	_text(_t("  8 pinnar per tur. Samma död.", "  8 batons per turn. Same death."))
 	_button(_t("TILLBAKA", "BACK"), func(): show_page("pause" if paused_menu else "title"))
 
 
@@ -252,8 +270,128 @@ func _unhandled_input(e: InputEvent) -> void:
 			resume_pressed.emit()
 
 
+func _card_panel(id: String, parent: Container, price_text: String, action_text: String, cb: Callable, enabled := true) -> void:
+	var d: Dictionary = Cards.DEFS.get(id, Cards.BATONS.get(id, {}))
+	var cursed: bool = d.get("cursed", false)
+	var pc := PanelContainer.new()
+	var st := StyleBoxFlat.new()
+	st.bg_color = Color(0.12, 0.02, 0.10, 0.95) if cursed else Color(0.10, 0.06, 0.03, 0.95)
+	st.border_color = Color(0.7, 0.1, 0.6) if cursed else Color(0.8, 0.6, 0.3)
+	st.set_border_width_all(1)
+	st.set_content_margin_all(3)
+	pc.add_theme_stylebox_override("panel", st)
+	pc.custom_minimum_size = Vector2(86, 92)
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 1)
+	pc.add_child(v)
+	var t := Label.new()
+	t.text = Cards.title(id)
+	t.add_theme_color_override("font_color", Color(1.0, 0.5, 0.9) if cursed else Color(1.0, 0.85, 0.5))
+	v.add_child(t)
+	var dl := Label.new()
+	dl.text = Cards.desc(id)
+	dl.autowrap_mode = TextServer.AUTOWRAP_WORD
+	dl.custom_minimum_size = Vector2(80, 46)
+	dl.add_theme_color_override("font_color", Color(0.85, 0.78, 0.7))
+	v.add_child(dl)
+	if price_text != "":
+		var pl := Label.new()
+		pl.text = price_text
+		pl.add_theme_color_override("font_color", Color(1.0, 0.95, 0.7))
+		v.add_child(pl)
+	var b := Button.new()
+	b.text = action_text
+	b.disabled = not enabled
+	b.pressed.connect(func():
+		Sfx.play("click", -6.0)
+		cb.call())
+	v.add_child(b)
+	parent.add_child(pc)
+
+
+func _page_baton() -> void:
+	_title(_t("VÄLJ PINNE", "CHOOSE BATON"), 12)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 3)
+	_box.add_child(row)
+	for id in Cards.BATONS:
+		if id in Run.unlocked_batons:
+			_card_panel(id, row, "", _t("VÄLJ", "PICK"), func(): run_start.emit(id))
+		else:
+			var pc := PanelContainer.new()
+			pc.custom_minimum_size = Vector2(70, 92)
+			var l := Label.new()
+			l.text = _t("LÅST\n???", "LOCKED\n???")
+			l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			pc.add_child(l)
+			row.add_child(pc)
+	_text(_t("Fler pinnar låses upp när du vinner matcher och fäller kubbar.", "More batons unlock as you win matches and fell kubbs."))
+	_button(_t("TILLBAKA", "BACK"), func(): show_page("rules"))
+
+
+func _page_shop() -> void:
+	_title(_t("KRÅKMORS BOD", "CROW MOTHER'S SHOP"), 12)
+	_text(_t("Tänder %d   Kort %d/%d   Nästa: natt %d, %s", "Teeth %d   Cards %d/%d   Next: night %d, %s") % [
+		Run.teeth, Run.cards.size(), Run.MAX_CARDS, Run.night, Run.opponent_id().replace("_", "-").capitalize()], Color(1.0, 0.9, 0.6))
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 3)
+	_box.add_child(row)
+	for id in _offers:
+		var price: int = Cards.DEFS[id].price
+		var ok := Run.teeth >= price and Run.cards.size() < Run.MAX_CARDS
+		_card_panel(id, row, _t("%d tänder", "%d teeth") % price, _t("KÖP", "BUY"), func():
+			if Run.buy(id):
+				_offers.erase(id)
+				Sfx.play("clack", -6.0, 1.4)
+				show_page("shop"), ok)
+	if _curse != "":
+		var ok := Run.cards.size() < Run.MAX_CARDS
+		_card_panel(_curse, row, _t("GRATIS...", "FREE..."), _t("TA", "TAKE"), func():
+			if Run.buy(_curse):
+				_curse = ""
+				Sfx.play("bad", -6.0, 1.2)
+				show_page("shop"), ok)
+	var row2 := HBoxContainer.new()
+	_box.add_child(row2)
+	var rr := Button.new()
+	rr.text = _t("NYA KORT (%d tänder)", "REROLL (%d teeth)") % _reroll
+	rr.disabled = Run.teeth < _reroll
+	rr.pressed.connect(func():
+		Run.teeth -= _reroll
+		_reroll += 1
+		_gen_shop()
+		Sfx.play("click", -6.0)
+		show_page("shop"))
+	row2.add_child(rr)
+	var row3 := HFlowContainer.new()
+	row3.custom_minimum_size.x = 360
+	_box.add_child(row3)
+	for id in Run.cards:
+		var sb := Button.new()
+		var cursed: bool = Cards.DEFS[id].get("cursed", false)
+		sb.text = (_t("SÄLJ ", "SELL ") if not cursed else _t("KASTA ", "DROP ")) + Cards.title(id)
+		sb.tooltip_text = Cards.desc(id)
+		sb.pressed.connect(func():
+			Run.sell(id)
+			show_page("shop"))
+		row3.add_child(sb)
+	_text(_t("Kråkmor: \"Förbannade saker är gratis. Det kostar senare.\"", "Crow Mother: \"Cursed things are free. They cost later.\""), Color(0.7, 0.5, 0.8))
+	_button(_t("FORTSÄTT TILL NÄSTA MATCH", "ON TO THE NEXT MATCH"), func(): shop_done.emit())
+
+
+func _page_victory() -> void:
+	_title(_t("DU ÖVERLEVDE MIDSOMMAR", "YOU SURVIVED MIDSUMMER"), 12)
+	_text(_t("Tre nätter. Ingen ska få veta vad du såg.", "Three nights. Nobody will know what you saw."))
+	_text(_t("Fällda kubbar: %d   Kombos: %d   Perfekta: %d   Tänder totalt: %d", "Kubbs felled: %d   Combos: %d   Perfects: %d   Teeth total: %d") % [
+		Run.stats.kubbs, Run.stats.combos, Run.stats.perfect, Run.stats.teeth_total])
+	_button(_t("TILL HUVUDMENYN", "MAIN MENU"), func(): main_menu_pressed.emit())
+
+
 func back() -> bool:
 	## Esc i menyn. Returnerar true om den hanterades.
+	if page == "baton":
+		show_page("rules")
+		return true
 	if page in ["settings", "controls", "rules"]:
 		show_page("pause" if paused_menu else "title")
 		return true

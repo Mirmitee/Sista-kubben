@@ -1,19 +1,33 @@
-## Spelets huvudnod: meny, match mot Vedgubben och träning på Gösta.
+## Spelets huvudnod: meny, runs med riktiga kubbmatcher och träning på Gösta.
 ##
-## Strukturen är tänkt att växa: World = platsen, Opponent = motståndare
-## (repliker, fusk, eget kast senare), ThrowController = spelarens kast,
-## Menu = alla menyer, Hud = allt som ritas ovanpå spelet.
+## En match följer vanliga kubbregler:
+##  1. Du kastar dina pinnar mot motståndarens planhalva.
+##  2. Kubbar du fällde kastar motståndaren in på din planhalva (fältkubbar).
+##  3. Motståndaren kastar sina pinnar mot din planhalva. Fältkubbar måste
+##     fällas först, annars reses baslinjekubbarna igen.
+##  4. Kubbar han fällde kastar du in på hans planhalva, och så vidare.
+##  5. Är alla kubbar på en planhalva fällda får man kasta på kungen.
+##     Rör man kungen för tidigt dör man (eller förlorar, om det är han).
+##
+## World = platsen, Opponent = motståndare, ThrowController = spelarens kast,
+## Menu = menyer och butik, Hud = allt på skärmen, Run = runnens tillstånd.
 extends Node3D
 
 enum Mode { MENU, MATCH, TRAINING }
-enum State { READY, FLYING, OVER }
+enum State { READY, FLYING, BUSY, OVER }
+enum Phase { PLAYER, OPP_TOSS, OPP_THROW, PLAYER_TOSS }
 
-const PLAYER_KUBBS_X := [-2.0, -1.0, 0.0, 1.0, 2.0]
+const BASE_X := [-2.0, -1.0, 0.0, 1.0, 2.0]
+const HALF_THEIRS := Rect2(-2.5, -8.0, 5.0, 4.0)  # x, z, bredd, djup
+const HALF_MINE := Rect2(-2.5, -4.0, 5.0, 4.0)
+const OPP_Z := -9.3
 
 var mode := Mode.MENU
 var state := State.READY
-var batons_per_round := 6
+var phase := Phase.PLAYER
+var batons_per_turn := 6
 var batons_left := 6
+var turn := 0
 var world: World
 var opponent: Opponent
 var dog: Dog
@@ -21,15 +35,16 @@ var thrower: ThrowController
 var camera: Camera3D
 var menu: Menu
 var hud: Hud
-var their_kubbs: Array[Kubb] = []
-var my_kubbs: Array[Kubb] = []
+var kubbs: Array[Kubb] = []
 var king: Kubb
-var batons: Array[Baton] = []
-var current: Baton
+var batons: Array[RigidBody3D] = []
+var current: RigidBody3D       # pinnen eller kubben som är i luften
+var current_by_opp := false
 var stats := {"throws": 0, "hits": 0, "heli": 0, "longest": 0.0}
 
 var _fly_time := 0.0
 var _snapshot := {}
+var _fallen_at_snapshot := {}
 var _look := Vector3(0, 0.2, -8)
 var _last_info := {}
 var _last_dist := 0.0
@@ -39,10 +54,13 @@ var _shake := 0.0
 var _orbit := 0.0
 var _idle := 0.0
 var _trail_tick := 0
+var _settled := false
 var _shadow: MeshInstance3D
 var _ghost: Node3D
 var _trail_mat: Material
 var _autotest := false
+var _toss_tries := 0
+var _match_over := false
 
 
 func _ready() -> void:
@@ -50,10 +68,7 @@ func _ready() -> void:
 	_autotest = "--autotest" in OS.get_cmdline_user_args()
 	world = World.new()
 	add_child(world)
-	opponent = preload("res://scripts/opponents/vedgubben.gd").new()
-	opponent.position = Vector3(0.0, 0, -10.2)
-	add_child(opponent)
-	opponent.spoke.connect(_on_spoke)
+	_set_opponent("vedgubben")
 	dog = Dog.new()
 	dog.setup()
 	add_child(dog)
@@ -71,6 +86,7 @@ func _ready() -> void:
 	add_child(thrower)
 	thrower.thrown.connect(_on_thrown)
 	thrower.dropped.connect(_on_dropped)
+	thrower.tossed.connect(_on_tossed)
 
 	_shadow = PS1.box(Vector3(0.09, 0.004, 0.3), PS1.mat(null, Color(0.02, 0.0, 0.01), Vector2.ONE, 1.0))
 	_shadow.visible = false
@@ -89,19 +105,23 @@ func _ready() -> void:
 	add_child(hud)
 	menu = Menu.new()
 	add_child(menu)
-	menu.play_pressed.connect(func(): _start(Mode.MATCH))
+	menu.run_start.connect(_start_run)
 	menu.training_pressed.connect(func(): _start(Mode.TRAINING))
 	menu.resume_pressed.connect(_resume)
 	menu.restart_pressed.connect(func():
 		_resume()
-		_new_round())
+		if mode == Mode.MATCH:
+			_begin_match()
+		else:
+			_new_training())
 	menu.main_menu_pressed.connect(_to_menu)
+	menu.shop_done.connect(_after_shop)
+	Run.unlocked.connect(func(t: String): hud.toast(Lang.t("unlocked") + " " + t))
 	Lang.changed.connect(_refresh_ui)
 	Settings.changed.connect(_refresh_ui)
 	Sfx.start_ambience()
 
 	if _autotest:
-		_start(Mode.MATCH, true)
 		_run_autotest()
 		return
 	for a in OS.get_cmdline_user_args():
@@ -111,42 +131,85 @@ func _ready() -> void:
 	_to_menu()
 
 
+func _set_opponent(id: String) -> void:
+	if opponent:
+		opponent.queue_free()
+	var path := "res://scripts/opponents/%s.gd" % id
+	opponent = load(path).new()
+	opponent.position = Vector3(0.0, 0, OPP_Z)
+	add_child(opponent)
+	opponent.spoke.connect(_on_spoke)
+
+
 func _spawn_kubbs() -> void:
-	for i in 5:
-		var k := Kubb.new()
-		k.setup(false, 100 + i)
-		add_child(k)
-		k.home = Transform3D(Basis(Vector3.UP, randf_range(-0.2, 0.2)), Vector3(PLAYER_KUBBS_X[i], Kubb.SIZE.y * 0.5, -World.FIELD_L))
-		their_kubbs.append(k)
-		var m := Kubb.new()
-		m.setup(false, 200 + i)
-		add_child(m)
-		m.home = Transform3D(Basis(Vector3.UP, randf_range(-0.2, 0.2)), Vector3(PLAYER_KUBBS_X[i], Kubb.SIZE.y * 0.5, 0.0))
-		my_kubbs.append(m)
+	for side in ["theirs", "mine"]:
+		for i in 5:
+			var k := Kubb.new()
+			k.setup(false, (100 if side == "theirs" else 200) + i)
+			add_child(k)
+			var z := -World.FIELD_L if side == "theirs" else 0.0
+			k.home = Transform3D(Basis(Vector3.UP, randf_range(-0.2, 0.2)), Vector3(BASE_X[i], Kubb.SIZE.y * 0.5, z))
+			k.side = side
+			kubbs.append(k)
 	king = Kubb.new()
 	king.setup(true, 77)
 	add_child(king)
 	king.home = Transform3D(Basis.IDENTITY, Vector3(0, Kubb.KING_SIZE.y * 0.5, -World.FIELD_L * 0.5))
-	for k in their_kubbs + my_kubbs + [king]:
+	for k in kubbs + [king]:
 		k.landed.connect(func(v: float): Sfx.play("clack2", linear_to_db(clampf(v * 0.4, 0.05, 1.0)) - 4.0, 0.8))
+
+
+func _reset_kubbs() -> void:
+	for k in kubbs:
+		k.side = "theirs" if k.home.origin.z < -1.0 else "mine"
+		k.field = false
+		k.in_flight = false
+		k.go_home()
+	king.go_home()
+
+
+func side_kubbs(side: String, standing_only := false) -> Array[Kubb]:
+	var out: Array[Kubb] = []
+	for k in kubbs:
+		if k.side == side and (not standing_only or not k.is_fallen()):
+			out.append(k)
+	return out
+
+
+func fallen_kubbs(side: String) -> Array[Kubb]:
+	var out: Array[Kubb] = []
+	for k in kubbs:
+		if k.side == side and k.is_fallen():
+			out.append(k)
+	return out
 
 
 # ---------------------------------------------------------------- lägen
 
 func _to_menu() -> void:
 	get_tree().paused = false
+	Engine.time_scale = 1.0
 	mode = Mode.MENU
+	state = State.OVER
+	Run.stop()
 	thrower.cancel_hold()
 	thrower.input_enabled = false
 	_clear_batons()
 	_set_dog_active(false)
 	_set_kubbs_active(true)
-	for k in their_kubbs + my_kubbs + [king]:
-		k.go_home()
+	_set_opponent("vedgubben")
+	_reset_kubbs()
+	hud.clear_death()
+	hud.center("")
 	menu.paused_menu = false
 	menu.open("title")
 	hud.set_playing(false)
 	hud.fade_in()
+
+
+func _start_run(baton_id: String) -> void:
+	Run.start(baton_id)
+	_start(Mode.MATCH)
 
 
 func _start(m: Mode, instant := false) -> void:
@@ -158,16 +221,18 @@ func _start(m: Mode, instant := false) -> void:
 	get_tree().paused = false
 	_set_dog_active(m == Mode.TRAINING)
 	_set_kubbs_active(m == Mode.MATCH)
-	batons_per_round = 8 if Settings.rules == "simple" else 6
 	thrower.input_enabled = true
 	hud.set_playing(true)
-	_new_round()
+	if m == Mode.MATCH:
+		_begin_match()
+	else:
+		_new_training()
 	if not instant:
 		hud.fade_in()
 
 
 func _pause() -> void:
-	if mode == Mode.MENU or get_tree().paused:
+	if mode == Mode.MENU or get_tree().paused or menu.visible:
 		return
 	thrower.cancel_hold()
 	get_tree().paused = true
@@ -185,15 +250,15 @@ func _set_dog_active(on: bool) -> void:
 	dog.process_mode = Node.PROCESS_MODE_INHERIT if on else Node.PROCESS_MODE_DISABLED
 	dog.collision_layer = 1 if on else 0
 	dog.global_position = Vector3(0.5, 0, -6.0)
-	opponent.visible = true
 
 
 func _set_kubbs_active(on: bool) -> void:
-	for k in their_kubbs + [king]:
-		k.visible = on
-		k.collision_layer = 1 if on else 0
-		k.collision_mask = 1 if on else 0
-		k.freeze = not on
+	for k in kubbs + [king]:
+		if k.home.origin.z < -1.0 or k == king:
+			k.visible = on
+			k.collision_layer = 1 if on else 0
+			k.collision_mask = 1 if on else 0
+			k.freeze = not on
 
 
 func _clear_batons() -> void:
@@ -202,26 +267,52 @@ func _clear_batons() -> void:
 			b.queue_free()
 	batons.clear()
 	current = null
-	if thrower.baton:
+	if thrower.baton is Baton:
 		thrower.baton = null
 
 
-func _new_round() -> void:
+# ---------------------------------------------------------------- match
+
+func _begin_match() -> void:
 	_clear_batons()
-	for k in their_kubbs + my_kubbs + [king]:
-		k.go_home()
-	batons_left = batons_per_round
+	_reset_kubbs()
+	_set_opponent(Run.opponent_id() if Run.active else "vedgubben")
+	opponent.setup_for_night(Run.night)
+	Run.opp_mods = opponent.mods_for_night(Run.night)
+	Run.king_shield_left = int(Run.mod("king_shield"))
+	turn = 0
+	_match_over = false
 	stats = {"throws": 0, "hits": 0, "heli": 0, "longest": 0.0}
-	dog.hits = 0
-	hud.center("")
 	hud.clear_death()
-	state = State.READY
+	hud.center("")
 	_ghost.visible = false
+	var intro: String = Lang.t("night") % [Run.night, Run.NIGHTS] + "\n" + opponent.display_name[Lang.current]
+	if opponent.rule_text[Lang.current] != "":
+		intro += "\n" + opponent.rule_text[Lang.current]
+	hud.banner(intro)
+	opponent.say("start")
+	_start_player_turn()
+
+
+func _start_player_turn() -> void:
+	turn += 1
+	phase = Phase.PLAYER
+	thrower.stand_x = 0.0
+	var base := 8 if Settings.rules == "simple" else 6
+	batons_per_turn = maxi(1, base + int(Run.mod("batons_add")) + opponent.player_batons_add)
+	batons_left = batons_per_turn
+	if opponent.player_batons_add < 0 and turn > 0:
+		opponent.say("eat")
+	# kyrkklockan: var tredje tur välter en slumpad motståndarkubb
+	if Run.mod("bell") > 0.0 and turn % 3 == 0:
+		var st := side_kubbs("theirs", true)
+		if not st.is_empty():
+			var k: Kubb = st[randi() % st.size()]
+			k.sleeping = false
+			k.apply_impulse(Vector3(0, 0, -0.3), Vector3(0, k.height() * 0.45, 0))
+			hud.flash(Lang.t("bell"))
+			Sfx.play("clack2", 0.0, 0.5)
 	_next_baton()
-	if mode == Mode.TRAINING:
-		dog.say("start")
-	else:
-		opponent.say("start")
 
 
 func _next_baton() -> void:
@@ -229,31 +320,30 @@ func _next_baton() -> void:
 		return
 	var b := Baton.new()
 	b.setup()
+	if Run.active:
+		b.mass = Run.baton_stat("mass")
 	add_child(b)
 	b.body_entered.connect(_on_baton_hit.bind(b))
 	batons.append(b)
 	current = b
+	current_by_opp = false
 	thrower.give_baton(b)
 	state = State.READY
 	_idle = 0.0
-	# gamla pinnar i träningen städas bort
 	while mode == Mode.TRAINING and batons.size() > 7:
 		batons.pop_front().queue_free()
 	_refresh_ui()
 
 
-# ---------------------------------------------------------------- kast
-
-func _on_thrown(b: Baton, info: Dictionary) -> void:
+func _on_thrown(b: RigidBody3D, info: Dictionary) -> void:
 	_last_info = info
 	if mode == Mode.MATCH:
 		batons_left -= 1
+		var cost := int(Run.baton_stat("tooth_cost")) if Run.active and Cards.BATONS[Run.baton].has("tooth_cost") else 0
+		if cost > 0:
+			Run.add_teeth(-cost)
 	stats.throws += 1
-	_take_snapshot()
-	_fly_time = 0.0
-	_hit_this_throw = false
-	_pushed.clear()
-	state = State.FLYING
+	_begin_flight(b)
 	Sfx.play("whoosh", -4.0, 0.8 + info.speed * 0.04)
 	hud.show_throw(info.speed / ThrowController.MAX_SPEED)
 	if info.has("grade"):
@@ -263,7 +353,17 @@ func _on_thrown(b: Baton, info: Dictionary) -> void:
 	_refresh_ui()
 
 
-func _on_dropped(b: Baton) -> void:
+func _begin_flight(b: RigidBody3D) -> void:
+	current = b
+	_take_snapshot()
+	_fly_time = 0.0
+	_hit_this_throw = false
+	_pushed.clear()
+	_settled = false
+	state = State.FLYING
+
+
+func _on_dropped(b: RigidBody3D) -> void:
 	_say("drop")
 	batons.erase(b)
 	var tw := create_tween()
@@ -273,16 +373,20 @@ func _on_dropped(b: Baton) -> void:
 
 
 func _on_baton_hit(body: Node, b: Baton) -> void:
-	if b != current:
+	if b != current or state != State.FLYING:
 		return
-	if body is Kubb and body.is_king and mode == Mode.MATCH and state == State.FLYING \
-			and _fallen_before_throw() < their_kubbs.size():
-		_die()
-		return
+	if body == king and mode == Mode.MATCH:
+		var side := "mine" if current_by_opp else "theirs"
+		if _standing_at_snapshot(side) > 0:
+			if not current_by_opp and Run.king_shield_left > 0:
+				Run.king_shield_left -= 1
+				hud.flash(Lang.t("king_mercy"))
+			else:
+				_king_touched_early()
+				return
 	if body is Kubb:
 		Sfx.play("clack", 0.0, 1.0 if not body.is_king else 0.7)
-		# träff = omkull: en extra knuff högt upp i pinnens riktning, så att
-		# en kubb man faktiskt träffar välter i stället för att bara gunga
+		# träff = omkull: en extra knuff högt upp i pinnens riktning
 		if not body.is_king and not _pushed.has(body):
 			_pushed[body] = true
 			var dir := b.linear_velocity
@@ -291,8 +395,13 @@ func _on_baton_hit(body: Node, b: Baton) -> void:
 				dir = body.global_position - b.global_position
 				dir.y = 0.0
 			dir = dir.normalized()
+			var push := 0.35
+			if current_by_opp:
+				push *= opponent.baton_push
+			elif Run.active:
+				push *= Run.mod("push_mult", 1.0) * Run.baton_stat("push")
 			body.sleeping = false
-			body.apply_impulse(dir * 0.35, Vector3(0, body.height() * 0.45, 0))
+			body.apply_impulse(dir * push, Vector3(0, body.height() * 0.45, 0))
 		if not _hit_this_throw:
 			_hit_this_throw = true
 			_slowmo()
@@ -309,19 +418,22 @@ func _on_baton_hit(body: Node, b: Baton) -> void:
 		Sfx.play("thud", linear_to_db(clampf(b.linear_velocity.length() / 8.0, 0.1, 1.0)))
 
 
-## Kungen får inte röras förrän alla baskubbar ligger. Gör du det dör du.
-func _die() -> void:
+func _king_touched_early() -> void:
 	state = State.OVER
 	current = null
-	stats.deaths = stats.get("deaths", 0) + 1
 	opponent.flinch()
-	opponent.say("king_death")
-	Sfx.play("clack", 0.0, 0.5)
-	Sfx.play("bad", 0.0, 0.5)
 	_shake = 1.0
 	_slowmo()
-	hud.death(Lang.t("death_title"), Lang.pick("death_sub") + "\n\n" + Lang.t("death_restart"))
-	_refresh_ui()
+	Sfx.play("clack", 0.0, 0.5)
+	if current_by_opp:
+		# motståndaren rörde kungen: du vinner
+		opponent.say("opp_king_death")
+		_win_match()
+	else:
+		opponent.say("king_death")
+		Sfx.play("bad", 0.0, 0.5)
+		hud.death(Lang.t("death_title"), Lang.pick("death_sub") + "\n\n" + Lang.t("death_restart"))
+		_lose_run()
 
 
 func _slowmo() -> void:
@@ -335,35 +447,50 @@ func _slowmo() -> void:
 
 func _take_snapshot() -> void:
 	_snapshot.clear()
-	for k in their_kubbs + my_kubbs + [king]:
+	_fallen_at_snapshot.clear()
+	for k in kubbs + [king]:
 		_snapshot[k] = k.global_transform
+		_fallen_at_snapshot[k] = k.is_fallen()
+
+
+func _standing_at_snapshot(side: String, field_only := false) -> int:
+	var n := 0
+	for k in kubbs:
+		if k.side == side and not _fallen_at_snapshot.get(k, false) and (not field_only or k.field):
+			n += 1
+	return n
 
 
 func _physics_process(dt: float) -> void:
-	if state == State.READY and mode != Mode.MENU and not thrower.holding:
+	if state == State.READY and mode == Mode.MATCH and not thrower.holding:
 		_idle += dt
 		if _idle > 14.0:
 			_idle = 0.0
-			if mode == Mode.MATCH:
-				opponent.say("idle")
-	if state != State.FLYING or current == null:
+			opponent.say("idle")
+	if state != State.FLYING or current == null or not is_instance_valid(current):
 		_shadow.visible = false
 		return
 	_fly_time += dt
-	# skugga och spår
 	var p := current.global_position
-	_shadow.visible = not current.touched
+	_shadow.visible = not current.touched and current is Baton
 	_shadow.global_transform = Transform3D(Basis(Vector3.UP, current.global_rotation.y), Vector3(p.x, 0.014, p.z))
 	_trail_tick += 1
 	if not current.touched and _trail_tick % 3 == 0:
 		_spawn_trail(p)
 	var moving := false
-	for k in their_kubbs + [king]:
-		if k.visible and not k.sleeping and k.linear_velocity.length() > 0.08:
+	for k in kubbs + [king]:
+		if k.visible and not k.sleeping and k.linear_velocity.length() > 0.08 and k != current:
 			moving = true
 	var gone := p.y < -2.0 or p.length() > 40.0
 	if (_fly_time > 0.8 and current.is_settled() and not moving) or _fly_time > 7.0 or gone:
-		_evaluate()
+		state = State.BUSY
+		_settled = true
+		if current is Kubb:
+			return  # kubbkast hanteras av den som väntar på dem
+		if current_by_opp:
+			_evaluate_opp()
+		else:
+			_evaluate()
 
 
 func _spawn_trail(p: Vector3) -> void:
@@ -375,8 +502,35 @@ func _spawn_trail(p: Vector3) -> void:
 	tw.tween_callback(t.queue_free)
 
 
+func _wait_settled() -> void:
+	while not _settled:
+		await get_tree().physics_frame
+
+
+## Fallna kubbar på en planhalva sedan snapshot, med regeln att
+## fältkubbar måste fällas först. Kubbar på egen planhalva reses.
+func _apply_hits(target: String) -> int:
+	var had_field := _standing_at_snapshot(target, true) > 0
+	var valid := 0
+	var reraised := false
+	for k in kubbs:
+		var was: bool = _fallen_at_snapshot.get(k, false)
+		if was or not k.is_fallen():
+			continue
+		if k.side != target:
+			k.teleport(_snapshot[k])  # egen kubb: reses
+		elif had_field and not k.field:
+			k.teleport(_snapshot[k])  # baslinjekubb före fältkubbar: reses
+			reraised = true
+		else:
+			valid += 1
+	if reraised:
+		hud.flash(Lang.t("field_first"))
+	return valid
+
+
 func _evaluate() -> void:
-	var b := current
+	var b: Baton = current
 	current = null
 	var land := b.first_contact if b.touched else b.global_position
 	_last_dist = Vector2(land.x - b.release_pos.x, land.z - b.release_pos.z).length()
@@ -388,7 +542,7 @@ func _evaluate() -> void:
 	if mode == Mode.TRAINING:
 		if not _hit_this_throw:
 			dog.say("miss")
-		_after_throw()
+		_next_baton()
 		return
 
 	if b.helicopter:
@@ -398,40 +552,26 @@ func _evaluate() -> void:
 		_say("helicopter")
 		Sfx.play("bad", -4.0)
 		hud.flash(Lang.t("heli"))
-		_log("HELIKOPTER yaw=%.2f" % b.yaw_accum)
 		_after_throw()
 		return
 
-	var newly := 0
-	for k in their_kubbs:
-		if k.is_fallen() and not k.was_fallen:
-			k.was_fallen = true
-			newly += 1
+	var all_down_before := _standing_at_snapshot("theirs") == 0
+	var newly := _apply_hits("theirs")
 	stats.hits += newly
-	var all_down := _fallen_count() == their_kubbs.size()
-	_log("kast: fart %.2f vinkel %d lat %.0f -> landade %.2f m, nya fällda %d, kung %s" % [
-		_last_info.get("speed", 0.0), int(_last_info.get("angle", 0.0)), _last_info.get("lat", 0.0),
-		_last_dist, newly, str(king.is_fallen())])
+	_log("kast: fart %.2f vinkel %d -> landade %.2f m, nya fällda %d, kung %s" % [
+		_last_info.get("speed", 0.0), int(_last_info.get("angle", 0.0)), _last_dist, newly, str(king.is_fallen())])
 
 	if king.is_fallen():
-		opponent.flinch()
-		var had_all := _fallen_before_throw() == their_kubbs.size()
-		if had_all:
-			state = State.OVER
+		if all_down_before:
+			opponent.flinch()
 			opponent.say("king_win")
-			hud.center(Lang.t("king_win") + "\n" + _summary())
-		elif Settings.rules == "simple":
-			opponent.say("king_simple")
-			king.go_home()
-			_after_throw()
-		else:
-			state = State.OVER
-			opponent.say("king_early")
-			Sfx.play("bad", 0.0, 0.7)
-			hud.center(Lang.t("king_early"))
-		_refresh_ui()
-		return
+			_award(0, true)
+			_win_match()
+			return
+		king.teleport(_snapshot[king])  # (kungens nåd släppte igenom)
 
+	if newly > 0:
+		_award(newly, false)
 	if newly >= 2:
 		opponent.say("double")
 		opponent.flinch()
@@ -440,7 +580,7 @@ func _evaluate() -> void:
 		opponent.flinch()
 	elif _last_info.get("angle", 0.0) > 95.0:
 		opponent.say("sky")
-	elif land.z > -6.3:
+	elif land.z > -6.3 and side_kubbs("theirs", true).all(func(k): return not k.field):
 		opponent.say("short")
 	elif land.z < -9.5 or absf(land.x) > 3.5:
 		opponent.say("long")
@@ -448,15 +588,42 @@ func _evaluate() -> void:
 		opponent.say("close")
 	else:
 		opponent.say("miss")
-
-	if all_down and newly > 0:
+	if newly > 0 and side_kubbs("theirs", true).is_empty():
 		opponent.say("all_down")
 	_after_throw()
 
 
+## Tänder och kombos för ett kast.
+func _award(n: int, king_win: bool) -> void:
+	if not Run.active:
+		return
+	var per := 1 + int(Run.mod("teeth_kubb_add"))
+	var t := n * per
+	var parts: Array[String] = []
+	if n >= 2:
+		var combo := int(3 * (n - 1) * Run.mod("combo_mult", 1.0))
+		t += combo
+		Run.stats.combos += 1
+		parts.append(Lang.t("combo") % n)
+	if _last_info.get("grade", "") == "perfect":
+		t += 1 + int(Run.mod("perfect_teeth"))
+		Run.stats.perfect += 1
+	if king_win:
+		t += 5
+		parts.append(Lang.t("king_bonus"))
+	var mult := Run.mod("last_baton_mult", 1.0) if batons_left == 0 else Run.mod("other_baton_mult", 1.0)
+	t = int(t * mult)
+	Run.on_kubbs(n)
+	if t > 0:
+		Run.add_teeth(t)
+		hud.teeth_popup("+%d %s %s" % [t, Lang.t("teeth"), " ".join(parts)])
+		Sfx.play("click", -4.0, 2.0)
+	_refresh_ui()
+
+
 func _near_miss(b: Baton) -> bool:
-	for k in their_kubbs:
-		if not k.was_fallen and k.global_position.distance_to(b.global_position) < 0.45:
+	for k in side_kubbs("theirs", true):
+		if k.global_position.distance_to(b.global_position) < 0.45:
 			return true
 	return false
 
@@ -468,37 +635,249 @@ func _say(event: String) -> void:
 		opponent.say(event)
 
 
-func _fallen_before_throw() -> int:
-	var n := 0
-	for k in their_kubbs:
-		if _snapshot.has(k) and _snapshot[k].basis.y.normalized().dot(Vector3.UP) < 0.5:
-			n += 1
-	return n
+func _after_throw() -> void:
+	if _match_over:
+		return
+	if mode == Mode.TRAINING or batons_left > 0:
+		_next_baton()
+	else:
+		_end_player_turn()
+	_refresh_ui()
 
 
-func _fallen_count() -> int:
-	var n := 0
-	for k in their_kubbs:
-		if k.was_fallen:
-			n += 1
-	return n
+# ---------------------------------------------------------------- turer
+
+func _end_player_turn() -> void:
+	state = State.BUSY
+	thrower.input_enabled = false
+	await get_tree().create_timer(0.8).timeout
+	_ghost.visible = false
+	# 2. motståndaren kastar in kubbarna du fällde på din planhalva
+	phase = Phase.OPP_TOSS
+	_refresh_ui()
+	var fallen := fallen_kubbs("theirs")
+	if not fallen.is_empty():
+		opponent.say("toss")
+		for k in fallen:
+			await _opp_toss(k)
+			if _match_over:
+				return
+	_clear_batons()
+	# 3. motståndarens pinnar
+	phase = Phase.OPP_THROW
+	_refresh_ui()
+	opponent.say("my_turn")
+	await get_tree().create_timer(1.0).timeout
+	for i in 6:
+		if _match_over:
+			return
+		await _opp_throw()
+		if _match_over:
+			return
+	await get_tree().create_timer(0.6).timeout
+	opponent.walk_to_x(0.0)
+	# 4. du kastar in kubbarna han fällde på hans planhalva
+	phase = Phase.PLAYER_TOSS
+	var mine_fallen := fallen_kubbs("mine")
+	_clear_batons()
+	thrower.input_enabled = true
+	for k in mine_fallen:
+		if _match_over:
+			return
+		await _player_toss(k)
+	thrower.input_enabled = true
+	_start_player_turn()
+
+
+func _opp_target() -> Kubb:
+	var field: Array[Kubb] = []
+	var base: Array[Kubb] = []
+	for k in side_kubbs("mine", true):
+		(field if k.field else base).append(k)
+	var pool := field if not field.is_empty() else base
+	if pool.is_empty():
+		return king
+	# närmast honom först
+	pool.sort_custom(func(a, b): return a.global_position.z < b.global_position.z)
+	return pool[0] if randf() < 0.7 else pool[randi() % pool.size()]
+
+
+func _opp_throw() -> void:
+	var target := _opp_target()
+	var tp := target.global_position
+	await opponent.walk_to_x(clampf(tp.x * 0.7, -2.2, 2.2), 0.5)
+	await opponent.swing_back_and_forth()
+	var b := Baton.new()
+	b.setup()
+	add_child(b)
+	b.body_entered.connect(_on_baton_hit.bind(b))
+	batons.append(b)
+	var from := opponent.hand_pos()
+	var aim_pt := tp + (Vector3(from.x, 0, from.z) - Vector3(tp.x, 0, tp.z)).normalized() * 0.12
+	var v := _ballistic(from, aim_pt, 0.62)
+	var err := opponent.error_yaw * Run.mod("opp_error_mult", 1.0)
+	v = v.rotated(Vector3.UP, randfn(0.0, err)) * (1.0 + randfn(0.0, opponent.error_speed * Run.mod("opp_error_mult", 1.0)))
+	var f := Vector3(v.x, 0, v.z).normalized()
+	var r := f.cross(Vector3.UP)
+	b.global_transform = Transform3D(Basis(r, Vector3.UP, r.cross(Vector3.UP)), from)
+	b.launch(v, r * v.length() * 0.75)
+	current_by_opp = true
+	_last_info = {"speed": v.length(), "angle": 35.0}
+	Sfx.play("whoosh", -6.0, 0.9)
+	_begin_flight(b)
+	await _wait_settled()
+	_log("   motst. kast mot %s från %s fart %.1f -> första träff %s, slut %s" % [str(tp.snapped(Vector3.ONE * 0.01)), str(from.snapped(Vector3.ONE * 0.01)), v.length(), str(b.first_contact.snapped(Vector3.ONE * 0.01)), str(b.global_position.snapped(Vector3.ONE * 0.01))])
+
+
+func _evaluate_opp() -> void:
+	current = null
+	if _match_over:
+		return
+	var all_down_before := _standing_at_snapshot("mine") == 0
+	var newly := _apply_hits("mine")
+	if king.is_fallen():
+		if all_down_before:
+			opponent.say("lose")
+			hud.death(Lang.t("lost_title"), Lang.t("lost_sub") + "\n\n" + Lang.t("death_restart"))
+			_lose_run()
+			return
+		king.teleport(_snapshot[king])
+	opponent.say("opp_hit" if newly > 0 else "opp_miss")
+	if newly > 0:
+		hud.popup(camera.unproject_position(Vector3(0, 0.2, -1.5)), "AJ!")
+	_refresh_ui()
+
+
+## Ballistisk startfart från a till b med given vinkel.
+func _ballistic(a: Vector3, b: Vector3, angle: float) -> Vector3:
+	var flat := Vector3(b.x - a.x, 0, b.z - a.z)
+	var d := flat.length()
+	var h := a.y - b.y
+	var c := cos(angle)
+	var denom := 2.0 * c * c * (d * tan(angle) + h)
+	var v := sqrt(9.81 * d * d / maxf(denom, 0.01))
+	return flat.normalized() * v * c + Vector3.UP * v * sin(angle)
+
+
+func _in_half(p: Vector3, side: String) -> bool:
+	var r := HALF_THEIRS if side == "theirs" else HALF_MINE
+	return p.x > r.position.x and p.x < r.end.x and p.z > r.position.y and p.z < r.end.y
+
+
+func _opp_toss(k: Kubb) -> void:
+	for attempt in 2:
+		var tp := Vector3(randf_range(-2.0, 2.0), 0, randf_range(-3.5, -0.8))
+		await opponent.walk_to_x(clampf(tp.x * 0.5, -2.0, 2.0), 0.35)
+		await opponent.swing_back_and_forth()
+		var from := opponent.hand_pos()
+		k.hold()
+		k.global_position = from
+		var v := _ballistic(from, tp, 0.8)
+		v = v.rotated(Vector3.UP, randfn(0.0, 0.05)) * (1.0 + randfn(0.0, 0.07))
+		k.launch(v, Vector3(randf_range(-4, 4), 0, randf_range(-4, 4)))
+		current_by_opp = true
+		_begin_flight(k)
+		await _wait_settled()
+		var p := k.global_position
+		if _in_half(p, "mine"):
+			k.side = "mine"
+			k.raise_at(p)
+			return
+		hud.flash(Lang.t("toss_out"))
+	# två miss: du placerar den (långt från honom)
+	k.side = "mine"
+	k.raise_at(Vector3(randf_range(-2.0, 2.0), 0, -0.7))
+
+
+func _player_toss(k: Kubb) -> void:
+	for attempt in 2:
+		state = State.READY
+		thrower.give_baton(k)
+		hud.flash(Lang.t("toss_now"))
+		_refresh_ui()
+		if _autotest:
+			await get_tree().physics_frame
+			thrower.aim = randf_range(-0.1, 0.1)
+			thrower.meter_power = 0.68
+			thrower.call_deferred("launch_kubb", 0.75, 9.5 * 0.68)
+		var got = await thrower.tossed
+		current_by_opp = false
+		_begin_flight(got)
+		Sfx.play("whoosh", -6.0, 0.7)
+		await _wait_settled()
+		var p := k.global_position
+		if _in_half(p, "theirs"):
+			k.side = "theirs"
+			k.raise_at(p)
+			return
+		if Run.mod("toss_forgive") > 0.0:
+			k.side = "theirs"
+			k.raise_at(Vector3(clampf(p.x, -2.2, 2.2), 0, clampf(p.z, -7.7, -4.3)))
+			return
+		hud.flash(Lang.t("toss_out"))
+	# två miss: motståndaren placerar den där den är svårast att träffa
+	k.side = "theirs"
+	k.raise_at(Vector3(randf_range(-2.2, 2.2), 0, -7.6))
+
+
+func _on_tossed(_k: RigidBody3D) -> void:
+	pass
+
+
+# ---------------------------------------------------------------- vinst/förlust
+
+func _win_match() -> void:
+	if _match_over:
+		return
+	_match_over = true
+	state = State.OVER
+	thrower.cancel_hold()
+	var reward := 8 + Run.night * 2 + int(Run.mod("win_teeth_add")) + maxi(batons_left, 0)
+	Run.add_teeth(reward)
+	var won_all := Run.advance()
+	hud.center(Lang.t("win_title") % reward + "\n" + _summary())
+	await get_tree().create_timer(3.0).timeout
+	if mode != Mode.MATCH:
+		return
+	if won_all:
+		menu.open("victory")
+	else:
+		menu.open("shop")
+
+
+func _after_shop() -> void:
+	menu.close()
+	await hud.fade_out()
+	_begin_match()
+	thrower.input_enabled = true
+	hud.fade_in()
+
+
+func _lose_run() -> void:
+	if _match_over:
+		return
+	_match_over = true
+	state = State.OVER
+	thrower.cancel_hold()
+	Run.end_run()
 
 
 func _summary() -> String:
 	return Lang.t("summary") % [stats.hits, stats.throws, stats.longest, stats.heli]
 
 
-func _after_throw() -> void:
-	if mode == Mode.TRAINING or batons_left > 0:
-		_next_baton()
-	else:
-		state = State.OVER
-		var n := _fallen_count()
-		var head := Lang.t("all_down") if n == their_kubbs.size() else Lang.t("round_over") % [n, their_kubbs.size()]
-		hud.center(head + "\n" + _summary())
-		if n == 0:
-			opponent.say("round_zero")
-	_refresh_ui()
+func _new_training() -> void:
+	_clear_batons()
+	_reset_kubbs()
+	stats = {"throws": 0, "hits": 0, "heli": 0, "longest": 0.0}
+	dog.hits = 0
+	hud.center("")
+	hud.clear_death()
+	_ghost.visible = false
+	phase = Phase.PLAYER
+	_match_over = false
+	_next_baton()
+	dog.say("start")
 
 
 # ---------------------------------------------------------------- kamera
@@ -515,9 +894,11 @@ func _process(dt: float) -> void:
 	else:
 		cam_pos = Vector3(sx - 0.25, 1.75, 2.1)
 		want = Vector3(sx * 0.4 + thrower.aim * 6.0, 0.15, -8.0)
-		if state == State.FLYING and current:
+		if phase == Phase.OPP_THROW or phase == Phase.OPP_TOSS:
+			want = Vector3(opponent.position.x * 0.6, 0.9, -7.5)
+		if state == State.FLYING and current and is_instance_valid(current):
 			var p := current.global_position
-			want = Vector3(p.x, minf(p.y, 3.0) * 0.6, minf(p.z, -3.0))
+			want = Vector3(p.x, minf(p.y, 3.0) * 0.6, minf(p.z, -2.0))
 		_look = _look.lerp(want, clampf(dt * 3.0, 0.0, 1.0))
 	_shake = move_toward(_shake, 0.0, dt)
 	var jitter := Vector3(randf_range(-1, 1), randf_range(-1, 1), 0) * _shake * 0.06
@@ -528,10 +909,10 @@ func _process(dt: float) -> void:
 	if mode == Mode.MENU:
 		opponent.look_at_x(cam_pos.x)
 	else:
-		opponent.look_at_x(current.global_position.x if current else sx)
+		opponent.look_at_x(current.global_position.x if current and is_instance_valid(current) else sx)
 	if mode != Mode.MENU:
-		if Settings.throw_mode == "meter":
-			hud.update_timing(thrower.meter_phase, thrower.meter, thrower.meter_power, thrower.meter_cursor)
+		if Settings.throw_mode == "meter" or thrower.payload_kubb:
+			hud.update_timing(thrower.meter_phase, thrower.meter, thrower.meter_power, thrower.meter_cursor, thrower.perfect())
 		else:
 			hud.update_meter(thrower.meter, thrower.holding, rad_to_deg(thrower.theta))
 
@@ -540,6 +921,8 @@ func _unhandled_input(e: InputEvent) -> void:
 	if e.is_action_pressed("ui_cancel") or (e is InputEventJoypadButton and e.pressed and e.button_index == JOY_BUTTON_START):
 		if mode == Mode.MENU:
 			menu.back()
+		elif _match_over and mode == Mode.MATCH and not menu.visible:
+			_to_menu()
 		else:
 			_pause()
 		return
@@ -553,12 +936,10 @@ func _unhandled_input(e: InputEvent) -> void:
 			KEY_H:
 				Settings.set_value("show_hints", not Settings.show_hints)
 			KEY_R:
-				if mode != Mode.MENU and not thrower.holding:
-					_new_round()
-			KEY_EQUAL, KEY_PLUS, KEY_KP_ADD:
-				Settings.set_value("sensitivity", minf(Settings.sensitivity + 0.1, 2.5))
-			KEY_MINUS, KEY_KP_SUBTRACT:
-				Settings.set_value("sensitivity", maxf(Settings.sensitivity - 0.1, 0.3))
+				if mode == Mode.TRAINING and not thrower.holding:
+					_new_training()
+				elif mode == Mode.MATCH and _match_over and not menu.visible and not Run.active:
+					_start_run(Run.baton)
 
 
 func _notification(what: int) -> void:
@@ -571,10 +952,24 @@ func _notification(what: int) -> void:
 func _refresh_ui() -> void:
 	if hud == null:
 		return
-	var fallen: Array[bool] = []
-	for k in their_kubbs:
-		fallen.append(k.was_fallen)
-	hud.refresh(mode == Mode.TRAINING, batons_left, batons_per_round, fallen, dog.hits, _last_info, _last_dist)
+	var info := {
+		"training": mode == Mode.TRAINING,
+		"left": batons_left, "total": batons_per_turn,
+		"theirs": side_kubbs("theirs", true).size(), "theirs_field": _count_field("theirs"),
+		"mine": side_kubbs("mine", true).size(), "mine_field": _count_field("mine"),
+		"dog_hits": dog.hits, "last": _last_info, "last_dist": _last_dist,
+		"phase": phase, "opp": opponent.display_name[Lang.current],
+		"toss": thrower.payload_kubb,
+	}
+	hud.refresh(info)
+
+
+func _count_field(side: String) -> int:
+	var n := 0
+	for k in side_kubbs(side, true):
+		if k.field:
+			n += 1
+	return n
 
 
 func _on_spoke(who: String, text: String) -> void:
@@ -591,101 +986,86 @@ func _log(s: String) -> void:
 # Kör: godot --headless --fixed-fps 120 -- --autotest
 
 func _wait_ready() -> void:
-	while state != State.READY or thrower.baton == null:
+	while state != State.READY or thrower.baton == null or not thrower.baton is Baton:
 		await get_tree().physics_frame
 
 
 func _run_autotest() -> void:
 	thrower.mouse_aim = false
 	Settings.throw_mode = "drag"
+	Run.start("vanlig")
+	_start(Mode.MATCH, true)
 	for i in 240:
 		await get_tree().physics_frame
 	var standing := 0
-	for k in their_kubbs + my_kubbs + [king]:
+	for k in kubbs + [king]:
 		if not k.is_fallen():
 			standing += 1
 	print("TEST stående efter 2 s: %d/11" % standing)
-	var cases := []
-	if "--sweep" in OS.get_cmdline_user_args():
-		for px in range(1500, 6001, 500):
-			cases.append([0.6, float(px), 0.0, 0.0, -0.18, "svep %d px/s" % px])
-	else:
-		cases = [
-			# [vinkel, svep upp px/s, sidled px/s, sikte, plats, namn]
-			[0.6, 2900.0, 0.0, 0.0, -0.18, "rakt på mittkubben"],
-			[0.5, 3100.0, 0.0, 0.0, -2.18, "vänster kubb"],
-			[0.7, 1200.0, 0.0, 0.0, 0.0, "för svagt"],
-			[0.6, 2900.0, 700.0, 0.0, 0.0, "lite snett (ska INTE bli helikopter)"],
-			[0.6, 2900.0, 2200.0, 0.0, 1.0, "väldigt snett (helikopter)"],
-			[0.55, 3000.0, 0.0, 0.0, 1.82, "höger kubb"],
-			[1.9, 3000.0, 0.0, 0.0, 0.0, "mot månen"],
-			[0.6, 9000.0, 0.0, 0.0, 0.0, "maxfart"],
-			[0.6, 1250.0, 0.0, 0.0, -0.18, "på kungen (ska dö)"],
-		]
+	var cases := [
+		# [vinkel, svep upp px/s, sidled px/s, sikte, plats, namn]
+		[0.6, 2900.0, 0.0, 0.0, -0.18, "rakt på mittkubben"],
+		[0.5, 3100.0, 0.0, 0.0, -2.18, "vänster kubb"],
+		[0.6, 2900.0, 2200.0, 0.0, 1.0, "väldigt snett (helikopter)"],
+		[0.55, 3000.0, 0.0, 0.0, 1.82, "höger kubb"],
+	]
 	for c in cases:
-		while state == State.FLYING:
-			await get_tree().physics_frame
-		if state == State.OVER or "--sweep" in OS.get_cmdline_user_args():
-			_new_round()
 		await _wait_ready()
+		batons_left = 99
 		thrower.stand_x = c[4]
 		thrower.aim = c[3]
 		await get_tree().physics_frame
 		print("TEST %s" % c[5])
 		thrower.launch_with(c[0], c[1], c[2])
-		var b := batons[-1]
+		var b: Baton = batons[-1]
 		await get_tree().physics_frame
-		while state == State.FLYING:
+		while state == State.FLYING or state == State.BUSY:
 			await get_tree().physics_frame
-		if state == State.OVER and stats.get("deaths", 0) > 0:
-			print("   DOG av kungen")
-		print("   slut %s heli=%s yaw=%.2f luft=%.2fs" % [str(b.global_position.snapped(Vector3.ONE * 0.01)), b.helicopter, b.yaw_accum, b.air_time])
-	# mätarläget
-	Settings.throw_mode = "meter"
-	var sweet := ThrowController.SWEET_SPEED / ThrowController.MAX_SPEED
-	for mc in [[sweet, 0.0, -0.18, "mätare perfekt"], [sweet, 0.5, -0.18, "mätare snett"], [sweet, 0.95, 0.0, "mätare fummel"], [0.5, 0.0, 0.0, "mätare halv kraft"]]:
-		while state == State.FLYING:
-			await get_tree().physics_frame
-		_new_round()
-		await _wait_ready()
-		thrower.stand_x = mc[2]
-		thrower.aim = 0.0
+		print("   slut %s heli=%s  tänder %d" % [str(b.global_position.snapped(Vector3.ONE * 0.01)), b.helicopter, Run.teeth])
+	# en hel tur: sista pinnen, motståndaren kastar in, kastar, du kastar in
+	await _wait_ready()
+	batons_left = 1
+	print("TEST hel tur. Deras stående %d, fallna %d" % [side_kubbs("theirs", true).size(), fallen_kubbs("theirs").size()])
+	thrower.launch_meter(0.1, 0.0)
+	var t0 := Time.get_ticks_msec()
+	while phase != Phase.OPP_THROW and Time.get_ticks_msec() - t0 < 60000:
 		await get_tree().physics_frame
-		print("TEST %s" % mc[3])
-		thrower.launch_meter(mc[0], mc[1])
-		var mb := batons[-1]
+	print("   inkastat hos mig: fältkubbar %d" % _count_field("mine"))
+	while phase != Phase.PLAYER or state != State.READY:
 		await get_tree().physics_frame
-		while state == State.FLYING:
-			await get_tree().physics_frame
-		print("   slut %s heli=%s" % [str(mb.global_position.snapped(Vector3.ONE * 0.01)), mb.helicopter])
-	# tajmingflödet med riktiga tryck
+		if _match_over:
+			break
+	print("   tillbaka till min tur %d. Mina stående %d (fält %d), deras stående %d (fält %d), över=%s" % [
+		turn, side_kubbs("mine", true).size(), _count_field("mine"), side_kubbs("theirs", true).size(), _count_field("theirs"), _match_over])
+	# kungen för tidigt
+	await _wait_ready()
+	batons_left = 3
+	thrower.stand_x = -0.18
+	thrower.aim = 0.0
+	await get_tree().physics_frame
+	thrower.launch_with(0.6, 1250.0, 0.0)
 	while state == State.FLYING:
 		await get_tree().physics_frame
-	_new_round()
-	await _wait_ready()
-	thrower._meter_press()
-	for i in 100:
-		await get_tree().physics_frame
-	thrower._meter_press()
-	for i in 36:
-		await get_tree().physics_frame
-	print("TEST tajming: kraft %.2f markör %.2f" % [thrower.meter_power, thrower.meter_cursor])
-	thrower._meter_press()
-	while state == State.FLYING or thrower.baton == null:
-		await get_tree().physics_frame
-	Settings.throw_mode = "drag"
-	# träning: kasta på hunden
+	print("TEST på kungen: över=%s run aktiv=%s" % [_match_over, Run.active])
+	# butik och kort
+	Run.start("vanlig")
+	Run.teeth = 20
+	print("TEST köp %s: %s, tänder kvar %d, pinnar per tur %d" % ["bjorkpinne", Run.buy("bjorkpinne"), Run.teeth, 6 + int(Run.mod("batons_add"))])
+	print("TEST grönt med midsommarstång: före %.2f" % thrower.perfect())
+	Run.buy("midsommarstang")
+	print("   efter %.2f" % thrower.perfect())
+	# träning
 	_start(Mode.TRAINING, true)
 	for i in 3:
 		await _wait_ready()
 		dog.set_physics_process(false)
-		dog.global_position = Vector3(-0.18 + 0.18, 0, -6.0)
+		dog.global_position = Vector3(0, 0, -6.0)
 		dog.rotation.y = PI * 0.5
 		thrower.stand_x = -0.18
 		thrower.aim = 0.0
 		await get_tree().physics_frame
 		thrower.launch_with(0.6, 2050.0 + i * 100.0, 0.0)
-		while state == State.FLYING:
+		while state == State.FLYING or state == State.BUSY:
 			await get_tree().physics_frame
 	print("TEST hundträffar %d/3" % dog.hits)
 	print("TEST klart")
@@ -699,40 +1079,30 @@ func _screenshots(prefix: String) -> void:
 	for i in 90:
 		await get_tree().process_frame
 	vp.get_texture().get_image().save_png(prefix + "_meny.png")
-	menu.show_page("settings")
+	Run.start("vanlig")
+	Run.teeth = 14
+	Run.cards.assign(["krakfjader", "din_tumme"])
+	menu.open("shop")
 	for i in 5:
 		await get_tree().process_frame
-	vp.get_texture().get_image().save_png(prefix + "_installningar.png")
+	vp.get_texture().get_image().save_png(prefix + "_butik.png")
+	menu.open("baton")
+	for i in 5:
+		await get_tree().process_frame
+	vp.get_texture().get_image().save_png(prefix + "_pinne.png")
+	Run.match_index = 1
 	_start(Mode.MATCH, true)
 	thrower.mouse_aim = false
 	thrower.stand_x = -0.18
 	for i in 40:
 		await get_tree().process_frame
-	thrower.theta = -0.9
-	thrower.set_physics_process(false)
-	thrower._update_pose()
-	thrower.meter_phase = 2
-	thrower.meter_power = 0.81
-	thrower.meter_cursor = -0.25
-	for i in 3:
+	vp.get_texture().get_image().save_png(prefix + "_leffe.png")
+	_clear_batons()
+	thrower.input_enabled = false
+	phase = Phase.OPP_THROW
+	opponent.say("my_turn")
+	_opp_throw()
+	for i in 70:
 		await get_tree().process_frame
-	vp.get_texture().get_image().save_png(prefix + "_sats.png")
-	thrower.set_physics_process(true)
-	thrower.meter_phase = 0
-	thrower.launch_meter(0.83, 0.05)
-	for i in 45:
-		await get_tree().process_frame
-	vp.get_texture().get_image().save_png(prefix + "_flygning.png")
-	_start(Mode.TRAINING, true)
-	for i in 60:
-		await get_tree().process_frame
-	dog.global_position = Vector3(0.3, 0, -4.5)
-	dog.rotation.y = 2.2
-	for i in 5:
-		await get_tree().process_frame
-	vp.get_texture().get_image().save_png(prefix + "_gosta.png")
-	_pause()
-	for i in 5:
-		await get_tree().process_frame
-	vp.get_texture().get_image().save_png(prefix + "_paus.png")
+	vp.get_texture().get_image().save_png(prefix + "_leffekast.png")
 	get_tree().quit()

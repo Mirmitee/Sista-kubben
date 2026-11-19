@@ -10,6 +10,14 @@ Det här är **kastprototypen** (v0.2): huvudmeny, en runda mot Vedgubben med ri
 2. Öppna Godot, välj **Import** och peka på `project.godot` i den här mappen.
 3. Tryck **F5** (eller Play uppe till höger).
 
+## En run
+
+- **Tre nätter, två matcher per natt:** Vedgubben och sen bossen Tjock-Leffe, som äter upp en av dina pinnar varje tur. Natten gör motståndarna bättre. Förlorar du är hela runnen slut.
+- **Riktiga kubbregler:** du kastar dina pinnar, motståndaren kastar in kubbarna du fällde på din planhalva (fältkubbar) och kastar sen sina pinnar på dig. Fältkubbar måste fällas först. Kubbar han fäller kastar du in på hans planhalva (ett klick för kraft). När alla kubbar på en planhalva ligger får man kasta på kungen. Rör man kungen för tidigt dör man, och gör han det vinner du.
+- **Tänder:** för fällda kubbar, kombos (flera kubbar på ett kast), perfekta kast, kungen och vunna matcher.
+- **Kråkmors bod** mellan matcherna: tre kort att köpa, ett gratis förbannat kort, nya kort för tänder, sälj kort. Max 5 kort.
+- **Upplåsningar mellan runs:** Järnpinnen, Björkpinnen och Benpinnen samt nya kort, när du vinner matcher, når natt 2, besegrar Leffe och fäller många kubbar.
+
 ## Så kastar du
 
 **Mätare (standard), som i gamla RPG- och golfspel:** sikta med musen och klicka (eller mellanslag / A) tre gånger.

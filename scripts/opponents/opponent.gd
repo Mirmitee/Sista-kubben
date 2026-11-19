@@ -1,6 +1,7 @@
 ## Basklass för motståndare. Varje motståndare har ett namn, repliker
-## på svenska och engelska, ett utseende och (senare) egna fusk/regler
-## och ett eget kast. Lägg nya motståndare som egna skript bredvid.
+## på svenska och engelska, ett utseende, ett eget kast (en arm som
+## svingar), hur träffsäker den är och egna fusk/specialregler.
+## Lägg nya motståndare som egna skript bredvid.
 class_name Opponent
 extends Node3D
 
@@ -9,11 +10,20 @@ signal spoke(who: String, text: String)
 var display_name := {"sv": "???", "en": "???"}
 ## händelse -> {"sv": [...], "en": [...]}
 var lines := {}
+## Kastfel: sidled (rad) och fart (andel). Natten gör dem bättre.
+var error_yaw := 0.03
+var error_speed := 0.05
+var baton_push := 1.0     # hur hårt hans pinnar knuffar
+var player_batons_add := 0  # fusk som påverkar spelarens pinnar
+var rule_text := {"sv": "", "en": ""}
 
 var _head: Node3D
+var _arm_pivot: Node3D
+var _arm_len := 1.0
 var _look_x := 0.0
 var _flinch := 0.0
 var _t := 0.0
+var _swing := 0.0         # armens vinkel (positiv = bakåt)
 
 
 func say(event: String) -> void:
@@ -32,9 +42,44 @@ func flinch() -> void:
 	_flinch = 1.0
 
 
+## Modifierare för Run (t.ex. snabbare markör). Överskrids per motståndare.
+func mods_for_night(_night: int) -> Dictionary:
+	return {}
+
+
+func setup_for_night(night: int) -> void:
+	var k := pow(0.8, night - 1)
+	error_yaw *= k
+	error_speed *= k
+
+
+func hand_pos() -> Vector3:
+	if _arm_pivot == null:
+		return global_position + Vector3(0.4, 1.2, 0.4)
+	return _arm_pivot.global_transform * Vector3(0, -_arm_len, 0.05)
+
+
+## Ta sats och svinga. Awaita den: returnerar när handen är i släppläget.
+func swing_back_and_forth() -> void:
+	var tw := create_tween()
+	tw.tween_property(self, "_swing", 1.1, 0.45).set_trans(Tween.TRANS_SINE)
+	tw.tween_property(self, "_swing", -0.55, 0.22).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	await tw.finished
+	var back := create_tween()
+	back.tween_property(self, "_swing", 0.0, 0.6).set_delay(0.2)
+
+
+func walk_to_x(x: float, t := 0.6) -> void:
+	var tw := create_tween()
+	tw.tween_property(self, "position:x", x, t).set_trans(Tween.TRANS_SINE)
+	await tw.finished
+
+
 func _process(dt: float) -> void:
 	_t += dt
 	_flinch = move_toward(_flinch, 0.0, dt * 1.5)
+	if _arm_pivot:
+		_arm_pivot.rotation.x = _swing
 	if _head:
 		var target := atan2(-(_look_x - global_position.x), 6.0)
 		_head.rotation.y = lerp_angle(_head.rotation.y, target, dt * 2.0)

@@ -25,6 +25,12 @@ var _meter_peak: ColorRect
 var _meter_label: Label
 var _acc_root: Control
 var _acc_cursor: ColorRect
+var _acc_green: ColorRect
+var _teeth: Label
+var _cards: Label
+var _phase: Label
+var _banner: Label
+var _toast: Label
 var _fade: ColorRect
 var _blood: ColorRect
 var _death: Label
@@ -60,7 +66,19 @@ func _ready() -> void:
 	_flash = _label(14, Color(1.0, 0.85, 0.2), Vector2(0, 70), Vector2(384, 20))
 	_flash.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	var ver := _label(8, Color(0.8, 0.15, 0.1), Vector2(300, 277))
-	ver.text = "SISTA KUBBEN v0.5"
+	ver.text = "SISTA KUBBEN v0.6"
+	_teeth = _label(8, Color(1.0, 0.95, 0.75), Vector2(236, 30), Vector2(140, 10))
+	_teeth.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	_cards = _label(8, Color(0.75, 0.7, 0.85), Vector2(226, 40), Vector2(150, 60))
+	_cards.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	_phase = _label(8, Color(1.0, 0.55, 0.3), Vector2(8, 204), Vector2(240, 10))
+	_banner = _label(12, Color(1.0, 0.8, 0.6), Vector2(0, 60), Vector2(384, 80))
+	_banner.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_banner.autowrap_mode = TextServer.AUTOWRAP_WORD
+	_banner.modulate.a = 0.0
+	_toast = _label(8, Color(0.6, 1.0, 0.6), Vector2(0, 150), Vector2(384, 12))
+	_toast.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_toast.modulate.a = 0.0
 
 	# golf-kraftmätare: stapel med fyllning, söt punkt och toppmarkering
 	_meter_root = Control.new()
@@ -98,6 +116,7 @@ func _ready() -> void:
 		r.size = Vector2(120.0 * (seg[1] - seg[0]), 6)
 		r.color = seg[2]
 		_acc_root.add_child(r)
+		_acc_green = r
 	_acc_cursor = ColorRect.new()
 	_acc_cursor.size = Vector2(2, 10)
 	_acc_cursor.position = Vector2(1, -1)
@@ -160,19 +179,35 @@ func fade_in() -> void:
 	tw.tween_property(_fade, "color:a", 0.0, 0.6)
 
 
-func refresh(training: bool, left: int, total: int, fallen: Array[bool], dog_hits: int, last: Dictionary, last_dist: float) -> void:
+func refresh(i: Dictionary) -> void:
 	var lines: Array[String] = []
-	if training:
-		lines.append(Lang.t("training_hud") % dog_hits)
+	if i.training:
+		lines.append(Lang.t("training_hud") % i.dog_hits)
 		_icons.text = ""
+		_phase.text = ""
+		_teeth.text = ""
+		_cards.text = ""
 	else:
-		lines.append(Lang.t("hud") % [left, total])
-		var s := Lang.t("kubbs") + " "
-		for f in fallen:
-			s += "[X]" if f else "[ ]"
-		_icons.text = s
-	if not last.is_empty():
-		lines.append(Lang.t("last") % [last.speed, int(last.angle), last_dist])
+		lines.append(Lang.t("hud") % [i.left, i.total])
+		_icons.text = Lang.t("kubbs_line") % [i.theirs, i.theirs_field, i.mine, i.mine_field]
+		var ph := ""
+		match i.phase:
+			0: ph = Lang.t("phase_toss_you") if i.toss else Lang.t("phase_you")
+			1: ph = Lang.t("phase_opp_toss") % i.opp
+			2: ph = Lang.t("phase_opp") % i.opp
+			3: ph = Lang.t("phase_toss_you")
+		_phase.text = ph
+		if Run.active:
+			_teeth.text = Lang.t("teeth_hud") % [Run.teeth, Run.night, Run.NIGHTS]
+			var names: Array[String] = []
+			for id in Run.cards:
+				names.append(Cards.title(id))
+			_cards.text = "\n".join(names)
+		else:
+			_teeth.text = ""
+			_cards.text = ""
+	if not i.last.is_empty():
+		lines.append(Lang.t("last") % [i.last.speed, int(i.last.angle), i.last_dist])
 	_info.text = "\n".join(lines)
 	_hint.visible = Settings.show_hints
 	if Settings.throw_mode == "meter":
@@ -181,6 +216,32 @@ func refresh(training: bool, left: int, total: int, fallen: Array[bool], dog_hit
 		_hint.text = Lang.t("hint1") + " " + Lang.t("hint2") + "\n" + Lang.t("hint3")
 	_meter_root.visible = Settings.power_meter
 	_meter_label.visible = Settings.power_meter
+
+
+func banner(text: String) -> void:
+	_banner.text = text
+	var tw := create_tween()
+	tw.tween_property(_banner, "modulate:a", 1.0, 0.4)
+	tw.tween_interval(3.0)
+	tw.tween_property(_banner, "modulate:a", 0.0, 0.8)
+
+
+func toast(text: String) -> void:
+	_toast.text = text
+	var tw := create_tween()
+	tw.tween_property(_toast, "modulate:a", 1.0, 0.3)
+	tw.tween_interval(3.5)
+	tw.tween_property(_toast, "modulate:a", 0.0, 0.6)
+
+
+func teeth_popup(text: String) -> void:
+	var l := _label(8, Color(1.0, 0.95, 0.6), Vector2(236, 22), Vector2(140, 10))
+	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	l.text = text
+	var tw := create_tween().set_parallel(true)
+	tw.tween_property(l, "position:y", 6.0, 1.6)
+	tw.tween_property(l, "modulate:a", 0.0, 1.6).set_delay(0.6)
+	tw.chain().tween_callback(l.queue_free)
 
 
 func update_meter(v: float, holding: bool, angle_deg: float) -> void:
@@ -201,8 +262,10 @@ func update_meter(v: float, holding: bool, angle_deg: float) -> void:
 
 
 ## Mätarläget: fas 1 = kraft fylls, fas 2 = markören sveper.
-func update_timing(phase: int, live: float, locked: float, cursor: float) -> void:
+func update_timing(phase: int, live: float, locked: float, cursor: float, perfect := 0.18) -> void:
 	_meter_root.visible = true
+	_acc_green.position.x = 1.0 + 60.0 * (1.0 - perfect)
+	_acc_green.size.x = 120.0 * perfect
 	_acc_root.visible = phase == 2 or _meter_hold < 1.5
 	if phase == 1:
 		_meter_hold = 0.0

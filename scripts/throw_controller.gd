@@ -12,8 +12,9 @@
 class_name ThrowController
 extends Node3D
 
-signal thrown(baton: Baton, info: Dictionary)
-signal dropped(baton: Baton)
+signal thrown(baton: RigidBody3D, info: Dictionary)
+signal dropped(baton: RigidBody3D)
+signal tossed(kubb: RigidBody3D)
 
 const ARM_LEN := 0.62
 const SHOULDER := Vector3(0.18, 1.38, 0.45)  # relativt spelarens plats
@@ -51,7 +52,8 @@ var stand_x := 0.0
 var aim := 0.0             # positiv = höger
 var theta := 0.0           # armvinkel, 0 = rakt ner, positiv = framåt
 var holding := false
-var baton: Baton
+var baton                 # Baton, eller en Kubb som ska kastas över
+var payload_kubb := false
 var mouse_aim := true      # av i autotest/skärmdumpar
 var input_enabled := true
 var meter := 0.0           # 0..1, för kraftmätaren
@@ -87,7 +89,8 @@ func _ready() -> void:
 	add_child(_land_mark)
 
 
-func give_baton(b: Baton) -> void:
+func give_baton(b) -> void:
+	payload_kubb = b is Kubb
 	baton = b
 	b.hold()
 	holding = false
@@ -113,7 +116,7 @@ func _unhandled_input(e: InputEvent) -> void:
 		_using_pad = false
 	if baton == null or not input_enabled:
 		return
-	if Settings.throw_mode == "meter":
+	if Settings.throw_mode == "meter" or payload_kubb:
 		var press: bool = (e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT) \
 			or (e is InputEventKey and e.pressed and not e.echo and e.keycode == KEY_SPACE) \
 			or (e is InputEventJoypadButton and e.pressed and e.button_index == JOY_BUTTON_A)
@@ -141,7 +144,7 @@ func _physics_process(dt: float) -> void:
 		_update_pose()
 		return
 	var k := PX_TO_RAD * Settings.sensitivity
-	if Settings.throw_mode == "meter":
+	if Settings.throw_mode == "meter" or payload_kubb:
 		_meter_tick(dt)
 	else:
 		_poll_pad(dt, k)
@@ -151,7 +154,7 @@ func _physics_process(dt: float) -> void:
 		_drag.y = clampf(_drag.y, -THETA_MAX / k, -THETA_MIN / k)
 		theta = -_drag.y * k
 	else:
-		if input_enabled:
+		if input_enabled and Run.mod("no_move") == 0.0:
 			var mv := float(Input.is_key_pressed(KEY_D)) - float(Input.is_key_pressed(KEY_A))
 			mv += float(Input.is_joy_button_pressed(0, JOY_BUTTON_DPAD_RIGHT) or Input.is_joy_button_pressed(0, JOY_BUTTON_RIGHT_SHOULDER))
 			mv -= float(Input.is_joy_button_pressed(0, JOY_BUTTON_DPAD_LEFT) or Input.is_joy_button_pressed(0, JOY_BUTTON_LEFT_SHOULDER))
@@ -171,7 +174,7 @@ func _physics_process(dt: float) -> void:
 	_frame_d = Vector2.ZERO
 	while _hist.size() > WINDOW + SMOOTH:
 		_hist.pop_front()
-	if Settings.throw_mode != "meter":
+	if Settings.throw_mode != "meter" and not payload_kubb:
 		meter = clampf(_speed_for(_smoothed(_hist.size() - 1).y) / MAX_SPEED, 0.0, 1.0) if holding else 0.0
 	_update_pose()
 
@@ -215,6 +218,9 @@ func _meter_press() -> void:
 			holding = true
 		1:
 			meter_power = meter
+			if payload_kubb:
+				_toss_kubb()
+				return
 			meter_phase = 2
 			_meter_t = 0.0
 		2:
@@ -224,7 +230,7 @@ func _meter_press() -> void:
 func _meter_tick(dt: float) -> void:
 	if meter_phase == 1:
 		_meter_t += dt
-		var x := _meter_t / METER_TIME
+		var x := _meter_t / (METER_TIME * Run.mod("meter_time_mult", 1.0))
 		if x >= 2.0:
 			# mätaren hann tömmas: du tappar pinnen
 			meter_phase = 0
@@ -236,7 +242,7 @@ func _meter_tick(dt: float) -> void:
 		theta = -1.35 * meter
 	elif meter_phase == 2:
 		_meter_t += dt
-		var x := _meter_t / ACC_TIME
+		var x := _meter_t / (ACC_TIME * Run.mod("acc_time_mult", 1.0))
 		meter_cursor = -1.0 + 2.0 * x
 		theta = lerpf(-1.35 * meter_power, METER_ANGLE, clampf(x, 0.0, 1.0))
 		if meter_cursor > 1.25:
@@ -244,9 +250,17 @@ func _meter_tick(dt: float) -> void:
 
 
 ## Resultatet av precisionen, för texten på skärmen.
+func perfect() -> float:
+	return minf(PERFECT * Run.mod("green_mult", 1.0), 0.7)
+
+
+func power_factor() -> float:
+	return Settings.power * Run.mod("power_mult", 1.0) * (Run.baton_stat("power") if Run.active else 1.0)
+
+
 func grade_for(c: float) -> String:
 	var a := absf(c)
-	if a < PERFECT:
+	if a < perfect():
 		return "perfect"
 	if a < 0.4:
 		return "good"
@@ -265,11 +279,12 @@ func _meter_launch() -> void:
 
 ## Mätarkast: kraft 0..1, markörens läge -1..1. Används också av autotestet.
 func launch_meter(power01: float, cursor: float) -> void:
-	var speed := MAX_SPEED * clampf(power01, 0.0, 1.0) * Settings.power
+	var speed := MAX_SPEED * clampf(power01, 0.0, 1.0) * power_factor()
 	var grade := grade_for(cursor)
 	# I det gröna går pinnen exakt dit siktlinjen pekar. Utanför växer felet
 	# från noll vid kanten av det gröna.
-	var err := signf(cursor) * maxf(absf(cursor) - PERFECT, 0.0) / (1.0 - PERFECT)
+	var p := perfect()
+	var err := signf(cursor) * maxf(absf(cursor) - p, 0.0) / (1.0 - p)
 	var th := METER_ANGLE + err * 0.08
 	var saved := aim
 	aim += err * ACC_AIM_ERR
@@ -281,12 +296,34 @@ func launch_meter(power01: float, cursor: float) -> void:
 	var w := r * speed * SPIN_FACTOR
 	if grade == "fumble":
 		w += Vector3.UP * signf(cursor) * 7.0  # greppet släpper: helikopter
-	var b := baton
+	var b = baton
 	baton = null
 	aim = saved
 	b.launch(v, w)
 	_aim_line.visible = false
 	thrown.emit(b, {"speed": v.length(), "angle": rad_to_deg(th), "lat": 0.0, "grade": grade})
+
+
+## Kasta över en kubb: kraften styr längden, siktet riktningen.
+func _toss_kubb() -> void:
+	meter_phase = 0
+	holding = false
+	var th := 0.75
+	var speed := 9.5 * clampf(meter_power, 0.0, 1.0)
+	launch_kubb(th, speed)
+
+
+func launch_kubb(th: float, speed: float) -> void:
+	theta = th
+	_update_pose()
+	var f := forward()
+	var r := f.cross(Vector3.UP)
+	var k = baton
+	baton = null
+	payload_kubb = false
+	k.launch((f * cos(th) + Vector3.UP * sin(th)) * speed, r * speed * 0.6)
+	_aim_line.visible = false
+	tossed.emit(k)
 
 
 func forward() -> Vector3:
@@ -307,15 +344,17 @@ func _update_pose() -> void:
 	_arm.global_transform = Transform3D(b, sh + dir * ARM_LEN * 0.5)
 	_hand.global_transform = Transform3D(b, hand)
 	if baton:
-		baton.global_transform = Transform3D(b, hand + dir * (Baton.LENGTH * 0.5 - 0.03))
-	_aim_line.visible = baton != null
+		var off := 0.06 if payload_kubb else Baton.LENGTH * 0.5 - 0.03
+		baton.global_transform = Transform3D(b, hand + dir * off)
+	_aim_line.visible = baton != null and Run.mod("no_aim_line") == 0.0
 	var length := 8.6 if Settings.aim_assist else 3.0
 	var start := Vector3(stand_x + SHOULDER.x, 0.012, 0.0)
 	_aim_line.global_transform = Transform3D(Basis(Vector3.UP, -aim).scaled(Vector3(1, 1, length)), start + f * length * 0.5)
 	# sikthjälp: var pinnen landar med den kraft du låst
-	_land_mark.visible = baton != null and Settings.aim_assist and meter_phase == 2
+	_land_mark.visible = baton != null and Settings.aim_assist and meter_phase == 2 and not payload_kubb \
+		and Run.mod("no_aim_line") == 0.0
 	if _land_mark.visible:
-		var v := MAX_SPEED * meter_power * Settings.power
+		var v := MAX_SPEED * meter_power * power_factor()
 		var vy := v * sin(METER_ANGLE)
 		var vx := v * cos(METER_ANGLE)
 		var h := 0.75
@@ -337,7 +376,7 @@ func _smoothed(i: int) -> Vector3:
 func _speed_for(px_s: float) -> float:
 	if px_s <= 0.0:
 		return 0.0
-	return MAX_SPEED * (1.0 - exp(-px_s * Settings.sensitivity / SPEED_K)) * Settings.power
+	return MAX_SPEED * (1.0 - exp(-px_s * Settings.sensitivity / SPEED_K)) * power_factor()
 
 
 func _release() -> void:
@@ -363,7 +402,11 @@ func _release() -> void:
 
 
 func _drop() -> void:
-	var b := baton
+	if payload_kubb:
+		meter_phase = 0
+		holding = false
+		return  # en kubb tappar man inte, man får försöka igen
+	var b = baton
 	baton = null
 	b.launch(Vector3(0, -0.2, -0.3), Vector3.ZERO)
 	dropped.emit(b)
@@ -381,7 +424,7 @@ func launch_with(th: float, up_px_s: float, lat_px_s: float) -> void:
 	var lat := signf(lat_px_s) * maxf(absf(lat_px_s) - LAT_DEAD, 0.0)
 	var v := tangent * speed + r * lat * SIDE_K
 	var w := r * speed * SPIN_FACTOR + Vector3.UP * lat * YAW_K
-	var b := baton
+	var b = baton
 	baton = null
 	b.launch(v, w)
 	_aim_line.visible = false
