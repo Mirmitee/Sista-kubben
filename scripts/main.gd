@@ -34,6 +34,7 @@ var _look := Vector3(0, 0.2, -8)
 var _last_info := {}
 var _last_dist := 0.0
 var _hit_this_throw := false
+var _pushed := {}
 var _shake := 0.0
 var _orbit := 0.0
 var _idle := 0.0
@@ -251,6 +252,7 @@ func _on_thrown(b: Baton, info: Dictionary) -> void:
 	_take_snapshot()
 	_fly_time = 0.0
 	_hit_this_throw = false
+	_pushed.clear()
 	state = State.FLYING
 	Sfx.play("whoosh", -4.0, 0.8 + info.speed * 0.04)
 	hud.show_throw(info.speed / ThrowController.MAX_SPEED)
@@ -279,6 +281,18 @@ func _on_baton_hit(body: Node, b: Baton) -> void:
 		return
 	if body is Kubb:
 		Sfx.play("clack", 0.0, 1.0 if not body.is_king else 0.7)
+		# träff = omkull: en extra knuff högt upp i pinnens riktning, så att
+		# en kubb man faktiskt träffar välter i stället för att bara gunga
+		if not body.is_king and not _pushed.has(body):
+			_pushed[body] = true
+			var dir := b.linear_velocity
+			dir.y = 0.0
+			if dir.length() < 0.5:
+				dir = body.global_position - b.global_position
+				dir.y = 0.0
+			dir = dir.normalized()
+			body.sleeping = false
+			body.apply_impulse(dir * 0.35, Vector3(0, body.height() * 0.45, 0))
 		if not _hit_this_throw:
 			_hit_this_throw = true
 			_slowmo()
