@@ -1,0 +1,60 @@
+## En kubb (7x7x15 cm) eller kungen (9x9x30 cm), med riktig fysik.
+class_name Kubb
+extends RigidBody3D
+
+const SIZE := Vector3(0.07, 0.15, 0.07)
+const KING_SIZE := Vector3(0.09, 0.30, 0.09)
+
+var is_king := false
+var home: Transform3D
+var was_fallen := false
+
+
+func setup(king: bool, seed := 1) -> void:
+	is_king = king
+	var size := KING_SIZE if king else SIZE
+	mass = 1.7 if king else 0.5
+	var tint := Color(1.25, 1.15, 1.05) if king else Color(1.2, 1.15, 1.1)
+	# lite självlysande så de syns i skymningen (som att de fångar månljuset)
+	add_child(PS1.box(size, PS1.mat(PS1.wood(seed), tint, Vector2.ONE, 0.35)))
+	var col := CollisionShape3D.new()
+	var bs := BoxShape3D.new()
+	bs.size = size
+	col.shape = bs
+	add_child(col)
+	var pm := PhysicsMaterial.new()
+	pm.friction = 0.55
+	pm.bounce = 0.12
+	physics_material_override = pm
+	can_sleep = true
+	if king:
+		# krona av fyra pinnar och en spets
+		var cm := PS1.mat(PS1.wood(9, Color(0.75, 0.58, 0.30)))
+		for c in [Vector2(-1, -1), Vector2(1, -1), Vector2(-1, 1), Vector2(1, 1)]:
+			var p := PS1.box(Vector3(0.022, 0.035, 0.022), cm)
+			p.position = Vector3(c.x * 0.032, size.y * 0.5 + 0.017, c.y * 0.032)
+			add_child(p)
+		var tip := PS1.box(Vector3(0.03, 0.05, 0.03), PS1.mat(null, Color(0.6, 0.08, 0.06)))
+		tip.position = Vector3(0, size.y * 0.5 + 0.025, 0)
+		add_child(tip)
+
+
+func height() -> float:
+	return (KING_SIZE if is_king else SIZE).y
+
+
+func is_fallen() -> bool:
+	return global_transform.basis.y.normalized().dot(Vector3.UP) < 0.5
+
+
+func teleport(t: Transform3D) -> void:
+	PhysicsServer3D.body_set_state(get_rid(), PhysicsServer3D.BODY_STATE_TRANSFORM, t)
+	global_transform = t
+	linear_velocity = Vector3.ZERO
+	angular_velocity = Vector3.ZERO
+	sleeping = true
+
+
+func go_home() -> void:
+	teleport(home)
+	was_fallen = false
