@@ -144,6 +144,30 @@ const DEFS := {
 		"price": 0, "cursed": true, "col": Color(1.5, 0.6, 0.6), "fell": {"teeth": 5, "reraise": 1}},
 }
 
+## Motståndarens specialkubbar. Han smyger in dem på sin baslinje (slump,
+## fler senare nätter). De straffar DIG när du träffar eller fäller dem.
+##   fell: lose_teeth (n), lose_baton (n), topple_mine (n av dina kubbar faller),
+##         opp_plus (n)   hit: stick (pinnen fastnar), teleport
+const OPP_DEFS := {
+	"taggkubb": {"sv": ["Taggkubben", "HANS. FÄLLD: du tappar 2 tänder i taggarna."], "en": ["Thorn Kubb", "HIS. FELLED: you lose 2 teeth to the thorns."],
+		"col": Color(0.55, 0.25, 0.2), "opp": true, "fell": {"lose_teeth": 2}},
+	"tjuvkubb": {"sv": ["Tjuvkubben", "HANS. FÄLLD: den stjäl 4 tänder och springer."], "en": ["Thief Kubb", "HIS. FELLED: it steals 4 teeth and runs."],
+		"col": Color(0.35, 0.3, 0.3), "opp": true, "fell": {"lose_teeth": 4}},
+	"kadakubb": {"sv": ["Kådakubben", "HANS. TRÄFF: pinnen fastnar och dör där."], "en": ["Resin Kubb", "HIS. HIT: the baton sticks and dies there."],
+		"col": Color(0.9, 0.6, 0.2), "opp": true, "hit": {"stick": 1}},
+	"spegelvand": {"sv": ["Spegelvända kubben", "HANS. FÄLLD: en av DINA kubbar faller också."], "en": ["Reversed Kubb", "HIS. FELLED: one of YOUR kubbs falls too."],
+		"col": Color(0.5, 0.4, 0.6), "opp": true, "fell": {"topple_mine": 1}},
+	"skrikkubb": {"sv": ["Skrikkubben", "HANS. FÄLLD: den skriker. Han får en extra pinne nästa tur."], "en": ["Screaming Kubb", "HIS. FELLED: it screams. He gets an extra baton next turn."],
+		"col": Color(0.7, 0.3, 0.35), "opp": true, "fell": {"opp_plus": 1}},
+	"stenkubb": {"sv": ["Stenkubben", "HANS. Gjord av gravsten. Väger fyra gånger så mycket."], "en": ["Stone Kubb", "HIS. Made of a gravestone. Weighs four times as much."],
+		"col": Color(0.5, 0.5, 0.52), "opp": true, "mass": 4.0},
+	"smitaren": {"sv": ["Smitaren", "HANS. TRÄFF: den försvinner och står upp någon annanstans."], "en": ["The Dodger", "HIS. HIT: it vanishes and stands up somewhere else."],
+		"col": Color(0.4, 0.45, 0.55), "opp": true, "hit": {"teleport": 1}},
+	"slukkubb": {"sv": ["Slukaren", "HANS. FÄLLD: den äter en av dina pinnar den här turen."], "en": ["The Gulper", "HIS. FELLED: it eats one of your batons this turn."],
+		"col": Color(0.45, 0.2, 0.25), "opp": true, "fell": {"lose_baton": 1}},
+}
+
+
 ## 30 pinnar. Välj en vid start av en run.
 ##   mass, power, push   fysik (power och push är multiplikatorer)
 ##   len                 längd-multiplikator
@@ -218,18 +242,22 @@ const BATONS := {
 }
 
 
+static func kdef(id: String) -> Dictionary:
+	return DEFS.get(id, OPP_DEFS.get(id, {}))
+
+
 static func title(id: String) -> String:
-	var d: Dictionary = DEFS.get(id, BATONS.get(id, {}))
+	var d: Dictionary = DEFS.get(id, OPP_DEFS.get(id, BATONS.get(id, {})))
 	return d.get(Lang.current, ["?", ""])[0]
 
 
 static func desc(id: String) -> String:
-	var d: Dictionary = DEFS.get(id, BATONS.get(id, {}))
+	var d: Dictionary = DEFS.get(id, OPP_DEFS.get(id, BATONS.get(id, {})))
 	return d.get(Lang.current, ["?", ""])[1]
 
 
 static func color(id: String) -> Color:
-	var d: Dictionary = DEFS.get(id, BATONS.get(id, {}))
+	var d: Dictionary = DEFS.get(id, OPP_DEFS.get(id, BATONS.get(id, {})))
 	return d.get("col", Color(1.2, 1.15, 1.1))
 
 

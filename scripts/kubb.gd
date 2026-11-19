@@ -121,7 +121,7 @@ func set_kind(id: String, mass_mult := 1.0) -> void:
 	kind = id
 	if is_king:
 		return
-	var d: Dictionary = Cards.DEFS.get(id, {})
+	var d: Dictionary = Cards.kdef(id)
 	var tint: Color = d.get("col", Color(1.2, 1.15, 1.1))
 	_mesh.material_override = PS1.mat(PS1.wood(_seed), tint, Vector2.ONE, 0.35 if id == "" else 0.5)
 	mass = 0.3 * float(d.get("mass", 1.0)) * mass_mult
@@ -134,7 +134,7 @@ func set_kind(id: String, mass_mult := 1.0) -> void:
 	_rune = Node3D.new()
 	add_child(_rune)
 	var cursed: bool = d.get("cursed", false)
-	var glow := Color(0.9, 0.2, 1.0) if cursed else (tint * 0.8).clamp(Color(0.25, 0.25, 0.25), Color(1, 1, 1))
+	var glow := Color(1.0, 0.04, 0.03) if d.get("opp", false) else Color(0.9, 0.2, 1.0) if cursed else (tint * 0.8).clamp(Color(0.25, 0.25, 0.25), Color(1, 1, 1))
 	var rm := PS1.mat(null, glow, Vector2.ONE, 0.95)
 	var band := PS1.box(Vector3(SIZE.x * 1.06, 0.016, SIZE.z * 1.06), rm)
 	band.position.y = 0.025

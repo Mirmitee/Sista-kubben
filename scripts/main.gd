@@ -336,6 +336,33 @@ func _place_deck() -> void:
 			i += 1
 		else:
 			k.set_kind("")
+	# motståndarens egna specialkubbar: slump, fler senare nätter och hos bossen
+	if not Run.active:
+		return
+	var n := int(randf() * (1.0 + Run.night * 0.8)) + (1 if Run.is_boss() else 0)
+	n = mini(n, 3)
+	if n <= 0:
+		return
+	var theirs := side_kubbs("theirs")
+	var free := theirs.filter(func(k): return k.kind == "")
+	var used := theirs.filter(func(k): return k.kind != "")
+	free.shuffle()
+	used.shuffle()
+	var ids: Array = Cards.OPP_DEFS.keys()
+	var names: Array[String] = []
+	for j in n:
+		var k: Kubb = null
+		if not free.is_empty():
+			k = free.pop_back()
+		elif not used.is_empty() and randf() < 0.4:
+			k = used.pop_back()  # han byter ut en av dina
+		if k == null:
+			break
+		var id: String = ids[randi() % ids.size()]
+		k.set_kind(id, mm)
+		names.append(Cards.title(id))
+	if not names.is_empty():
+		hud.toast(_tl("HAN HAR SMUGIT IN: ", "HE SNUCK IN: ") + ", ".join(names))
 
 
 func _start_player_turn() -> void:
@@ -497,7 +524,7 @@ func _trigger_hit(k: Kubb, b: Baton) -> void:
 	if _triggered.has(k):
 		return
 	_triggered[k] = true
-	var hd: Dictionary = Cards.DEFS.get(k.kind, {}).get("hit", {})
+	var hd: Dictionary = Cards.kdef(k.kind).get("hit", {})
 	if not hd.is_empty():
 		_do_hit(k, b, hd, Cards.title(k.kind), Cards.color(k.kind))
 	if not _baton_hit_done and Run.active:
@@ -556,6 +583,9 @@ func _do_hit(k: Kubb, b: Baton, h: Dictionary, label: String, col: Color) -> voi
 			Fx.dust(self, Vector3(o.global_position.x, 0.0, o.global_position.z), 0.8)
 	if h.has("teleport"):
 		call_deferred("_teleport_kubb", k, col)
+	if h.has("stick"):
+		call_deferred("_stick", b)
+		Fx.burst(self, b.global_position, Color(0.9, 0.6, 0.2), 10, 0.8, 0.8, 0.03, 3.0, 0.5, 0.4)
 
 
 func _topple_later(o: Kubb, from: Vector3, delay: float, col: Color) -> void:
@@ -592,6 +622,13 @@ func _zap_random(side: String, n: int, except: Kubb = null) -> void:
 		o.apply_impulse(Vector3(randf_range(-0.4, 0.4), 0.1, randf_range(-0.4, 0.4)).normalized() * 0.45, Vector3(0, o.height() * 0.45, 0))
 
 
+func _stick(b: Baton) -> void:
+	if is_instance_valid(b):
+		b.linear_velocity = Vector3.ZERO
+		b.angular_velocity = Vector3.ZERO
+		Sfx.play("thud", -2.0, 0.6)
+
+
 func _bounce(b: Baton) -> void:
 	if not is_instance_valid(b):
 		return
@@ -620,7 +657,7 @@ func _fell_effects() -> Array:
 	for k in _felled_valid:
 		if k.field:
 			bonus += int(Run.mod("field_teeth"))
-		var fd: Dictionary = Cards.DEFS.get(k.kind, {}).get("fell", {})
+		var fd: Dictionary = Cards.kdef(k.kind).get("fell", {})
 		if fd.is_empty():
 			continue
 		var col := Cards.color(k.kind)
@@ -636,6 +673,20 @@ func _fell_effects() -> Array:
 			batons_left += int(fd.baton)
 			batons_per_turn += int(fd.baton)
 			msg.append(_tl("+%d PINNE", "+%d BATON") % int(fd.baton))
+		if fd.has("lose_teeth"):
+			bonus -= int(fd.lose_teeth)
+			msg.append(_tl("-%d TÄNDER", "-%d TEETH") % int(fd.lose_teeth))
+		if fd.has("lose_baton"):
+			batons_left = maxi(batons_left - int(fd.lose_baton), 0)
+			msg.append(_tl("DEN ÅT EN PINNE!", "IT ATE A BATON!"))
+		if fd.has("topple_mine"):
+			var mine := side_kubbs("mine", true).filter(func(o): return not o.field)
+			mine.shuffle()
+			for o in mine.slice(0, int(fd.topple_mine)):
+				o.sleeping = false
+				o.apply_impulse(Vector3(randf_range(-0.2, 0.2), 0, 0.45), Vector3(0, o.height() * 0.45, 0))
+				Fx.sparks(self, o.global_position, Color(1, 0.1, 0.1), 12)
+			msg.append(_tl("DIN KUBB FALLER!", "YOUR KUBB FALLS!"))
 		if fd.has("opp_skip"):
 			_opp_batons_next -= int(fd.opp_skip)
 			msg.append(_tl("HAN TAPPAR EN PINNE", "HE LOSES A BATON"))
@@ -1344,7 +1395,13 @@ func _process(dt: float) -> void:
 	_shake = move_toward(_shake, 0.0, dt)
 	var jitter := Vector3(randf_range(-1, 1), randf_range(-1, 1), 0) * _shake * 0.06
 	camera.look_at_from_position(cam_pos + jitter, _look)
-	hud.show_deck(mode == Mode.MATCH and Run.active and not menu.visible and (Input.is_key_pressed(KEY_TAB) or Input.is_joy_button_pressed(0, JOY_BUTTON_BACK)))
+	var deck_on := mode == Mode.MATCH and Run.active and not menu.visible and (Input.is_key_pressed(KEY_TAB) or Input.is_joy_button_pressed(0, JOY_BUTTON_BACK))
+	var his: Array = []
+	if deck_on:
+		for k in kubbs:
+			if Cards.OPP_DEFS.has(k.kind) and not his.has(k.kind):
+				his.append(k.kind)
+	hud.show_deck(deck_on, his)
 	var zoom := mode != Mode.MENU and Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT)
 	camera.fov = lerpf(camera.fov, 20.0 if zoom else 40.0, clampf(dt * 8.0, 0.0, 1.0))
 	world.follow_camera(cam_pos)

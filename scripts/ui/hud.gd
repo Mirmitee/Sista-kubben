@@ -419,7 +419,7 @@ func _mk(size: int, color: Color, text: String) -> Label:
 
 
 ## Håll Tab (eller Back på handkontrollen) för att se din lek.
-func show_deck(on: bool) -> void:
+func show_deck(on: bool, his: Array = []) -> void:
 	if _deck_box == null:
 		_deck_box = _label(8, Color(0.95, 0.9, 0.8), Vector2(20, 40), Vector2(344, 160))
 		_deck_box.autowrap_mode = TextServer.AUTOWRAP_WORD
@@ -440,6 +440,8 @@ func show_deck(on: bool) -> void:
 		lines.append("  " + Cards.title(id) + ": " + Cards.desc(id))
 	if not Run.temp_names.is_empty():
 		lines.append(("DENNA MATCH: " if sv else "THIS MATCH: ") + ", ".join(Run.temp_names))
+	for id in his:
+		lines.append(("  HANS " if sv else "  HIS ") + Cards.title(id) + ": " + Cards.desc(id))
 	lines.append(("Kungens nåd kvar: %d" if sv else "King's mercy left: %d") % Run.king_shield_left)
 	_deck_box.text = "\n".join(lines)
 
