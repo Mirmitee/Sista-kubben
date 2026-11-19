@@ -75,7 +75,7 @@ func _ready() -> void:
 	_flash.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	var ver := _label(8, Color(0.8, 0.15, 0.1), Vector2(300, 277))
 	ver.text = "SISTA KUBBEN v0.8"
-	_teeth = _label(8, Color(1.0, 0.95, 0.75), Vector2(236, 30), Vector2(140, 10))
+	_teeth = _label(8, Color(1.0, 0.95, 0.75), Vector2(166, 30), Vector2(210, 10))
 	_teeth.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	_cards = _label(8, Color(0.75, 0.7, 0.85), Vector2(226, 40), Vector2(150, 60))
 	_cards.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
@@ -206,7 +206,7 @@ func refresh(i: Dictionary) -> void:
 			3: ph = Lang.t("phase_toss_you")
 		_phase.text = ph
 		if Run.active:
-			_teeth.text = Lang.t("teeth_hud") % [Run.teeth, Run.night, Run.NIGHTS]
+			_teeth.text = Lang.t("teeth_hud") % [Run.teeth, Run.night, Run.NIGHTS] + "   " + ("ÖDE " if Lang.current == "sv" else "FATE ") + "*".repeat(Run.fate_points) + "-".repeat(maxi(Run.FATE_COST - Run.fate_points, 0))
 			var names: Array[String] = []
 			for id in Run.cards:
 				names.append(Cards.title(id))
@@ -217,7 +217,7 @@ func refresh(i: Dictionary) -> void:
 			_cards.text = "\n".join(names)
 			if Run.teeth != _last_teeth:
 				if _last_teeth >= 0:
-					_teeth.pivot_offset = Vector2(140, 5)
+					_teeth.pivot_offset = Vector2(210, 5)
 					_teeth.scale = Vector2.ONE * 1.5
 					var tw := create_tween()
 					tw.tween_property(_teeth, "scale", Vector2.ONE, 0.35).set_trans(Tween.TRANS_BACK)
@@ -442,3 +442,81 @@ func show_deck(on: bool) -> void:
 		lines.append(("DENNA MATCH: " if sv else "THIS MATCH: ") + ", ".join(Run.temp_names))
 	lines.append(("Kungens nåd kvar: %d" if sv else "King's mercy left: %d") % Run.king_shield_left)
 	_deck_box.text = "\n".join(lines)
+
+
+signal fate_chosen(index: int)
+var _choice_root: Control
+
+
+## Två ödeskort i mitten av skärmen. Klicka på ett, eller tryck 1 / 2.
+func choose_fate(a: Array, b: Array) -> int:
+	_choice_root = Control.new()
+	_choice_root.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_play_root.add_child(_choice_root)
+	var dim := ColorRect.new()
+	dim.color = Color(0.02, 0.0, 0.02, 0.6)
+	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_choice_root.add_child(dim)
+	var head := _mk(12, Color(1.0, 0.85, 0.5), "ÖDET ERBJUDER. VÄLJ ETT." if Lang.current == "sv" else "FATE OFFERS. CHOOSE ONE.")
+	head.position = Vector2(0, 46)
+	head.size = Vector2(384, 16)
+	head.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_choice_root.add_child(head)
+	var opts := [a, b]
+	for i in 2:
+		var c: Array = opts[i]
+		var btn := Button.new()
+		btn.position = Vector2(52 + i * 148, 72)
+		btn.size = Vector2(132, 112)
+		btn.focus_mode = Control.FOCUS_ALL
+		var st := StyleBoxFlat.new()
+		st.bg_color = Color(0.08, 0.02, 0.05, 0.97)
+		st.border_color = c[2]
+		st.set_border_width_all(2)
+		var sth := st.duplicate()
+		sth.bg_color = Color(0.22, 0.05, 0.08, 0.97)
+		sth.border_color = (c[2] as Color).lightened(0.4)
+		btn.add_theme_stylebox_override("normal", st)
+		btn.add_theme_stylebox_override("hover", sth)
+		btn.add_theme_stylebox_override("focus", sth)
+		btn.add_theme_stylebox_override("pressed", sth)
+		var v := VBoxContainer.new()
+		v.position = Vector2(6, 6)
+		v.size = Vector2(120, 100)
+		v.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		btn.add_child(v)
+		v.add_child(_mk(7, Color(0.7, 0.6, 0.5), "%d" % (i + 1)))
+		var t := _mk(10, (c[2] as Color).lightened(0.3), c[0])
+		t.autowrap_mode = TextServer.AUTOWRAP_WORD
+		t.custom_minimum_size = Vector2(120, 0)
+		v.add_child(t)
+		var d := _mk(8, Color(0.9, 0.85, 0.8), c[1])
+		d.autowrap_mode = TextServer.AUTOWRAP_WORD
+		d.custom_minimum_size = Vector2(120, 0)
+		v.add_child(d)
+		var idx := i
+		btn.pressed.connect(func(): fate_chosen.emit(idx))
+		_choice_root.add_child(btn)
+		btn.pivot_offset = btn.size * 0.5
+		btn.scale = Vector2(0.05, 1)
+		var tw := create_tween()
+		tw.tween_interval(0.1 * i)
+		tw.tween_property(btn, "scale:x", 1.0, 0.25).set_trans(Tween.TRANS_BACK)
+		if i == 0:
+			btn.call_deferred("grab_focus")
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	var r: int = await fate_chosen
+	Sfx.play("click", -4.0, 1.2)
+	_choice_root.queue_free()
+	_choice_root = null
+	return r
+
+
+func _unhandled_key_input(e: InputEvent) -> void:
+	if _choice_root and e is InputEventKey and e.pressed and not e.echo:
+		if e.keycode == KEY_1:
+			fate_chosen.emit(0)
+			get_viewport().set_input_as_handled()
+		elif e.keycode == KEY_2:
+			fate_chosen.emit(1)
+			get_viewport().set_input_as_handled()

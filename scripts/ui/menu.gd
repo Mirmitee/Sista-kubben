@@ -17,6 +17,7 @@ var _box: VBoxContainer
 var _theme: Theme
 var _offers: Array[String] = []
 var _curse := ""
+var _fate_offers: Array[String] = []
 var _reroll := 2
 var _baton_page := 0
 const BATONS_PER_PAGE := 4
@@ -90,6 +91,12 @@ func _gen_shop() -> void:
 	var pool := Run.shop_pool()
 	pool.shuffle()
 	_offers.assign(pool.slice(0, 3))
+	var fp: Array[String] = []
+	for id in Cards.FATE:
+		if not Cards.FATE[id].get("cursed", false):
+			fp.append(id)
+	fp.shuffle()
+	_fate_offers.assign(fp.slice(0, 2))
 	var cp := Run.cursed_pool()
 	_curse = cp[randi() % cp.size()] if not cp.is_empty() and randf() < 0.85 else ""
 
@@ -413,6 +420,46 @@ func _page_shop() -> void:
 				_curse = ""
 				Sfx.play("bad", -6.0, 1.2)
 				show_page("shop"), ok)
+	# ödesleken: köp nya ödeskort, bränn dåliga
+	var frow := HFlowContainer.new()
+	frow.custom_minimum_size.x = 360
+	_box.add_child(frow)
+	var fl := Label.new()
+	fl.text = _t("ÖDESLEK %d kort:", "FATE DECK %d cards:") % Run.fate_deck.size()
+	fl.add_theme_color_override("font_color", Color(0.75, 0.9, 0.6))
+	frow.add_child(fl)
+	for id in _fate_offers:
+		var fb := Button.new()
+		var fprice: int = Cards.FATE[id].price
+		fb.text = _t("KÖP %s (%d)", "BUY %s (%d)") % [Cards.fate_title(id), fprice]
+		fb.tooltip_text = Cards.fate_desc(id)
+		fb.disabled = Run.teeth < fprice
+		fb.pressed.connect(func():
+			if Run.teeth >= fprice:
+				Run.teeth -= fprice
+				Run.fate_deck.append(id)
+				Run.fate_pile.append(id)
+				_fate_offers.erase(id)
+				Sfx.play("sparkle", -6.0)
+				show_page("shop"))
+		frow.add_child(fb)
+	var burned := {}
+	for id in Run.fate_deck:
+		if burned.has(id) or Run.fate_deck.size() <= 2:
+			continue
+		burned[id] = true
+		var bb := Button.new()
+		bb.text = _t("BRÄNN %s (2)", "BURN %s (2)") % Cards.fate_title(id)
+		bb.tooltip_text = Cards.fate_desc(id)
+		bb.disabled = Run.teeth < 2
+		bb.pressed.connect(func():
+			if Run.teeth >= 2 and Run.fate_deck.size() > 2:
+				Run.teeth -= 2
+				Run.fate_deck.erase(id)
+				Run.fate_pile.erase(id)
+				Sfx.play("bad", -8.0, 1.5)
+				show_page("shop"))
+		frow.add_child(bb)
 	var row2 := HBoxContainer.new()
 	_box.add_child(row2)
 	var rr := Button.new()

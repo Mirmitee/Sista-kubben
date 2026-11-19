@@ -256,22 +256,35 @@ static func unlock_text(id: String) -> String:
 	return (pair[0] if Lang.current == "sv" else pair[1]) % n
 
 
-## Ödeskort: dras efter varje kast där du fäller minst en kubb (och när du
-## vinner en match). [vikt, typ, sv, en]. Typen avgör vad som händer i
-## main._apply_fate().
-const FATE := [
-	[10, "kubb", ["Kråkmors gåva", "En slumpad kubb går med i din lek."], ["Crow Mother's Gift", "A random kubb joins your deck."]],
-	[7, "pinne", ["Lånad pinne", "Du kastar med en annan pinne resten av matchen. Kanske en du inte låst upp."], ["Borrowed Baton", "You throw with another baton for the rest of the match. Maybe one you haven't unlocked."]],
-	[9, "extra", ["Fickpinne", "+1 pinne den här turen. Den låg i fickan hela tiden."], ["Pocket Baton", "+1 baton this turn. It was in your pocket all along."]],
-	[12, "tander", ["Tandfen", "+3 tänder. Hon frågade inte."], ["Tooth Fairy", "+3 teeth. She didn't ask."]],
-	[4, "tander_stor", ["Gammal käke", "+7 tänder ur en käke i gräset."], ["Old Jaw", "+7 teeth from a jaw in the grass."]],
-	[7, "gront", ["Midsommarvind", "Gröna fältet 40 % bredare resten av matchen."], ["Midsummer Breeze", "Green zone 40% wider for the rest of the match."]],
-	[7, "lugn", ["Lugna händer", "Mätarna går 25 % långsammare resten av matchen."], ["Steady Hands", "Meters run 25% slower for the rest of the match."]],
-	[6, "dubbel", ["Dubbla tänder", "Nästa kast med träff ger dubbla tänder."], ["Double Teeth", "Your next throw that hits gives double teeth."]],
-	[6, "blixt", ["Åskväder", "Blixten slår ner på en av hans kubbar. Nu."], ["Thunderstorm", "Lightning strikes one of his kubbs. Now."]],
-	[5, "skakig", ["Hans mardröm", "Motståndaren kastar 30 % sämre resten av matchen."], ["His Nightmare", "The opponent throws 30% worse for the rest of the match."]],
-	[4, "nad", ["Kungens öga", "Kungen tål en träff till den här matchen."], ["The King's Eye", "The king forgives one more hit this match."]],
-	[5, "forbannad_kubb", ["Något i gräset", "FÖRBANNAD. En förbannad kubb kryper in i din lek."], ["Something in the Grass", "CURSED. A cursed kubb crawls into your deck."]],
-	[5, "darr", ["Darrhänt", "FÖRBANNAD. Precisionsmarkören går 20 % fortare resten av matchen."], ["Shaky Hands", "CURSED. The accuracy cursor is 20% faster for the rest of the match."]],
-	[3, "hans_pinne", ["Han hittar en pinne", "FÖRBANNAD. Motståndaren får en extra pinne nästa tur."], ["He Finds a Baton", "CURSED. The opponent gets an extra baton next turn."]],
-]
+## Ödeskort: du har en egen ödeslek (Run.fate_deck) som byggs på i boden.
+## Var tredje fälld kubb drar du två kort ur leken och väljer ett.
+## main._apply_fate() avgör vad varje id gör.
+const FATE := {
+	"kubb": {"price": 6, "sv": ["Kråkmors gåva", "En slumpad kubb går med i din kubblek."], "en": ["Crow Mother's Gift", "A random kubb joins your kubb deck."]},
+	"pinne": {"price": 4, "sv": ["Lånad pinne", "Du kastar med en annan pinne resten av matchen. Kanske en du inte låst upp."], "en": ["Borrowed Baton", "You throw with another baton for the rest of the match. Maybe one you haven't unlocked."]},
+	"extra": {"price": 5, "sv": ["Fickpinne", "+1 pinne den här turen. Den låg i fickan hela tiden."], "en": ["Pocket Baton", "+1 baton this turn. It was in your pocket all along."]},
+	"tander": {"price": 2, "sv": ["Tandfen", "+3 tänder. Hon frågade inte."], "en": ["Tooth Fairy", "+3 teeth. She didn't ask."]},
+	"tander_stor": {"price": 5, "sv": ["Gammal käke", "+7 tänder ur en käke i gräset."], "en": ["Old Jaw", "+7 teeth from a jaw in the grass."]},
+	"gront": {"price": 4, "sv": ["Midsommarvind", "Gröna fältet 40 % bredare resten av matchen."], "en": ["Midsummer Breeze", "Green zone 40% wider for the rest of the match."]},
+	"lugn": {"price": 4, "sv": ["Lugna händer", "Mätarna går 25 % långsammare resten av matchen."], "en": ["Steady Hands", "Meters run 25% slower for the rest of the match."]},
+	"dubbel": {"price": 4, "sv": ["Dubbla tänder", "Nästa kast med träff ger dubbla tänder."], "en": ["Double Teeth", "Your next throw that hits gives double teeth."]},
+	"blixt": {"price": 5, "sv": ["Åskväder", "Blixten slår ner på en av hans kubbar. Nu."], "en": ["Thunderstorm", "Lightning strikes one of his kubbs. Now."]},
+	"skakig": {"price": 5, "sv": ["Hans mardröm", "Motståndaren kastar 30 % sämre resten av matchen."], "en": ["His Nightmare", "The opponent throws 30% worse for the rest of the match."]},
+	"nad": {"price": 6, "sv": ["Kungens öga", "Kungen tål en träff till den här matchen."], "en": ["The King's Eye", "The king forgives one more hit this match."]},
+	"sovpiller": {"price": 6, "sv": ["Sömnpulver", "Motståndaren får en pinne mindre nästa tur."], "en": ["Sleeping Powder", "The opponent gets one baton less next turn."]},
+	"ranta": {"price": 4, "sv": ["Ockraren", "+1 tand per 4 tänder du har (max 6)."], "en": ["The Usurer", "+1 tooth per 4 teeth you hold (max 6)."]},
+	"forbannad_kubb": {"price": 0, "cursed": true, "sv": ["Något i gräset", "FÖRBANNAD. En förbannad kubb kryper in i din lek."], "en": ["Something in the Grass", "CURSED. A cursed kubb crawls into your deck."]},
+	"darr": {"price": 0, "cursed": true, "sv": ["Darrhänt", "FÖRBANNAD. Precisionsmarkören går 20 % fortare resten av matchen."], "en": ["Shaky Hands", "CURSED. The accuracy cursor is 20% faster for the rest of the match."]},
+	"hans_pinne": {"price": 0, "cursed": true, "sv": ["Han hittar en pinne", "FÖRBANNAD. Motståndaren får en extra pinne nästa tur."], "en": ["He Finds a Baton", "CURSED. The opponent gets an extra baton next turn."]},
+}
+
+## Ödesleken du börjar varje run med.
+const FATE_START := ["tander", "tander", "extra", "gront", "lugn", "darr", "hans_pinne"]
+
+
+static func fate_title(id: String) -> String:
+	return FATE[id][Lang.current][0]
+
+
+static func fate_desc(id: String) -> String:
+	return FATE[id][Lang.current][1]

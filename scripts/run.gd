@@ -23,6 +23,10 @@ var temp_mods := {}       # välsignelser/förbannelser från ödeskort, bara de
 var temp_names: Array[String] = []
 var borrowed := ""       # lånad pinne från ödeskort, bara den här matchen
 var cards_drawn := 0
+var fate_deck: Array[String] = []
+var fate_pile: Array[String] = []
+var fate_points := 0
+const FATE_COST := 3      # fällda kubbar per ödesdragning
 
 # meta
 var unlocked_cards: Array[String] = []
@@ -44,6 +48,9 @@ func start(baton_id: String) -> void:
 	stats = {"kubbs": 0, "wins": 0, "perfect": 0, "combos": 0, "teeth_total": 0}
 	clear_temp()
 	cards_drawn = 0
+	fate_deck.assign(Cards.FATE_START)
+	fate_pile.clear()
+	fate_points = 0
 	lifetime.runs += 1
 	save_meta()
 
@@ -87,6 +94,21 @@ func mod(key: String, default := 0.0) -> float:
 
 func baton_stat(key: String) -> float:
 	return Cards.BATONS.get(cur_baton(), Cards.BATONS["vanlig"]).get(key, 1.0)
+
+
+## Två ödeskort ur dragbunten (blandas om när den tar slut).
+func draw_fate_two() -> Array[String]:
+	var out: Array[String] = []
+	for i in 2:
+		if fate_pile.is_empty():
+			fate_pile.assign(fate_deck)
+			fate_pile.shuffle()
+			for o in out:
+				fate_pile.erase(o)
+			if fate_pile.is_empty():
+				break
+		out.append(fate_pile.pop_back())
+	return out
 
 
 func cur_baton() -> String:

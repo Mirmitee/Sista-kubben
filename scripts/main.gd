@@ -688,43 +688,57 @@ func _run_summary() -> String:
 		Run.night, Run.stats.kubbs, Run.stats.teeth_total, Run.cards_drawn]
 
 
-## Ödeskort: dras efter varje kast där du fällde något.
-func _draw_fate() -> void:
-	if not Run.active or _match_over:
+## Ödespoäng: var tredje fälld kubb drar du två ödeskort och väljer ett.
+func _fate_after_throw(newly: int) -> void:
+	if not Run.active or _match_over or newly <= 0:
 		return
-	var total := 0
-	for c in Cards.FATE:
-		total += c[0]
-	var r := randi() % total
-	var pick: Array = Cards.FATE[0]
-	for c in Cards.FATE:
-		r -= c[0]
-		if r < 0:
-			pick = c
-			break
+	Run.fate_points += newly
+	while Run.fate_points >= Run.FATE_COST and not _match_over:
+		Run.fate_points -= Run.FATE_COST
+		var two := Run.draw_fate_two()
+		if two.is_empty():
+			return
+		var pick := 0
+		if two.size() > 1:
+			thrower.input_enabled = false
+			Sfx.play("sparkle", -4.0, 0.9)
+			if _autotest:
+				pick = 0
+			else:
+				pick = await hud.choose_fate(_fate_view(two[0]), _fate_view(two[1]))
+			thrower.input_enabled = true
+		_apply_fate(two[pick])
+
+
+func _fate_view(id: String) -> Array:
+	var cursed: bool = Cards.FATE[id].get("cursed", false)
+	return [Cards.fate_title(id), Cards.fate_desc(id), Color(0.85, 0.25, 0.9) if cursed else Color(0.5, 0.9, 0.5)]
+
+
+func _apply_fate(id: String) -> void:
 	Run.cards_drawn += 1
-	var title: String = pick[2][0] if Lang.current == "sv" else pick[3][0]
-	var desc: String = pick[2][1] if Lang.current == "sv" else pick[3][1]
+	var title := Cards.fate_title(id)
+	var desc := Cards.fate_desc(id)
 	var col := Color(0.4, 0.9, 0.4)
-	var bad := false
-	match pick[1]:
+	var bad: bool = Cards.FATE[id].get("cursed", false)
+	match id:
 		"kubb":
 			var pool := Run.shop_pool()
 			if not pool.is_empty() and Run.cards.size() < Run.MAX_CARDS:
-				var id: String = pool[randi() % pool.size()]
-				Run.cards.append(id)
-				desc = Cards.title(id) + ": " + Cards.desc(id) + _tl(" (står upp nästa match)", " (stands up next match)")
-				col = Cards.color(id) * 0.8
+				var kid: String = pool[randi() % pool.size()]
+				Run.cards.append(kid)
+				desc = Cards.title(kid) + ": " + Cards.desc(kid) + _tl(" (står upp nästa match)", " (stands up next match)")
+				col = Cards.color(kid) * 0.8
 			else:
 				Run.add_teeth(3)
 				desc = _tl("Leken är full. Du får 3 tänder istället.", "Your deck is full. 3 teeth instead.")
 		"pinne":
 			var ids: Array = Cards.BATONS.keys()
 			ids.erase(Run.cur_baton())
-			var id: String = ids[randi() % ids.size()]
-			Run.borrowed = id
-			desc = Cards.title(id) + ": " + Cards.desc(id)
-			col = Cards.BATONS[id].get("trail", Color(1, 0.8, 0.5))
+			var bid: String = ids[randi() % ids.size()]
+			Run.borrowed = bid
+			desc = Cards.title(bid) + ": " + Cards.desc(bid)
+			col = Cards.BATONS[bid].get("trail", Color(1, 0.8, 0.5))
 		"extra":
 			batons_left += 1
 			batons_per_turn += 1
@@ -733,6 +747,11 @@ func _draw_fate() -> void:
 			col = Color(1, 0.9, 0.4)
 		"tander_stor":
 			Run.add_teeth(7)
+			col = Color(1, 0.9, 0.4)
+		"ranta":
+			var n := mini(6, int(Run.teeth / 4))
+			Run.add_teeth(n)
+			desc = _tl("+%d tänder.", "+%d teeth.") % n
 			col = Color(1, 0.9, 0.4)
 		"gront":
 			Run.add_temp("green_mult", 1.4, title)
@@ -750,20 +769,19 @@ func _draw_fate() -> void:
 			Run.add_temp("opp_error_mult", 1.3, title)
 		"nad":
 			Run.king_shield_left += 1
+		"sovpiller":
+			_opp_batons_next -= 1
 		"forbannad_kubb":
-			bad = true
 			var cp := Run.cursed_pool()
 			if not cp.is_empty() and Run.cards.size() < Run.MAX_CARDS:
-				var id: String = cp[randi() % cp.size()]
-				Run.cards.append(id)
-				desc = Cards.title(id) + ": " + Cards.desc(id)
+				var kid: String = cp[randi() % cp.size()]
+				Run.cards.append(kid)
+				desc = Cards.title(kid) + ": " + Cards.desc(kid)
 			else:
 				desc = _tl("Leken är full. Den kryper iväg igen. Puh.", "Your deck is full. It crawls away. Phew.")
 		"darr":
-			bad = true
 			Run.add_temp("acc_time_mult", 0.8, title)
 		"hans_pinne":
-			bad = true
 			_opp_batons_next += 1
 	if bad:
 		col = Color(0.85, 0.25, 0.9)
@@ -939,7 +957,6 @@ func _evaluate() -> void:
 		var dm := 2.0 if _double_next else 1.0
 		_double_next = false
 		_award(newly, false, fe[0], fe[1] * dm)
-		_draw_fate()
 	if newly >= 2:
 		opponent.say("double")
 		opponent.flinch()
@@ -958,6 +975,8 @@ func _evaluate() -> void:
 		opponent.say("miss")
 	if newly > 0 and side_kubbs("theirs", true).is_empty():
 		opponent.say("all_down")
+	if newly > 0 and Run.active:
+		await _fate_after_throw(newly)
 	_after_throw()
 
 
@@ -1496,8 +1515,11 @@ func _run_autotest() -> void:
 	while state == State.FLYING:
 		await get_tree().physics_frame
 	print("TEST krutkubb i mitten: fällda %d, tänder %d -> %d" % [fallen_kubbs("theirs").size(), teeth0, Run.teeth])
-	for i in 12:
-		_draw_fate()
+	for id in Cards.FATE:
+		_apply_fate(id)
+	Run.fate_points = 0
+	await _fate_after_throw(7)
+	print("TEST ödespoäng kvar %d (av 7 fällda, kostnad %d)" % [Run.fate_points, Run.FATE_COST])
 	print("TEST ödeskort dragna %d, lek %d, lånad pinne '%s', denna match %s" % [Run.cards_drawn, Run.cards.size(), Run.borrowed, str(Run.temp_names)])
 	thrower.meter_phase = 1
 	thrower.meter = 0.6
