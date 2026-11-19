@@ -29,6 +29,8 @@ Version **v0.9**: runs över tre nätter med riktiga kubbregler, en kubblek med 
 
 ## Så kastar du
 
+**Siktmagnet** (med Sikthjälp på): siktar du nära en kubb du får träffa dras siktet in mot den, linjen blir grön och en ring snurrar runt kubben.
+
 **Mätare (standard), som i gamla RPG- och golfspel:** sikta med musen och klicka (eller mellanslag / A) tre gånger.
 1. Första klicket: du tar sats och kraftmätaren fylls. Den töms igen om du väntar för länge.
 2. Andra klicket: kraften låses. Medan kraften fylls visar ett kors på marken var pinnen landar (grönt = vid hans baslinje, gult = kort, rött = långt), och det gröna fältet på mätaren flyttar sig när du kliver fram.

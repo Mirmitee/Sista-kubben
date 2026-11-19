@@ -42,11 +42,11 @@ const PAD_SCALE := 0.45    # gamepad-spakar är snabbare än en mus
 ##           över precisionsmätaren,
 ## tryck 3 = släpp. Mitt i det gröna = rakt. Långt ut = snett, och
 ##           längst ut tappar du greppet och det blir helikopter.
-const METER_TIME := 1.25   # sekunder från tom till full kraft
-const ACC_TIME := 0.8      # sekunder för markören att svepa över
+const METER_TIME := 1.45   # sekunder från tom till full kraft
+const ACC_TIME := 1.0      # sekunder för markören att svepa över
 const METER_ANGLE := 0.62  # kastvinkel i mätarläget (~35°)
 const ACC_AIM_ERR := 0.05  # rad sidofel vid markören längst ut
-const PERFECT := 0.18      # |markör| under detta = perfekt
+const PERFECT := 0.24      # |markör| under detta = perfekt
 
 var stand_x := 0.0
 ## kastlinjens z: 0 = baslinjen, negativt = framflyttad till en stående fältkubb
@@ -57,6 +57,13 @@ var holding := false
 var baton                 # Baton, eller en Kubb som ska kastas över
 var payload_kubb := false
 var mouse_aim := true      # av i autotest/skärmdumpar
+## siktmagnet: kubbar du får sikta på just nu (sätts av main varje bild)
+var magnet_targets: Array[Vector3] = []
+var locked_target := Vector3.INF
+var _line_mat: Material
+var _line_lock_mat: Material
+var _lock_mark: Node3D
+const MAGNET := 0.07       # rad: hur nära siktet måste vara för att dras in
 var input_enabled := true
 var meter := 0.0           # 0..1, för kraftmätaren
 var meter_phase := 0       # 0 vila, 1 kraft, 2 precision
@@ -87,7 +94,19 @@ func _ready() -> void:
 	add_child(_arm)
 	_hand = PS1.box(Vector3(0.08, 0.09, 0.06), skin)
 	add_child(_hand)
-	_aim_line = PS1.box(Vector3(0.02, 0.005, 1.0), PS1.mat(null, Color(0.9, 0.85, 0.6), Vector2.ONE, 0.6))
+	_line_mat = PS1.mat(null, Color(0.9, 0.85, 0.6), Vector2.ONE, 0.6)
+	_line_lock_mat = PS1.mat(null, Color(0.4, 1.0, 0.45), Vector2.ONE, 1.0)
+	_aim_line = PS1.box(Vector3(0.02, 0.005, 1.0), _line_mat)
+	# ring runt kubben siktet har låst på
+	_lock_mark = Node3D.new()
+	_lock_mark.visible = false
+	add_child(_lock_mark)
+	for i in 8:
+		var a := TAU * i / 8.0
+		var b := PS1.box(Vector3(0.05, 0.006, 0.02), _line_lock_mat)
+		b.position = Vector3(cos(a), 0, sin(a)) * 0.11
+		b.rotation.y = -a + PI * 0.5
+		_lock_mark.add_child(b)
 	add_child(_aim_line)
 	# landningskors: följer kraften live medan mätaren fylls
 	_land_mark = MeshInstance3D.new()
@@ -177,11 +196,13 @@ func _physics_process(dt: float) -> void:
 			var ax := Input.get_joy_axis(0, JOY_AXIS_LEFT_X)
 			if absf(ax) > 0.15:
 				aim = clampf(aim + ax * 0.35 * dt, -MAX_AIM, MAX_AIM)
+			elif absf(ax) <= 0.15:
+				aim = lerpf(aim, _magnet(aim), clampf(dt * 6.0, 0.0, 1.0))
 		elif mouse_aim and input_enabled:
 			var vp := get_viewport()
 			var mx := vp.get_mouse_position().x / maxf(vp.get_visible_rect().size.x, 1.0)
 			var target := clampf((mx - 0.5) * 2.0, -1.0, 1.0) * MAX_AIM
-			aim = lerpf(aim, target, clampf(dt * 10.0, 0.0, 1.0))
+			aim = lerpf(aim, _magnet(target), clampf(dt * 10.0, 0.0, 1.0))
 		theta = lerpf(theta, 0.0, 0.15)
 	# fart i px/s uppåt (positiv = svep upp) och i sidled
 	_hist.push_back(Vector3(theta, -_frame_d.y / dt, _frame_d.x / dt))
@@ -340,6 +361,27 @@ func launch_kubb(th: float, speed: float) -> void:
 	tossed.emit(k)
 
 
+## Drar siktet mot närmaste giltiga kubb när du siktar nära den.
+func _magnet(raw: float) -> float:
+	locked_target = Vector3.INF
+	if not Settings.aim_assist or payload_kubb or magnet_targets.is_empty():
+		return raw
+	var sx := stand_x + SHOULDER.x
+	var best := INF
+	var best_a := raw
+	for t in magnet_targets:
+		var a := atan2(t.x - sx, -(t.z - throw_z))
+		var d := absf(a - raw)
+		if d < best:
+			best = d
+			best_a = a
+			if d < MAGNET:
+				locked_target = t
+	if best < MAGNET:
+		return lerpf(raw, best_a, 0.85)
+	return raw
+
+
 func forward() -> Vector3:
 	return Vector3.FORWARD.rotated(Vector3.UP, -aim)
 
@@ -361,6 +403,12 @@ func _update_pose() -> void:
 		var off: float = 0.06 if payload_kubb else (baton.length if baton is Baton else Baton.LENGTH) * 0.5 - 0.03
 		baton.global_transform = Transform3D(b, hand + dir * off)
 	_aim_line.visible = baton != null and Run.mod("no_aim_line") == 0.0
+	var locked := locked_target != Vector3.INF and baton != null
+	_aim_line.material_override = _line_lock_mat if locked else _line_mat
+	_lock_mark.visible = locked and _aim_line.visible
+	if _lock_mark.visible:
+		_lock_mark.global_position = Vector3(locked_target.x, 0.015, locked_target.z)
+		_lock_mark.rotation.y += 0.03
 	var length := 8.6 if Settings.aim_assist else 3.0
 	var start := Vector3(stand_x + SHOULDER.x, 0.012, throw_z)
 	_aim_line.global_transform = Transform3D(Basis(Vector3.UP, -aim).scaled(Vector3(1, 1, length)), start + f * length * 0.5)

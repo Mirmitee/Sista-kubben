@@ -17,7 +17,7 @@ var baton_push := 1.0     # hur hårt hans pinnar knuffar
 var player_batons_add := 0  # fusk som påverkar spelarens pinnar
 var extra_batons := 0       # fler pinnar för motståndaren
 ## Svårighet: alla motståndare kastar så här mycket bättre än förut.
-const DIFFICULTY := 0.72
+const DIFFICULTY := 0.85
 var rule_text := {"sv": "", "en": ""}
 
 var _head: Node3D

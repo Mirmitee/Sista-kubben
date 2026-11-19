@@ -1453,6 +1453,7 @@ func _new_training() -> void:
 # ---------------------------------------------------------------- kamera
 
 func _process(dt: float) -> void:
+	_update_magnet()
 	var sx := thrower.stand_x
 	var cam_pos: Vector3
 	var want: Vector3
@@ -1495,6 +1496,23 @@ func _process(dt: float) -> void:
 				thrower.power_for_distance(tgt) if thrower.baton else -1.0, thrower.land_dist)
 		else:
 			hud.update_meter(thrower.meter, thrower.holding, rad_to_deg(thrower.theta))
+
+
+## Siktmagneten: vilka kubbar spelaren får sikta på just nu.
+func _update_magnet() -> void:
+	thrower.magnet_targets.clear()
+	if mode == Mode.MENU or phase != Phase.PLAYER or thrower.payload_kubb:
+		return
+	if mode == Mode.TRAINING:
+		thrower.magnet_targets.append(dog.global_position)
+		return
+	var st := side_kubbs("theirs", true)
+	var field := st.filter(func(k): return k.field)
+	var pool: Array = field if not field.is_empty() else st
+	for k in pool:
+		thrower.magnet_targets.append(k.global_position)
+	if st.is_empty():
+		thrower.magnet_targets.append(king.global_position)
 
 
 func _unhandled_input(e: InputEvent) -> void:
