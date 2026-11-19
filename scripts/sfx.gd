@@ -18,7 +18,11 @@ func _ready() -> void:
 	_streams["thud"] = _make(0.25, _thud)
 	_streams["click"] = _make(0.05, _click)
 	_streams["bad"] = _make(0.6, _bad)
-	for i in 8:
+	_streams["boom"] = _make(0.9, _boom)
+	_streams["zap"] = _make(0.5, _zap)
+	_streams["sparkle"] = _make(0.4, _sparkle)
+	_streams["coin"] = _make(0.25, _coin)
+	for i in 12:
 		var p := AudioStreamPlayer.new()
 		add_child(p)
 		_players.append(p)
@@ -122,3 +126,24 @@ func _drone_fn(t: float, d: float, _st: Dictionary) -> float:
 	var a := sin(TAU * 55.0 * t) * 0.4 + sin(TAU * 55.5 * t) * 0.3
 	var b := sin(TAU * 77.875 * t) * 0.15 * (0.5 + 0.5 * sin(TAU * t / d))
 	return a + b
+
+
+func _boom(t: float, _d: float, st: Dictionary) -> float:
+	st.lp = lerpf(st.lp, st.rng.randf_range(-1, 1), 0.04 + 0.2 * exp(-t * 20.0))
+	return (st.lp * 3.0 + sin(TAU * (55.0 - t * 30.0) * t) * 0.8) * exp(-t * 4.5)
+
+
+func _zap(t: float, _d: float, st: Dictionary) -> float:
+	var crackle: float = st.rng.randf_range(-1, 1) * (1.0 if st.rng.randf() < 0.3 else 0.2)
+	st.lp2 = lerpf(st.lp2, st.rng.randf_range(-1, 1), 0.03)
+	return (crackle * exp(-t * 9.0) + st.lp2 * 2.5 * exp(-t * 3.0)) * 0.8
+
+
+func _sparkle(t: float, _d: float, _st: Dictionary) -> float:
+	var f := 1800.0 + floorf(t * 20.0) * 300.0
+	return sin(TAU * f * t) * exp(-fmod(t, 0.05) * 60.0) * exp(-t * 5.0) * 0.35
+
+
+func _coin(t: float, _d: float, _st: Dictionary) -> float:
+	var f := 1320.0 if t < 0.07 else 1760.0
+	return signf(sin(TAU * f * t)) * 0.18 * exp(-t * 12.0)

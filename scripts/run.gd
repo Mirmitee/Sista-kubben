@@ -23,7 +23,7 @@ var king_shield_left := 0
 # meta
 var unlocked_cards: Array[String] = []
 var unlocked_batons: Array[String] = ["vanlig"]
-var lifetime := {"runs": 0, "wins": 0, "kubbs": 0, "best_night": 0, "leffe_beaten": 0}
+var lifetime := {"runs": 0, "wins": 0, "kubbs": 0, "best_night": 0, "leffe_beaten": 0, "perfect": 0, "combos": 0, "teeth": 0}
 
 
 func _ready() -> void:
@@ -63,7 +63,7 @@ func mod(key: String, default := 0.0) -> float:
 	var mult := key.ends_with("_mult")
 	var v := 1.0 if mult else 0.0
 	for id in cards:
-		var m: Dictionary = Cards.DEFS[id].mods
+		var m: Dictionary = Cards.DEFS[id].get("mods", {})
 		if m.has(key):
 			v = v * m[key] if mult else v + m[key]
 	var b: Dictionary = Cards.BATONS[baton]
@@ -84,6 +84,28 @@ func add_teeth(n: int) -> void:
 	teeth = maxi(teeth + n, 0)
 	if n > 0:
 		stats.teeth_total += n
+		lifetime.teeth += n
+
+
+func note_perfect() -> void:
+	stats.perfect += 1
+	lifetime.perfect += 1
+
+
+func note_combo() -> void:
+	stats.combos += 1
+	lifetime.combos += 1
+
+
+func price(id: String) -> int:
+	var d: Dictionary = Cards.DEFS[id]
+	if d.get("cursed", false):
+		return 0
+	return maxi(1, int(d.price) - int(mod("shop_discount")))
+
+
+func is_unlocked_baton(id: String) -> bool:
+	return not Cards.BATONS[id].has("unlock") or id in unlocked_batons
 
 
 ## Efter vunnen match: nästa motståndare eller nästa natt. Returnerar
@@ -123,7 +145,7 @@ func shop_pool() -> Array[String]:
 		var d: Dictionary = Cards.DEFS[id]
 		if d.get("cursed", false) or id in cards:
 			continue
-		if d.get("locked", false) and not id in unlocked_cards:
+		if d.has("unlock") and not id in unlocked_cards:
 			continue
 		pool.append(id)
 	return pool
@@ -138,10 +160,10 @@ func cursed_pool() -> Array[String]:
 
 
 func buy(id: String) -> bool:
-	var price: int = Cards.DEFS[id].price
-	if cards.size() >= MAX_CARDS or teeth < price:
+	var p := price(id)
+	if cards.size() >= MAX_CARDS or teeth < p:
 		return false
-	teeth -= price
+	teeth -= p
 	cards.append(id)
 	return true
 
@@ -158,21 +180,17 @@ func sell(id: String) -> void:
 # ---------------------------------------------------------------- meta
 
 func check_unlocks() -> void:
-	var rules := [
-		["jarnpinne", "baton", lifetime.wins >= 1, {"sv": "Järnpinnen (vinn en match)", "en": "The Iron Baton (win a match)"}],
-		["kyrkklocka", "card", lifetime.wins >= 1, {"sv": "Kortet Kyrkklocka", "en": "The card Church Bell"}],
-		["bjorkpinne", "baton", lifetime.best_night >= 2, {"sv": "Björkpinnen (nå natt 2)", "en": "The Birch Baton (reach night 2)"}],
-		["guldtand", "card", lifetime.best_night >= 2, {"sv": "Kortet Guldtand", "en": "The card Gold Tooth"}],
-		["dalahast", "card", lifetime.leffe_beaten >= 1, {"sv": "Kortet Dalahäst (besegra Tjock-Leffe)", "en": "The card Dala Horse (beat Fat Leffe)"}],
-		["benpinne", "baton", lifetime.kubbs >= 40, {"sv": "Benpinnen (fäll 40 kubbar totalt)", "en": "The Bone Baton (fell 40 kubbs in total)"}],
-	]
-	for r in rules:
-		if not r[2]:
-			continue
-		var list: Array[String] = unlocked_batons if r[1] == "baton" else unlocked_cards
-		if not r[0] in list:
-			list.append(r[0])
-			unlocked.emit(r[3][Lang.current])
+	for kind in ["baton", "card"]:
+		var defs: Dictionary = Cards.BATONS if kind == "baton" else Cards.DEFS
+		var list: Array[String] = unlocked_batons if kind == "baton" else unlocked_cards
+		for id in defs:
+			var d: Dictionary = defs[id]
+			if not d.has("unlock") or id in list:
+				continue
+			if float(lifetime.get(d.unlock[0], 0)) >= float(d.unlock[1]):
+				list.append(id)
+				var what := ("Pinnen " if kind == "baton" else "Kubben ") if Lang.current == "sv" else ("Baton: " if kind == "baton" else "Kubb: ")
+				unlocked.emit(what + Cards.title(id) + " (" + Cards.unlock_text(id) + ")")
 
 
 func load_meta() -> void:

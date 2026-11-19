@@ -61,6 +61,13 @@ var _trail_mat: Material
 var _autotest := false
 var _toss_tries := 0
 var _match_over := false
+var _opp_batons_next := 0
+var _triggered := {}
+var _baton_hit_done := false
+var _pending_fx := 0
+var _felled_valid: Array[Kubb] = []
+var _line_mark: MeshInstance3D
+var _cam_z := 0.0
 
 
 func _ready() -> void:
@@ -100,6 +107,10 @@ func _ready() -> void:
 	_ghost.visible = false
 	add_child(_ghost)
 	_trail_mat = PS1.mat(null, Color(0.95, 0.8, 0.6), Vector2.ONE, 1.0)
+	# kastlinjen när någon får kliva fram till en fältkubb
+	_line_mark = PS1.box(Vector3(5.0, 0.006, 0.04), PS1.mat(null, Color(1.0, 0.3, 0.15), Vector2.ONE, 1.0))
+	_line_mark.visible = false
+	add_child(_line_mark)
 
 	hud = Hud.new()
 	add_child(hud)
@@ -156,7 +167,10 @@ func _spawn_kubbs() -> void:
 	add_child(king)
 	king.home = Transform3D(Basis.IDENTITY, Vector3(0, Kubb.KING_SIZE.y * 0.5, -World.FIELD_L * 0.5))
 	for k in kubbs + [king]:
-		k.landed.connect(func(v: float): Sfx.play("clack2", linear_to_db(clampf(v * 0.4, 0.05, 1.0)) - 4.0, 0.8))
+		k.landed.connect(func(v: float):
+			Sfx.play("clack2", linear_to_db(clampf(v * 0.4, 0.05, 1.0)) - 4.0, 0.8)
+			if k.visible and v > 1.0:
+				Fx.dust(self, Vector3(k.global_position.x, 0.0, k.global_position.z), clampf(v * 0.3, 0.3, 1.0)))
 
 
 func _reset_kubbs() -> void:
@@ -199,6 +213,10 @@ func _to_menu() -> void:
 	_set_kubbs_active(true)
 	_set_opponent("vedgubben")
 	_reset_kubbs()
+	for k in kubbs:
+		k.set_kind("")
+	thrower.throw_z = 0.0
+	_line_mark.visible = false
 	hud.clear_death()
 	hud.center("")
 	menu.paused_menu = false
@@ -280,6 +298,9 @@ func _begin_match() -> void:
 	opponent.setup_for_night(Run.night)
 	Run.opp_mods = opponent.mods_for_night(Run.night)
 	Run.king_shield_left = int(Run.mod("king_shield"))
+	_place_deck()
+	_opp_batons_next = 0
+	_line_mark.visible = false
 	turn = 0
 	_match_over = false
 	stats = {"throws": 0, "hits": 0, "heli": 0, "longest": 0.0}
@@ -294,10 +315,33 @@ func _begin_match() -> void:
 	_start_player_turn()
 
 
+## Kubbleken ställs upp på hans baslinje (blandad), resten är vanliga.
+func _place_deck() -> void:
+	var deck: Array = Run.cards.duplicate() if Run.active else []
+	deck.shuffle()
+	var mm := Run.mod("theirs_mass_mult", 1.0)
+	var i := 0
+	for k in kubbs:
+		if k.home.origin.z < -1.0:
+			k.set_kind(deck[i] if i < deck.size() else "", mm)
+			i += 1
+		else:
+			k.set_kind("")
+
+
 func _start_player_turn() -> void:
 	turn += 1
 	phase = Phase.PLAYER
 	thrower.stand_x = 0.0
+	# vanlig kubbregel: står fältkubbar kvar på din planhalva efter hans tur
+	# får du kliva fram till linjen genom den som står närmast mitten
+	thrower.throw_z = _advance_line("mine")
+	_line_mark.visible = thrower.throw_z < -0.05
+	if _line_mark.visible:
+		_line_mark.global_position = Vector3(0, 0.01, thrower.throw_z)
+		hud.flash(Lang.t("advance"))
+		Fx.ring(self, Vector3(0, 0, thrower.throw_z), Color(1.0, 0.35, 0.2), 1.5)
+		Sfx.play("sparkle", -6.0, 0.8)
 	var base := 8 if Settings.rules == "simple" else 6
 	batons_per_turn = maxi(1, base + int(Run.mod("batons_add")) + opponent.player_batons_add)
 	batons_left = batons_per_turn
@@ -319,10 +363,9 @@ func _next_baton() -> void:
 	if mode == Mode.MATCH and batons_left <= 0:
 		return
 	var b := Baton.new()
-	b.setup()
-	if Run.active:
-		b.mass = Run.baton_stat("mass")
+	b.setup(Run.baton if Run.active else "vanlig")
 	add_child(b)
+	_trail_mat = PS1.mat(null, b.trail_color, Vector2.ONE, 1.0)
 	b.body_entered.connect(_on_baton_hit.bind(b))
 	batons.append(b)
 	current = b
@@ -350,6 +393,8 @@ func _on_thrown(b: RigidBody3D, info: Dictionary) -> void:
 		hud.flash(Lang.t("grade_" + info.grade))
 		if info.grade == "perfect":
 			Sfx.play("click", -2.0, 1.6)
+			Sfx.play("sparkle", -4.0)
+			Fx.sparks(self, b.global_position, Color(1.0, 0.9, 0.4), 18)
 	_refresh_ui()
 
 
@@ -360,6 +405,8 @@ func _begin_flight(b: RigidBody3D) -> void:
 	_hit_this_throw = false
 	_pushed.clear()
 	_settled = false
+	_triggered.clear()
+	_baton_hit_done = false
 	state = State.FLYING
 
 
@@ -402,6 +449,11 @@ func _on_baton_hit(body: Node, b: Baton) -> void:
 				push *= Run.mod("push_mult", 1.0) * Run.baton_stat("push")
 			body.sleeping = false
 			body.apply_impulse(dir * push, Vector3(0, body.height() * 0.45, 0))
+			Fx.splinters(self, b.global_position, Cards.color(body.kind) * 0.7)
+			if mode == Mode.MATCH and not current_by_opp:
+				_trigger_hit(body, b)
+		elif body.is_king:
+			Fx.sparks(self, b.global_position, Color(1.0, 0.3, 0.2), 10)
 		if not _hit_this_throw:
 			_hit_this_throw = true
 			_slowmo()
@@ -416,6 +468,198 @@ func _on_baton_hit(body: Node, b: Baton) -> void:
 			hud.popup(camera.unproject_position(b.global_position), "VOFF!")
 	else:
 		Sfx.play("thud", linear_to_db(clampf(b.linear_velocity.length() / 8.0, 0.1, 1.0)))
+		var sp := b.linear_velocity.length()
+		if sp > 1.5:
+			Fx.dust(self, Vector3(b.global_position.x, 0.0, b.global_position.z), clampf(sp / 6.0, 0.3, 1.2))
+
+
+# ---------------------------------------------------------------- kubbleken
+
+## Första träffen på en kubb under ett kast: kubbens egen träffeffekt och
+## pinnens (en gång per kast).
+func _trigger_hit(k: Kubb, b: Baton) -> void:
+	if _triggered.has(k):
+		return
+	_triggered[k] = true
+	var hd: Dictionary = Cards.DEFS.get(k.kind, {}).get("hit", {})
+	if not hd.is_empty():
+		_do_hit(k, b, hd, Cards.title(k.kind), Cards.color(k.kind))
+	if not _baton_hit_done and Run.active:
+		_baton_hit_done = true
+		var bh: Dictionary = Cards.BATONS.get(Run.baton, {}).get("hit", {})
+		if not bh.is_empty():
+			_do_hit(k, b, bh, Cards.title(Run.baton), Cards.BATONS[Run.baton].get("trail", Color(1, 0.8, 0.5)))
+
+
+func _do_hit(k: Kubb, b: Baton, h: Dictionary, label: String, col: Color) -> void:
+	hud.popup(camera.unproject_position(k.global_position + Vector3(0, 0.35, 0)), label.to_upper() + "!")
+	var side := k.side
+	if h.has("boom"):
+		var f: float = h.boom
+		Fx.boom(self, k.global_position, f)
+		Sfx.play("boom", 0.0, 1.2 - f * 0.2)
+		_shake = 0.6 + f * 0.3
+		for o in kubbs:
+			if o == k or not o.visible:
+				continue
+			var d := o.global_position - k.global_position
+			d.y = 0.0
+			var dist := d.length()
+			var r := 1.5 * f
+			if dist < r:
+				o.sleeping = false
+				var dir := d.normalized() if dist > 0.01 else Vector3.FORWARD
+				o.apply_impulse((dir * 0.55 + Vector3.UP * 0.12) * (1.25 - dist / r), Vector3(0, o.height() * 0.45, 0))
+		k.sleeping = false
+		k.apply_impulse(Vector3.UP * 0.25 * f, Vector3(0, k.height() * 0.4, 0))
+	if h.has("chain"):
+		var cands: Array[Kubb] = []
+		for o in side_kubbs(side, true):
+			if o != k:
+				cands.append(o)
+		var c := k.global_position
+		cands.sort_custom(func(x, y): return x.global_position.distance_to(c) < y.global_position.distance_to(c))
+		for i in mini(int(h.chain), cands.size()):
+			_topple_later(cands[i], c, 0.15 + 0.15 * i, col)
+	if h.has("zap"):
+		_zap_random(side, int(h.zap), k)
+	if h.has("bounce"):
+		call_deferred("_bounce", b)
+		Fx.sparks(self, b.global_position, col, 12)
+	if h.has("wind"):
+		var dirz := -1.0 if side == "theirs" else 1.0
+		Sfx.play("whoosh", 0.0, 0.5)
+		for o in side_kubbs(side, true):
+			if o == k:
+				continue
+			o.sleeping = false
+			o.apply_impulse(Vector3(randf_range(-0.05, 0.05), 0, dirz * 0.3), Vector3(0, o.height() * 0.45, 0))
+			Fx.dust(self, Vector3(o.global_position.x, 0.0, o.global_position.z), 0.8)
+	if h.has("teleport"):
+		call_deferred("_teleport_kubb", k, col)
+
+
+func _topple_later(o: Kubb, from: Vector3, delay: float, col: Color) -> void:
+	_pending_fx += 1
+	await get_tree().create_timer(delay, false).timeout
+	_pending_fx -= 1
+	if not is_instance_valid(o) or mode != Mode.MATCH or o.is_fallen():
+		return
+	var dir := o.global_position - from
+	dir.y = 0.0
+	dir = dir.normalized() if dir.length() > 0.01 else Vector3.FORWARD
+	o.sleeping = false
+	o.apply_impulse(dir * 0.45, Vector3(0, o.height() * 0.45, 0))
+	Fx.sparks(self, o.global_position + Vector3(0, 0.12, 0), col, 10)
+	Sfx.play("clack", -3.0, 1.3)
+
+
+func _zap_random(side: String, n: int, except: Kubb = null) -> void:
+	var pool: Array[Kubb] = []
+	for o in side_kubbs(side, true):
+		if o != except:
+			pool.append(o)
+	pool.shuffle()
+	for i in mini(n, pool.size()):
+		var o := pool[i]
+		Fx.zap(self, o.global_position)
+		Sfx.play("zap", 0.0, randf_range(0.9, 1.1))
+		_shake = 0.5
+		o.sleeping = false
+		o.apply_impulse(Vector3(randf_range(-0.4, 0.4), 0.1, randf_range(-0.4, 0.4)).normalized() * 0.45, Vector3(0, o.height() * 0.45, 0))
+
+
+func _bounce(b: Baton) -> void:
+	if not is_instance_valid(b):
+		return
+	var v := b.linear_velocity
+	b.linear_velocity = Vector3(v.x * 0.5, 4.2, v.z * 0.5)
+	Sfx.play("whoosh", -2.0, 1.6)
+
+
+func _teleport_kubb(k: Kubb, col: Color) -> void:
+	if not is_instance_valid(k):
+		return
+	var r := HALF_THEIRS if k.side == "theirs" else HALF_MINE
+	var p := Vector3(randf_range(r.position.x + 0.3, r.end.x - 0.3), k.height() * 0.5, randf_range(r.position.y + 0.4, r.end.y - 0.4))
+	Fx.sparks(self, k.global_position, col, 16)
+	Fx.burst(self, k.global_position, Color(0.8, 0.9, 1.0), 10, 0.6, 1.0, 0.06, -0.5, 1.0, 0.8, 1.5)
+	k.teleport(Transform3D(Basis(Vector3.UP, randf() * TAU), p))
+	Fx.sparks(self, p, col, 16)
+	Sfx.play("sparkle", -2.0, 0.6)
+
+
+## Fällningseffekter för kubbarna som just fälldes giltigt.
+## Returnerar [extra tänder, multiplikator].
+func _fell_effects() -> Array:
+	var bonus := 0
+	var mult := 1.0
+	for k in _felled_valid:
+		if k.field:
+			bonus += int(Run.mod("field_teeth"))
+		var fd: Dictionary = Cards.DEFS.get(k.kind, {}).get("fell", {})
+		if fd.is_empty():
+			continue
+		var col := Cards.color(k.kind)
+		Fx.sparks(self, k.global_position + Vector3(0, 0.1, 0), col, 20)
+		Fx.flash_light(self, k.global_position, col, 2.5, 3.0, 0.4)
+		Sfx.play("sparkle", -3.0)
+		var msg: Array[String] = []
+		bonus += int(fd.get("teeth", 0))
+		mult *= float(fd.get("mult", 1.0))
+		if fd.has("perfect_mult") and _last_info.get("grade", "") == "perfect":
+			mult *= float(fd.perfect_mult)
+		if fd.has("baton"):
+			batons_left += int(fd.baton)
+			batons_per_turn += int(fd.baton)
+			msg.append(_tl("+%d PINNE", "+%d BATON") % int(fd.baton))
+		if fd.has("opp_skip"):
+			_opp_batons_next -= int(fd.opp_skip)
+			msg.append(_tl("HAN TAPPAR EN PINNE", "HE LOSES A BATON"))
+		if fd.has("opp_plus"):
+			_opp_batons_next += int(fd.opp_plus)
+			msg.append(_tl("HAN FÅR EN PINNE TILL", "HE GETS AN EXTRA BATON"))
+		if fd.has("shield"):
+			Run.king_shield_left += int(fd.shield)
+			msg.append(_tl("KUNGENS NÅD +1", "KING'S MERCY +1"))
+		if fd.has("gamble"):
+			var g := int(fd.gamble)
+			if randf() < 0.5:
+				bonus += g
+				msg.append(_tl("JACKPOTT!", "JACKPOT!"))
+			else:
+				bonus -= g / 2
+				msg.append(_tl("NITLOTT.", "NO LUCK."))
+		if fd.has("steal"):
+			bonus += Run.night * 3
+			msg.append(_tl("GRAVRÅN!", "GRAVE ROBBED!"))
+		if fd.has("zap"):
+			_zap_random(k.side, int(fd.zap), k)
+		if fd.has("reraise"):
+			var fallen: Array[Kubb] = []
+			for o in fallen_kubbs(k.side):
+				if o != k and not o in _felled_valid:
+					fallen.append(o)
+			if fallen.is_empty():
+				for o in fallen_kubbs(k.side):
+					if o != k:
+						fallen.append(o)
+			for i in mini(int(fd.reraise), fallen.size()):
+				var o: Kubb = fallen[randi() % fallen.size()]
+				if o.field:
+					o.raise_at(o.global_position)
+				else:
+					o.go_home()
+				Fx.sparks(self, o.global_position, Color(1, 0.3, 0.3), 14)
+				msg.append(_tl("EN KUBB RESER SIG!", "A KUBB RISES!"))
+		hud.popup(camera.unproject_position(k.global_position + Vector3(0, 0.3, 0)), Cards.title(k.kind) + "!")
+		if not msg.is_empty():
+			hud.flash(" ".join(msg))
+	return [bonus, mult]
+
+
+func _tl(sv: String, en: String) -> String:
+	return sv if Lang.current == "sv" else en
 
 
 func _king_touched_early() -> void:
@@ -425,6 +669,8 @@ func _king_touched_early() -> void:
 	_shake = 1.0
 	_slowmo()
 	Sfx.play("clack", 0.0, 0.5)
+	Fx.burst(self, king.global_position + Vector3(0, 0.2, 0), Color(0.9, 0.05, 0.05), 40, 3.5, 1.4, 0.035, 4.0, 1.5, 1.0)
+	Fx.flash_light(self, king.global_position, Color(1, 0.1, 0.05), 8.0, 10.0, 1.2)
 	if current_by_opp:
 		# motståndaren rörde kungen: du vinner
 		opponent.say("opp_king_death")
@@ -482,7 +728,7 @@ func _physics_process(dt: float) -> void:
 		if k.visible and not k.sleeping and k.linear_velocity.length() > 0.08 and k != current:
 			moving = true
 	var gone := p.y < -2.0 or p.length() > 40.0
-	if (_fly_time > 0.8 and current.is_settled() and not moving) or _fly_time > 7.0 or gone:
+	if (_fly_time > 0.8 and current.is_settled() and not moving and _pending_fx <= 0) or _fly_time > 7.0 or gone:
 		state = State.BUSY
 		_settled = true
 		if current is Kubb:
@@ -512,6 +758,7 @@ func _wait_settled() -> void:
 func _apply_hits(target: String) -> int:
 	var had_field := _standing_at_snapshot(target, true) > 0
 	var valid := 0
+	_felled_valid.clear()
 	var reraised := false
 	for k in kubbs:
 		var was: bool = _fallen_at_snapshot.get(k, false)
@@ -524,6 +771,7 @@ func _apply_hits(target: String) -> int:
 			reraised = true
 		else:
 			valid += 1
+			_felled_valid.append(k)
 	if reraised:
 		hud.flash(Lang.t("field_first"))
 	return valid
@@ -571,7 +819,8 @@ func _evaluate() -> void:
 		king.teleport(_snapshot[king])  # (kungens nåd släppte igenom)
 
 	if newly > 0:
-		_award(newly, false)
+		var fe := _fell_effects()
+		_award(newly, false, fe[0], fe[1])
 	if newly >= 2:
 		opponent.say("double")
 		opponent.flinch()
@@ -594,30 +843,36 @@ func _evaluate() -> void:
 
 
 ## Tänder och kombos för ett kast.
-func _award(n: int, king_win: bool) -> void:
+func _award(n: int, king_win: bool, bonus := 0, xmult := 1.0) -> void:
 	if not Run.active:
 		return
 	var per := 1 + int(Run.mod("teeth_kubb_add"))
-	var t := n * per
+	var t := n * per + bonus
 	var parts: Array[String] = []
 	if n >= 2:
 		var combo := int(3 * (n - 1) * Run.mod("combo_mult", 1.0))
 		t += combo
-		Run.stats.combos += 1
+		Run.note_combo()
 		parts.append(Lang.t("combo") % n)
 	if _last_info.get("grade", "") == "perfect":
 		t += 1 + int(Run.mod("perfect_teeth"))
-		Run.stats.perfect += 1
+		Run.note_perfect()
 	if king_win:
 		t += 5
 		parts.append(Lang.t("king_bonus"))
 	var mult := Run.mod("last_baton_mult", 1.0) if batons_left == 0 else Run.mod("other_baton_mult", 1.0)
-	t = int(t * mult)
+	t = int(t * mult * xmult)
+	if xmult > 1.0:
+		parts.append("x%s" % str(snappedf(xmult, 0.1)))
 	Run.on_kubbs(n)
 	if t > 0:
 		Run.add_teeth(t)
 		hud.teeth_popup("+%d %s %s" % [t, Lang.t("teeth"), " ".join(parts)])
-		Sfx.play("click", -4.0, 2.0)
+		Sfx.play("coin", -6.0)
+	elif t < 0:
+		Run.add_teeth(t)
+		hud.teeth_popup("%d %s" % [t, Lang.t("teeth")])
+		Sfx.play("bad", -6.0, 1.4)
 	_refresh_ui()
 
 
@@ -652,6 +907,7 @@ func _end_player_turn() -> void:
 	thrower.input_enabled = false
 	await get_tree().create_timer(0.8).timeout
 	_ghost.visible = false
+	_line_mark.visible = false
 	# 2. motståndaren kastar in kubbarna du fällde på din planhalva
 	phase = Phase.OPP_TOSS
 	_refresh_ui()
@@ -663,12 +919,22 @@ func _end_player_turn() -> void:
 			if _match_over:
 				return
 	_clear_batons()
-	# 3. motståndarens pinnar
+	# 3. motståndarens pinnar (han kliver fram om dina fältkubbar står kvar)
 	phase = Phase.OPP_THROW
 	_refresh_ui()
 	opponent.say("my_turn")
+	var adv := _advance_line("theirs")
+	if adv > -World.FIELD_L + 0.05:
+		hud.flash(Lang.t("opp_advance"))
+		opponent.say("advance")
+		_line_mark.visible = true
+		_line_mark.global_position = Vector3(0, 0.01, adv)
+		Fx.ring(self, Vector3(0, 0, adv), Color(1.0, 0.35, 0.2), 1.5)
+		await opponent.walk_to_z(clampf(adv - 1.0, OPP_Z, -5.0), 0.9)
 	await get_tree().create_timer(1.0).timeout
-	for i in 6:
+	var opp_n := maxi(1, 6 + int(Run.mod("opp_batons_add")) + _opp_batons_next)
+	_opp_batons_next = 0
+	for i in opp_n:
 		if _match_over:
 			return
 		await _opp_throw()
@@ -676,8 +942,11 @@ func _end_player_turn() -> void:
 			return
 	await get_tree().create_timer(0.6).timeout
 	opponent.walk_to_x(0.0)
-	# 4. du kastar in kubbarna han fällde på hans planhalva
+	opponent.walk_to_z(OPP_Z, 0.9)
+	_line_mark.visible = false
+	# 4. du kastar in kubbarna han fällde på hans planhalva (från baslinjen)
 	phase = Phase.PLAYER_TOSS
+	thrower.throw_z = 0.0
 	var mine_fallen := fallen_kubbs("mine")
 	_clear_batons()
 	thrower.input_enabled = true
@@ -687,6 +956,25 @@ func _end_player_turn() -> void:
 		await _player_toss(k)
 	thrower.input_enabled = true
 	_start_player_turn()
+
+
+## Kastlinjen för den som kastar MOT andra sidan: står fältkubbar kvar på
+## planhalvan `side` (kastarens egen) flyttas linjen fram till den fältkubb
+## som står närmast mittlinjen. Annars baslinjen. Returnerar z.
+func _advance_line(side: String) -> float:
+	var base := 0.0 if side == "mine" else -World.FIELD_L
+	var best := base
+	for k in side_kubbs(side, true):
+		if not k.field:
+			continue
+		var z := k.global_position.z
+		if side == "mine":
+			best = minf(best, z)
+		else:
+			best = maxf(best, z)
+	if side == "mine":
+		return clampf(best, -World.FIELD_L * 0.5 + 0.3, 0.0)
+	return clampf(best, -World.FIELD_L, -World.FIELD_L * 0.5 - 0.3)
 
 
 func _opp_target() -> Kubb:
@@ -710,6 +998,7 @@ func _opp_throw() -> void:
 	var b := Baton.new()
 	b.setup()
 	add_child(b)
+	_trail_mat = PS1.mat(null, Color(0.95, 0.8, 0.6), Vector2.ONE, 1.0)
 	b.body_entered.connect(_on_baton_hit.bind(b))
 	batons.append(b)
 	var from := opponent.hand_pos()
@@ -833,6 +1122,9 @@ func _win_match() -> void:
 	state = State.OVER
 	thrower.cancel_hold()
 	var reward := 8 + Run.night * 2 + int(Run.mod("win_teeth_add")) + maxi(batons_left, 0)
+	reward += mini(5, int(Run.teeth / 5)) * int(Run.mod("interest"))
+	Fx.confetti(self, king.global_position + Vector3(0, 0.3, 0))
+	Sfx.play("sparkle", 0.0, 1.0)
 	Run.add_teeth(reward)
 	var won_all := Run.advance()
 	hud.center(Lang.t("win_title") % reward + "\n" + _summary())
@@ -876,6 +1168,10 @@ func _new_training() -> void:
 	_ghost.visible = false
 	phase = Phase.PLAYER
 	_match_over = false
+	thrower.throw_z = 0.0
+	_line_mark.visible = false
+	for k in kubbs:
+		k.set_kind("")
 	_next_baton()
 	dog.say("start")
 
@@ -892,7 +1188,8 @@ func _process(dt: float) -> void:
 		want = Vector3(0, 1.2, -9.0)
 		_look = _look.lerp(want, clampf(dt * 2.0, 0.0, 1.0))
 	else:
-		cam_pos = Vector3(sx - 0.25, 1.75, 2.1)
+		_cam_z = lerpf(_cam_z, thrower.throw_z, clampf(dt * 2.5, 0.0, 1.0))
+		cam_pos = Vector3(sx - 0.25, 1.75, 2.1 + _cam_z)
 		want = Vector3(sx * 0.4 + thrower.aim * 6.0, 0.15, -8.0)
 		if phase == Phase.OPP_THROW or phase == Phase.OPP_TOSS:
 			want = Vector3(opponent.position.x * 0.6, 0.9, -7.5)
@@ -1047,12 +1344,48 @@ func _run_autotest() -> void:
 	while state == State.FLYING:
 		await get_tree().physics_frame
 	print("TEST på kungen: över=%s run aktiv=%s" % [_match_over, Run.active])
+	# kubbleken och fältkubbsregeln
+	Run.start("krutpinne")
+	Run.cards.assign(["krutkubb", "dominokubb", "askkubb", "tandkubb", "pinnkubb"])
+	_start(Mode.MATCH, true)
+	await _wait_ready()
+	var kinds: Array[String] = []
+	for k in side_kubbs("theirs"):
+		kinds.append(k.kind if k.kind != "" else "-")
+	print("TEST kubbleken på hans baslinje: %s" % ", ".join(kinds))
+	var mid: Kubb = null
+	for k in side_kubbs("theirs"):
+		if absf(k.home.origin.x) < 0.1:
+			mid = k
+	mid.set_kind("krutkubb")
+	var teeth0 := Run.teeth
+	batons_left = 5
+	thrower.stand_x = -0.18
+	thrower.aim = 0.0
+	await get_tree().physics_frame
+	thrower.launch_with(0.6, 2900.0, 0.0)
+	while state == State.FLYING:
+		await get_tree().physics_frame
+	print("TEST krutkubb i mitten: fällda %d, tänder %d -> %d" % [fallen_kubbs("theirs").size(), teeth0, Run.teeth])
+	# en stående fältkubb på min sida: jag får kliva fram
+	var fk: Kubb = side_kubbs("mine")[0]
+	fk.field = true
+	fk.raise_at(Vector3(0.6, 0, -2.6))
+	_start_player_turn()
+	print("TEST kliva fram: kastlinje z %.2f (fältkubb på -2.60)" % thrower.throw_z)
+	var tk: Kubb = side_kubbs("theirs")[0]
+	tk.field = true
+	tk.raise_at(Vector3(-0.5, 0, -5.4))
+	print("TEST hans kastlinje: z %.2f (fältkubb på -5.40)" % _advance_line("theirs"))
+	print("TEST antal kubbar %d, pinnar %d" % [Cards.DEFS.size(), Cards.BATONS.size()])
+	_match_over = true
+	Run.stop()
 	# butik och kort
 	Run.start("vanlig")
 	Run.teeth = 20
-	print("TEST köp %s: %s, tänder kvar %d, pinnar per tur %d" % ["bjorkpinne", Run.buy("bjorkpinne"), Run.teeth, 6 + int(Run.mod("batons_add"))])
-	print("TEST grönt med midsommarstång: före %.2f" % thrower.perfect())
-	Run.buy("midsommarstang")
+	print("TEST köp %s: %s, tänder kvar %d, pinnar per tur %d" % ["bjorkkubb", Run.buy("bjorkkubb"), Run.teeth, 6 + int(Run.mod("batons_add"))])
+	print("TEST grönt med midsommarkubben: före %.2f" % thrower.perfect())
+	Run.buy("stangkubb")
 	print("   efter %.2f" % thrower.perfect())
 	# träning
 	_start(Mode.TRAINING, true)
@@ -1081,7 +1414,7 @@ func _screenshots(prefix: String) -> void:
 	vp.get_texture().get_image().save_png(prefix + "_meny.png")
 	Run.start("vanlig")
 	Run.teeth = 14
-	Run.cards.assign(["krakfjader", "din_tumme"])
+	Run.cards.assign(["krakkubb", "tummkubb", "krutkubb"])
 	menu.open("shop")
 	for i in 5:
 		await get_tree().process_frame
@@ -1097,6 +1430,12 @@ func _screenshots(prefix: String) -> void:
 	for i in 40:
 		await get_tree().process_frame
 	vp.get_texture().get_image().save_png(prefix + "_leffe.png")
+	var bk: Kubb = side_kubbs("theirs")[1]
+	Fx.boom(self, bk.global_position)
+	Fx.zap(self, side_kubbs("theirs")[3].global_position)
+	for i in 4:
+		await get_tree().process_frame
+	vp.get_texture().get_image().save_png(prefix + "_effekt.png")
 	_clear_batons()
 	thrower.input_enabled = false
 	phase = Phase.OPP_THROW

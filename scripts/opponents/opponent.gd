@@ -69,6 +69,14 @@ func swing_back_and_forth() -> void:
 	back.tween_property(self, "_swing", 0.0, 0.6).set_delay(0.2)
 
 
+func walk_to_z(z: float, t := 0.8) -> void:
+	if absf(position.z - z) < 0.02:
+		return
+	var tw := create_tween()
+	tw.tween_property(self, "position:z", z, t).set_trans(Tween.TRANS_SINE)
+	await tw.finished
+
+
 func walk_to_x(x: float, t := 0.6) -> void:
 	var tw := create_tween()
 	tw.tween_property(self, "position:x", x, t).set_trans(Tween.TRANS_SINE)

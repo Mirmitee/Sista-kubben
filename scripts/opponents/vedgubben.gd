@@ -62,6 +62,10 @@ func _init() -> void:
 			"sv": ["...du rörde honom.", "Nej. Nej nej nej. Inte kungen.", "Det där borde du inte ha gjort."],
 			"en": ["...you touched him.", "No. No no no. Not the king.", "You shouldn't have done that."],
 		},
+		"advance": {
+			"sv": ["Dina fältkubbar står kvar. Då kliver jag närmare. Hej.", "Ett steg fram. Jag luktar mossa nu, va?", "Närmare. Alltid närmare."],
+			"en": ["Your field kubbs still stand. So I step closer. Hello.", "One step forward. I smell of moss now, don't I?", "Closer. Always closer."],
+		},
 		"my_turn": {
 			"sv": ["Min tur. Stå still. Det gör ont mindre då.", "Nu kastar jag. Jag har övat sen svartedöden.", "Titta inte. Eller titta. Det spelar ingen roll."],
 			"en": ["My turn. Stand still. It hurts less.", "Now I throw. I've practised since the Black Death.", "Don't look. Or look. It doesn't matter."],

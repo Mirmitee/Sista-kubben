@@ -15,6 +15,10 @@ var side := "theirs"      # planhalvan den står på: "theirs" eller "mine"
 var field := false        # fältkubb (inkastad) eller baslinjekubb
 var in_flight := false
 var touched := false
+var kind := ""            # specialkubb ur kubbleken ("" = vanlig)
+var _seed := 1
+var _mesh: MeshInstance3D
+var _rune: Node3D
 
 
 func setup(king: bool, seed := 1) -> void:
@@ -26,7 +30,9 @@ func setup(king: bool, seed := 1) -> void:
 	center_of_mass = Vector3(0, size.y * 0.18, 0)
 	var tint := Color(1.25, 1.15, 1.05) if king else Color(1.2, 1.15, 1.1)
 	# lite självlysande så de syns i skymningen (som att de fångar månljuset)
-	add_child(PS1.box(size, PS1.mat(PS1.wood(seed), tint, Vector2.ONE, 0.35)))
+	_seed = seed
+	_mesh = PS1.box(size, PS1.mat(PS1.wood(seed), tint, Vector2.ONE, 0.35))
+	add_child(_mesh)
 	var col := CollisionShape3D.new()
 	var bs := BoxShape3D.new()
 	bs.size = size
@@ -106,3 +112,38 @@ func raise_at(p: Vector3) -> void:
 	in_flight = false
 	teleport(Transform3D(Basis(Vector3.UP, randf() * TAU), Vector3(p.x, height() * 0.5, p.z)))
 	field = true
+
+
+## Gör kubben till en specialkubb ur kubbleken (eller vanlig med "").
+## Färgad ved, ett lysande runband och en topp i samma färg.
+func set_kind(id: String, mass_mult := 1.0) -> void:
+	kind = id
+	if is_king:
+		return
+	var d: Dictionary = Cards.DEFS.get(id, {})
+	var tint: Color = d.get("col", Color(1.2, 1.15, 1.1))
+	_mesh.material_override = PS1.mat(PS1.wood(_seed), tint, Vector2.ONE, 0.35 if id == "" else 0.5)
+	mass = 0.3 * float(d.get("mass", 1.0)) * mass_mult
+	if _rune:
+		_rune.queue_free()
+		_rune = null
+	if id == "":
+		return
+	_rune = Node3D.new()
+	add_child(_rune)
+	var cursed: bool = d.get("cursed", false)
+	var glow := Color(0.9, 0.2, 1.0) if cursed else (tint * 0.8).clamp(Color(0.25, 0.25, 0.25), Color(1, 1, 1))
+	var rm := PS1.mat(null, glow, Vector2.ONE, 0.95)
+	var band := PS1.box(Vector3(SIZE.x * 1.06, 0.016, SIZE.z * 1.06), rm)
+	band.position.y = 0.025
+	_rune.add_child(band)
+	# märke ovanpå som visar vad kubben gör: träff = spets, fällning = platta
+	var cap: MeshInstance3D
+	if d.has("hit"):
+		cap = PS1.box(Vector3(0.025, 0.03, 0.025), rm)
+		cap.position.y = SIZE.y * 0.5 + 0.015
+		cap.rotation = Vector3(0.6, 0.78, 0)
+	else:
+		cap = PS1.box(Vector3(0.05, 0.008, 0.05), rm)
+		cap.position.y = SIZE.y * 0.5 + 0.004
+	_rune.add_child(cap)

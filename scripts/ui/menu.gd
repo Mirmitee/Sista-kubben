@@ -18,6 +18,8 @@ var _theme: Theme
 var _offers: Array[String] = []
 var _curse := ""
 var _reroll := 2
+var _baton_page := 0
+const BATONS_PER_PAGE := 4
 
 
 func _ready() -> void:
@@ -284,6 +286,26 @@ func _card_panel(id: String, parent: Container, price_text: String, action_text:
 	var v := VBoxContainer.new()
 	v.add_theme_constant_override("separation", 1)
 	pc.add_child(v)
+	# färgprov: kubbens/pinnens ved och typ av effekt
+	var sw := HBoxContainer.new()
+	sw.add_theme_constant_override("separation", 2)
+	var cr := ColorRect.new()
+	cr.color = (Cards.color(id) * 0.6).clamp(Color(0.05, 0.05, 0.05), Color(1, 1, 1))
+	cr.custom_minimum_size = Vector2(10, 8)
+	sw.add_child(cr)
+	var tag := Label.new()
+	tag.add_theme_font_size_override("font_size", 6)
+	if d.has("hit") and d.has("fell"):
+		tag.text = _t("TRÄFF+FÄLLD", "HIT+FELL")
+	elif d.has("hit"):
+		tag.text = _t("TRÄFF", "HIT")
+	elif d.has("fell"):
+		tag.text = _t("FÄLLD", "FELLED")
+	elif Cards.DEFS.has(id):
+		tag.text = _t("PASSIV", "PASSIVE")
+	tag.add_theme_color_override("font_color", Color(0.7, 0.6, 0.5))
+	sw.add_child(tag)
+	v.add_child(sw)
 	var t := Label.new()
 	t.text = Cards.title(id)
 	t.add_theme_color_override("font_color", Color(1.0, 0.5, 0.9) if cursed else Color(1.0, 0.85, 0.5))
@@ -311,33 +333,62 @@ func _card_panel(id: String, parent: Container, price_text: String, action_text:
 
 func _page_baton() -> void:
 	_title(_t("VÄLJ PINNE", "CHOOSE BATON"), 12)
+	var ids: Array = Cards.BATONS.keys()
+	var pages := int(ceil(ids.size() / float(BATONS_PER_PAGE)))
+	_baton_page = clampi(_baton_page, 0, pages - 1)
+	var got := 0
+	for id in ids:
+		if Run.is_unlocked_baton(id):
+			got += 1
+	_text(_t("Upplåsta %d/%d   Sida %d/%d", "Unlocked %d/%d   Page %d/%d") % [got, ids.size(), _baton_page + 1, pages], Color(1.0, 0.9, 0.6))
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 3)
 	_box.add_child(row)
-	for id in Cards.BATONS:
-		if id in Run.unlocked_batons:
+	for n in range(_baton_page * BATONS_PER_PAGE, mini(ids.size(), (_baton_page + 1) * BATONS_PER_PAGE)):
+		var id: String = ids[n]
+		if Run.is_unlocked_baton(id):
 			_card_panel(id, row, "", _t("VÄLJ", "PICK"), func(): run_start.emit(id))
 		else:
 			var pc := PanelContainer.new()
 			pc.custom_minimum_size = Vector2(70, 92)
 			var l := Label.new()
-			l.text = _t("LÅST\n???", "LOCKED\n???")
+			l.text = _t("LÅST\n???\n\n", "LOCKED\n???\n\n") + Cards.unlock_text(id)
+			l.autowrap_mode = TextServer.AUTOWRAP_WORD
+			l.custom_minimum_size = Vector2(64, 0)
 			l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 			pc.add_child(l)
 			row.add_child(pc)
-	_text(_t("Fler pinnar låses upp när du vinner matcher och fäller kubbar.", "More batons unlock as you win matches and fell kubbs."))
+	var nav := HBoxContainer.new()
+	nav.add_theme_constant_override("separation", 4)
+	_box.add_child(nav)
+	var prev := Button.new()
+	prev.text = _t("< FÖRRA", "< PREV")
+	prev.disabled = _baton_page == 0
+	prev.pressed.connect(func():
+		_baton_page -= 1
+		Sfx.play("click", -6.0)
+		show_page("baton"))
+	nav.add_child(prev)
+	var nxt := Button.new()
+	nxt.text = _t("NÄSTA >", "NEXT >")
+	nxt.disabled = _baton_page >= pages - 1
+	nxt.pressed.connect(func():
+		_baton_page += 1
+		Sfx.play("click", -6.0)
+		show_page("baton"))
+	nav.add_child(nxt)
 	_button(_t("TILLBAKA", "BACK"), func(): show_page("rules"))
 
 
 func _page_shop() -> void:
 	_title(_t("KRÅKMORS BOD", "CROW MOTHER'S SHOP"), 12)
-	_text(_t("Tänder %d   Kort %d/%d   Nästa: natt %d, %s", "Teeth %d   Cards %d/%d   Next: night %d, %s") % [
+	_text(_t("Tänder %d   Kubbleken %d/%d   Nästa: natt %d, %s", "Teeth %d   Kubb deck %d/%d   Next: night %d, %s") % [
 		Run.teeth, Run.cards.size(), Run.MAX_CARDS, Run.night, Run.opponent_id().replace("_", "-").capitalize()], Color(1.0, 0.9, 0.6))
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 3)
 	_box.add_child(row)
 	for id in _offers:
-		var price: int = Cards.DEFS[id].price
+		var price := Run.price(id)
 		var ok := Run.teeth >= price and Run.cards.size() < Run.MAX_CARDS
 		_card_panel(id, row, _t("%d tänder", "%d teeth") % price, _t("KÖP", "BUY"), func():
 			if Run.buy(id):
@@ -354,7 +405,7 @@ func _page_shop() -> void:
 	var row2 := HBoxContainer.new()
 	_box.add_child(row2)
 	var rr := Button.new()
-	rr.text = _t("NYA KORT (%d tänder)", "REROLL (%d teeth)") % _reroll
+	rr.text = _t("NYA KUBBAR (%d tänder)", "REROLL (%d teeth)") % _reroll
 	rr.disabled = Run.teeth < _reroll
 	rr.pressed.connect(func():
 		Run.teeth -= _reroll
@@ -375,7 +426,8 @@ func _page_shop() -> void:
 			Run.sell(id)
 			show_page("shop"))
 		row3.add_child(sb)
-	_text(_t("Kråkmor: \"Förbannade saker är gratis. Det kostar senare.\"", "Crow Mother: \"Cursed things are free. They cost later.\""), Color(0.7, 0.5, 0.8))
+	_text(_t("Din kubblek står på hans baslinje. Träffa dem för effekterna.", "Your kubb deck stands on his baseline. Hit them for the effects."), Color(0.8, 0.7, 0.6))
+	_text(_t("Kråkmor: \"Förbannade kubbar är gratis. Det kostar senare.\"", "Crow Mother: \"Cursed kubbs are free. They cost later.\""), Color(0.7, 0.5, 0.8))
 	_button(_t("FORTSÄTT TILL NÄSTA MATCH", "ON TO THE NEXT MATCH"), func(): shop_done.emit())
 
 

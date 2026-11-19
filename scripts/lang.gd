@@ -23,6 +23,8 @@ const UI := {
 	"bell": {"sv": "KYRKKLOCKAN SLÅR. EN KUBB FALLER.", "en": "THE CHURCH BELL TOLLS. A KUBB FALLS."},
 	"king_mercy": {"sv": "KUNGENS NÅD! DEN HÄR GÅNGEN.", "en": "KING'S MERCY! THIS TIME."},
 	"field_first": {"sv": "FÄLTKUBBAR FÖRST! BASKUBBEN RESES.", "en": "FIELD KUBBS FIRST! BASE KUBB RAISED."},
+	"advance": {"sv": "FÄLTKUBBAR STÅR KVAR! DU KLIVER FRAM TILL LINJEN.", "en": "FIELD KUBBS STILL STANDING! YOU STEP UP TO THE LINE."},
+	"opp_advance": {"sv": "DU MISSADE FÄLTKUBBARNA. HAN KLIVER FRAM.", "en": "YOU MISSED THE FIELD KUBBS. HE STEPS UP."},
 	"combo": {"sv": "KOMBO x%d", "en": "COMBO x%d"},
 	"king_bonus": {"sv": "KUNGEN!", "en": "THE KING!"},
 	"teeth": {"sv": "TÄNDER", "en": "TEETH"},

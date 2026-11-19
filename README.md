@@ -2,7 +2,7 @@
 
 Läskig (men mest rolig) roguelike-kubb i PS1-stil. Haunted midsommar: en äng i skymningen under en blodröd måne, och Vedgubben väntar på andra sidan planen.
 
-Det här är **kastprototypen** (v0.2): huvudmeny, en runda mot Vedgubben med riktiga eller förenklade regler, och ett träningsläge där du kastar på Gösta, en ful hund som ingen äger. Allt annat (kort, tänder, akter, fler motståndare, motståndarens kast) byggs ovanpå.
+Version **v0.7**: runs över tre nätter med riktiga kubbregler, en kubblek med 50 specialkubbar, 30 pinnar att låsa upp och ett träningsläge där du kastar på Gösta, en ful hund som ingen äger.
 
 ## Kör spelet
 
@@ -13,10 +13,12 @@ Det här är **kastprototypen** (v0.2): huvudmeny, en runda mot Vedgubben med ri
 ## En run
 
 - **Tre nätter, två matcher per natt:** Vedgubben och sen bossen Tjock-Leffe, som äter upp en av dina pinnar varje tur. Natten gör motståndarna bättre. Förlorar du är hela runnen slut.
-- **Riktiga kubbregler:** du kastar dina pinnar, motståndaren kastar in kubbarna du fällde på din planhalva (fältkubbar) och kastar sen sina pinnar på dig. Fältkubbar måste fällas först. Kubbar han fäller kastar du in på hans planhalva (ett klick för kraft). När alla kubbar på en planhalva ligger får man kasta på kungen. Rör man kungen för tidigt dör man, och gör han det vinner du.
+- **Riktiga kubbregler:** du kastar dina pinnar, motståndaren kastar in kubbarna du fällde på din planhalva (fältkubbar) och kastar sen sina pinnar på dig. Fältkubbar måste fällas först. Står fältkubbar kvar efter en tur får den andra kliva fram och kasta från linjen genom den fältkubb som står närmast mitten (röd linje på marken). Motståndaren går alltid på fältkubbarna först. Kubbar han fäller kastar du in på hans planhalva (ett klick för kraft). När alla kubbar på en planhalva ligger får man kasta på kungen. Rör man kungen för tidigt dör man, och gör han det vinner du.
 - **Tänder:** för fällda kubbar, kombos (flera kubbar på ett kast), perfekta kast, kungen och vunna matcher.
-- **Kråkmors bod** mellan matcherna: tre kort att köpa, ett gratis förbannat kort, nya kort för tänder, sälj kort. Max 5 kort.
-- **Upplåsningar mellan runs:** Järnpinnen, Björkpinnen och Benpinnen samt nya kort, när du vinner matcher, når natt 2, besegrar Leffe och fäller många kubbar.
+- **Kubbleken (istället för kort):** upp till 5 specialkubbar. Varje match ställs de upp på motståndarens baslinje, och när du träffar eller fäller dem händer saker: Krutkubben exploderar, Dominokubben drar med sig grannarna, Åskkubben kallar på blixten, Tandkubben är full av tänder, Spökkubben flyr. Vissa har passiva effekter (fler pinnar, bredare grönt). Kubbarna följer med när de kastas in som fältkubbar, så samma kubb kan ge effekt flera gånger. 50 kubbar, varav 10 förbannade. Färg och runband visar vilken kubb det är; en spets ovanpå betyder träffeffekt, en platta betyder fällningseffekt.
+- **Kråkmors bod** mellan matcherna: tre kubbar att köpa, en gratis förbannad kubb, nya kubbar för tänder, sälj kubbar.
+- **30 pinnar** med egen vikt, längd, färg, spår, studs, svävning och specialeffekter (Krutpinnen, Åskpinnen, Fjäderpinnen, Leffes revben ...). De flesta låses upp mellan runs genom att vinna matcher, fälla kubbar, göra perfekta kast och kombos, tjäna tänder och besegra Leffe. Låsta pinnar visar vad som krävs.
+- **Effekter:** träflisor vid träff, damm när pinnar och kubbar slår i marken, gnistor vid perfekta kast, explosioner, blixtar, konfetti när du vinner och ett blodrött utbrott när någon rör kungen.
 
 ## Så kastar du
 

@@ -49,6 +49,8 @@ const ACC_AIM_ERR := 0.05  # rad sidofel vid markören längst ut
 const PERFECT := 0.18      # |markör| under detta = perfekt
 
 var stand_x := 0.0
+## kastlinjens z: 0 = baslinjen, negativt = framflyttad till en stående fältkubb
+var throw_z := 0.0
 var aim := 0.0             # positiv = höger
 var theta := 0.0           # armvinkel, 0 = rakt ner, positiv = framåt
 var holding := false
@@ -331,7 +333,7 @@ func forward() -> Vector3:
 
 
 func shoulder() -> Vector3:
-	return Vector3(stand_x, 0, 0) + SHOULDER
+	return Vector3(stand_x, 0, throw_z) + SHOULDER
 
 
 func _update_pose() -> void:
@@ -344,11 +346,11 @@ func _update_pose() -> void:
 	_arm.global_transform = Transform3D(b, sh + dir * ARM_LEN * 0.5)
 	_hand.global_transform = Transform3D(b, hand)
 	if baton:
-		var off := 0.06 if payload_kubb else Baton.LENGTH * 0.5 - 0.03
+		var off: float = 0.06 if payload_kubb else (baton.length if baton is Baton else Baton.LENGTH) * 0.5 - 0.03
 		baton.global_transform = Transform3D(b, hand + dir * off)
 	_aim_line.visible = baton != null and Run.mod("no_aim_line") == 0.0
 	var length := 8.6 if Settings.aim_assist else 3.0
-	var start := Vector3(stand_x + SHOULDER.x, 0.012, 0.0)
+	var start := Vector3(stand_x + SHOULDER.x, 0.012, throw_z)
 	_aim_line.global_transform = Transform3D(Basis(Vector3.UP, -aim).scaled(Vector3(1, 1, length)), start + f * length * 0.5)
 	# sikthjälp: var pinnen landar med den kraft du låst
 	_land_mark.visible = baton != null and Settings.aim_assist and meter_phase == 2 and not payload_kubb \
