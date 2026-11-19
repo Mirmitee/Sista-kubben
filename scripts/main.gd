@@ -68,6 +68,7 @@ var _pending_fx := 0
 var _felled_valid: Array[Kubb] = []
 var _line_mark: MeshInstance3D
 var _double_next := false
+var _touch_t := 0.0
 var _streak := 0
 var _opp_left := 0
 var _opp_total := 0
@@ -181,6 +182,12 @@ func _spawn_kubbs() -> void:
 
 func _reset_kubbs() -> void:
 	for k in kubbs:
+		if k.side == "gone":
+			var show := mode != Mode.TRAINING or k.home.origin.z > -1.0
+			k.visible = show
+			k.collision_layer = 1 if show else 0
+			k.collision_mask = 1 if show else 0
+			k.freeze = not show
 		k.side = "theirs" if k.home.origin.z < -1.0 else "mine"
 		k.field = false
 		k.in_flight = false
@@ -484,6 +491,7 @@ func _begin_flight(b: RigidBody3D) -> void:
 	_settled = false
 	_triggered.clear()
 	_baton_hit_done = false
+	_touch_t = 0.0
 	state = State.FLYING
 
 
@@ -947,7 +955,13 @@ func _physics_process(dt: float) -> void:
 		if k.visible and not k.sleeping and k.linear_velocity.length() > 0.08 and k != current:
 			moving = true
 	var gone := p.y < -2.0 or p.length() > 40.0
-	if (_fly_time > 0.8 and current.is_settled() and not moving and _pending_fx <= 0) or _fly_time > 7.0 or gone:
+	if current.touched:
+		_touch_t += dt
+	else:
+		_touch_t = 0.0
+	# vänta aldrig länge på något som bara glider eller gungar
+	var slow_enough := _touch_t > 2.2 and current.linear_velocity.length() < 0.8
+	if (_fly_time > 0.8 and current.is_settled() and not moving and _pending_fx <= 0) or slow_enough or _touch_t > 3.5 or _fly_time > 6.0 or gone:
 		state = State.BUSY
 		_settled = true
 		if current is Kubb:
@@ -1127,6 +1141,29 @@ func _after_throw() -> void:
 
 # ---------------------------------------------------------------- turer
 
+func _simple() -> bool:
+	return Settings.rules == "simple"
+
+
+## Förenklade regler: fällda kubbar flyger iväg ut i mörkret och är borta.
+func _throw_away(list: Array[Kubb]) -> void:
+	for k in list:
+		if _match_over:
+			return
+		Fx.dust(self, Vector3(k.global_position.x, 0.0, k.global_position.z), 1.0)
+		Fx.sparks(self, k.global_position, Color(0.9, 0.3, 0.2), 8)
+		Sfx.play("whoosh", -6.0, 1.3)
+		var from := k.global_position
+		var to := from + Vector3(randf_range(-1, 1) * 3.0, 2.5, -4.0 if k.side == "theirs" else 4.0)
+		k.hold()
+		var tw := create_tween()
+		tw.tween_property(k, "global_position", to, 0.35)
+		tw.parallel().tween_property(k, "rotation", Vector3(randf() * 6, randf() * 6, randf() * 6), 0.35)
+		await tw.finished
+		k.remove()
+	_refresh_ui()
+
+
 func _end_player_turn() -> void:
 	state = State.BUSY
 	thrower.input_enabled = false
@@ -1137,7 +1174,10 @@ func _end_player_turn() -> void:
 	phase = Phase.OPP_TOSS
 	_refresh_ui()
 	var fallen := fallen_kubbs("theirs")
-	if not fallen.is_empty():
+	if _simple():
+		# förenklat: fällda kubbar kastas bort, inget fram och tillbaka
+		await _throw_away(fallen)
+	elif not fallen.is_empty():
 		opponent.say("toss")
 		for k in fallen:
 			await _opp_toss(k)
@@ -1179,6 +1219,9 @@ func _end_player_turn() -> void:
 	var mine_fallen := fallen_kubbs("mine")
 	_clear_batons()
 	thrower.input_enabled = true
+	if _simple():
+		await _throw_away(mine_fallen)
+		mine_fallen.clear()
 	for k in mine_fallen:
 		if _match_over:
 			return
@@ -1585,6 +1628,31 @@ func _run_autotest() -> void:
 	while state == State.FLYING:
 		await get_tree().physics_frame
 	print("TEST på kungen: över=%s run aktiv=%s" % [_match_over, Run.active])
+	# förenklade regler: fällda kubbar kastas bort
+	var old_rules := Settings.rules
+	Settings.rules = "simple"
+	Run.start("vanlig")
+	_start(Mode.MATCH, true)
+	await _wait_ready()
+	batons_left = 1
+	thrower.stand_x = -0.18
+	thrower.aim = 0.0
+	await get_tree().physics_frame
+	var ft := Time.get_ticks_msec()
+	thrower.launch_with(0.6, 2900.0, 0.0)
+	while state == State.FLYING:
+		await get_tree().physics_frame
+	print("TEST pinnen stannade efter %.1f s speltid" % _fly_time)
+	var t1 := Time.get_ticks_msec()
+	while (phase != Phase.PLAYER or state != State.READY) and Time.get_ticks_msec() - t1 < 90000:
+		await get_tree().physics_frame
+		if _match_over:
+			break
+	print("   fas %d tillstånd %d över %s pinnar %d" % [phase, state, _match_over, batons_left])
+	var gone := kubbs.filter(func(k): return k.side == "gone").size()
+	print("TEST förenklat: borta %d, hans stående %d, mina stående %d, fältkubbar %d" % [gone, side_kubbs("theirs", true).size(), side_kubbs("mine", true).size(), _count_field("mine") + _count_field("theirs")])
+	Settings.rules = old_rules
+	_match_over = true
 	# kubbleken och fältkubbsregeln
 	Run.start("krutpinne")
 	Run.cards.assign(["krutkubb", "dominokubb", "askkubb", "tandkubb", "pinnkubb"])

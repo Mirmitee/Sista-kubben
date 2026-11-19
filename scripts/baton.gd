@@ -77,7 +77,19 @@ func launch(v: Vector3, w: Vector3) -> void:
 	release_pos = global_position
 
 
+var touch_time := 0.0
+
+
 func _physics_process(dt: float) -> void:
+	if touched:
+		# på marken: bromsa in snabbt så att den inte glider omkring i evigheter
+		touch_time += dt
+		if touch_time > 0.35:
+			linear_damp = 2.5
+			angular_damp = 3.5
+		if touch_time > 1.2 and linear_velocity.length() < 0.6:
+			linear_velocity *= 0.85
+			angular_velocity *= 0.85
 	if in_flight and not touched:
 		air_time += dt
 		yaw_accum += absf(angular_velocity.y) * dt

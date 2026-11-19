@@ -228,7 +228,7 @@ func _page_rules() -> void:
 	_button(_t("FÖRENKLAD", "SIMPLIFIED"), func():
 		Settings.set_value("rules", "simple")
 		show_page("baton"))
-	_text(_t("  8 pinnar per tur. Samma död.", "  8 batons per turn. Same death."))
+	_text(_t("  8 pinnar per tur. Fällda kubbar kastas bort, inget inkast. Samma död.", "  8 batons per turn. Felled kubbs are thrown away, no tossing back. Same death."))
 	_button(_t("TILLBAKA", "BACK"), func(): show_page("pause" if paused_menu else "title"))
 
 

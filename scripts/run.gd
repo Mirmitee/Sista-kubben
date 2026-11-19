@@ -34,7 +34,7 @@ var cards_drawn := 0
 var fate_deck: Array[String] = []
 var fate_pile: Array[String] = []
 var fate_points := 0
-const FATE_COST := 3      # fällda kubbar per ödesdragning
+const FATE_COST := 1      # ett ödeskort för varje fälld kubb
 
 # meta
 var unlocked_cards: Array[String] = []

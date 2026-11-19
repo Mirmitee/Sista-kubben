@@ -104,6 +104,14 @@ func launch(v: Vector3, w: Vector3) -> void:
 	in_flight = true
 
 
+## Förenklade regler: kubben är borta resten av matchen.
+func remove() -> void:
+	hold()
+	visible = false
+	side = "gone"
+	field = false
+
+
 func is_settled() -> bool:
 	return touched and linear_velocity.length() < 0.12 and angular_velocity.length() < 0.6
 
