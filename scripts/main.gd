@@ -213,6 +213,7 @@ func _new_round() -> void:
 	stats = {"throws": 0, "hits": 0, "heli": 0, "longest": 0.0}
 	dog.hits = 0
 	hud.center("")
+	hud.clear_death()
 	state = State.READY
 	_ghost.visible = false
 	_next_baton()
@@ -272,6 +273,10 @@ func _on_dropped(b: Baton) -> void:
 func _on_baton_hit(body: Node, b: Baton) -> void:
 	if b != current:
 		return
+	if body is Kubb and body.is_king and mode == Mode.MATCH and state == State.FLYING \
+			and _fallen_before_throw() < their_kubbs.size():
+		_die()
+		return
 	if body is Kubb:
 		Sfx.play("clack", 0.0, 1.0 if not body.is_king else 0.7)
 		if not _hit_this_throw:
@@ -288,6 +293,21 @@ func _on_baton_hit(body: Node, b: Baton) -> void:
 			hud.popup(camera.unproject_position(b.global_position), "VOFF!")
 	else:
 		Sfx.play("thud", linear_to_db(clampf(b.linear_velocity.length() / 8.0, 0.1, 1.0)))
+
+
+## Kungen får inte röras förrän alla baskubbar ligger. Gör du det dör du.
+func _die() -> void:
+	state = State.OVER
+	current = null
+	stats.deaths = stats.get("deaths", 0) + 1
+	opponent.flinch()
+	opponent.say("king_death")
+	Sfx.play("clack", 0.0, 0.5)
+	Sfx.play("bad", 0.0, 0.5)
+	_shake = 1.0
+	_slowmo()
+	hud.death(Lang.t("death_title"), Lang.pick("death_sub") + "\n\n" + Lang.t("death_restart"))
+	_refresh_ui()
 
 
 func _slowmo() -> void:
@@ -586,6 +606,7 @@ func _run_autotest() -> void:
 			[0.55, 3000.0, 0.0, 0.0, 1.82, "höger kubb"],
 			[1.9, 3000.0, 0.0, 0.0, 0.0, "mot månen"],
 			[0.6, 9000.0, 0.0, 0.0, 0.0, "maxfart"],
+			[0.6, 1250.0, 0.0, 0.0, -0.18, "på kungen (ska dö)"],
 		]
 	for c in cases:
 		while state == State.FLYING:
@@ -602,6 +623,8 @@ func _run_autotest() -> void:
 		await get_tree().physics_frame
 		while state == State.FLYING:
 			await get_tree().physics_frame
+		if state == State.OVER and stats.get("deaths", 0) > 0:
+			print("   DOG av kungen")
 		print("   slut %s heli=%s yaw=%.2f luft=%.2fs" % [str(b.global_position.snapped(Vector3.ONE * 0.01)), b.helicopter, b.yaw_accum, b.air_time])
 	# mätarläget
 	Settings.throw_mode = "meter"

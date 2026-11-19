@@ -19,7 +19,7 @@ var first_hit: Node = null
 
 
 func setup() -> void:
-	mass = 0.32
+	mass = 0.42
 	add_child(PS1.cylinder(RADIUS, LENGTH, PS1.mat(PS1.wood(5, Color(0.70, 0.55, 0.38)), Color.WHITE, Vector2(1, 2))))
 	var band := PS1.cylinder(RADIUS * 1.08, 0.04, PS1.mat(null, Color(0.55, 0.06, 0.05)))
 	band.position.y = LENGTH * 0.5 - 0.03

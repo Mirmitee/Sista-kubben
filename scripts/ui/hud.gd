@@ -26,6 +26,8 @@ var _meter_label: Label
 var _acc_root: Control
 var _acc_cursor: ColorRect
 var _fade: ColorRect
+var _blood: ColorRect
+var _death: Label
 var _speech_tween: Tween
 var _peak := 0.0
 var _meter_hold := 0.0
@@ -58,7 +60,7 @@ func _ready() -> void:
 	_flash = _label(14, Color(1.0, 0.85, 0.2), Vector2(0, 70), Vector2(384, 20))
 	_flash.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	var ver := _label(8, Color(0.8, 0.15, 0.1), Vector2(300, 277))
-	ver.text = "SISTA KUBBEN v0.3"
+	ver.text = "SISTA KUBBEN v0.4"
 
 	# golf-kraftmätare: stapel med fyllning, söt punkt och toppmarkering
 	_meter_root = Control.new()
@@ -75,8 +77,8 @@ func _ready() -> void:
 	_meter_root.add_child(_meter_fill)
 	var sweet := ColorRect.new()
 	var sx := 1.0 + 120.0 * ThrowController.SWEET_SPEED / ThrowController.MAX_SPEED
-	sweet.position = Vector2(sx - 6, 0)
-	sweet.size = Vector2(12, 12)
+	sweet.position = Vector2(sx - 8, 0)
+	sweet.size = Vector2(16, 12)
 	sweet.color = Color(0.3, 0.8, 0.3, 0.45)
 	_meter_root.add_child(sweet)
 	_meter_peak = ColorRect.new()
@@ -90,7 +92,7 @@ func _ready() -> void:
 	_acc_root = Control.new()
 	_acc_root.position = Vector2(254, 214)
 	_play_root.add_child(_acc_root)
-	for seg in [[0.0, 1.0, Color(0.55, 0.08, 0.05)], [0.075, 0.925, Color(0.75, 0.55, 0.15)], [0.3, 0.7, Color(0.6, 0.65, 0.2)], [0.44, 0.56, Color(0.25, 0.8, 0.3)]]:
+	for seg in [[0.0, 1.0, Color(0.55, 0.08, 0.05)], [0.075, 0.925, Color(0.75, 0.55, 0.15)], [0.3, 0.7, Color(0.6, 0.65, 0.2)], [0.41, 0.59, Color(0.25, 0.8, 0.3)]]:
 		var r := ColorRect.new()
 		r.position = Vector2(1 + 120.0 * seg[0], 1)
 		r.size = Vector2(120.0 * (seg[1] - seg[0]), 6)
@@ -103,6 +105,23 @@ func _ready() -> void:
 	_acc_root.add_child(_acc_cursor)
 	_acc_root.visible = false
 
+	_blood = ColorRect.new()
+	_blood.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_blood.color = Color(0.45, 0.0, 0.02, 0.0)
+	_blood.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_blood)
+	_death = Label.new()
+	var dls := LabelSettings.new()
+	dls.font_size = 24
+	dls.font_color = Color(1.0, 0.85, 0.8)
+	dls.shadow_color = Color(0, 0, 0, 1)
+	dls.shadow_offset = Vector2(2, 2)
+	_death.label_settings = dls
+	_death.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_death.position = Vector2(0, 80)
+	_death.size = Vector2(384, 130)
+	_death.modulate.a = 0.0
+	add_child(_death)
 	_fade = ColorRect.new()
 	_fade.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_fade.color = Color(0, 0, 0, 1)
@@ -178,7 +197,7 @@ func update_meter(v: float, holding: bool, angle_deg: float) -> void:
 	_meter_peak.position.x = 1.0 + 120.0 * _peak
 	var sweet := ThrowController.SWEET_SPEED / ThrowController.MAX_SPEED
 	var d := absf((v if holding else _peak) - sweet)
-	_meter_fill.color = Color(0.3, 0.85, 0.3) if d < 0.05 else (Color(0.9, 0.7, 0.2) if d < 0.12 else Color(0.85, 0.2, 0.1))
+	_meter_fill.color = Color(0.3, 0.85, 0.3) if d < 0.07 else (Color(0.9, 0.7, 0.2) if d < 0.14 else Color(0.85, 0.2, 0.1))
 
 
 ## Mätarläget: fas 1 = kraft fylls, fas 2 = markören sveper.
@@ -204,7 +223,7 @@ func update_timing(phase: int, live: float, locked: float, cursor: float) -> voi
 	_meter_peak.position.x = 1.0 + 120.0 * _peak
 	var sweet := ThrowController.SWEET_SPEED / ThrowController.MAX_SPEED
 	var d := absf(_peak - sweet)
-	_meter_fill.color = Color(0.3, 0.85, 0.3) if d < 0.05 else (Color(0.9, 0.7, 0.2) if d < 0.12 else Color(0.85, 0.2, 0.1))
+	_meter_fill.color = Color(0.3, 0.85, 0.3) if d < 0.07 else (Color(0.9, 0.7, 0.2) if d < 0.14 else Color(0.85, 0.2, 0.1))
 
 
 func show_throw(v: float) -> void:
@@ -241,3 +260,16 @@ func popup(at: Vector2, text: String) -> void:
 	tw.tween_property(l, "position:y", l.position.y - 24, 0.9)
 	tw.tween_property(l, "modulate:a", 0.0, 0.9)
 	tw.chain().tween_callback(l.queue_free)
+
+
+## Du träffade kungen. Skärmen blöder långsamt rött, inga hoppskräck.
+func death(title: String, sub: String) -> void:
+	_death.text = title + "\n\n" + sub
+	var tw := create_tween().set_parallel(true)
+	tw.tween_property(_blood, "color:a", 0.65, 1.6)
+	tw.tween_property(_death, "modulate:a", 1.0, 1.2).set_delay(0.8)
+
+
+func clear_death() -> void:
+	_blood.color.a = 0.0
+	_death.modulate.a = 0.0

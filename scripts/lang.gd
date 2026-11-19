@@ -18,6 +18,8 @@ const UI := {
 	"last": {"sv": "SENASTE: %.1f m/s, %d°, %.1f m", "en": "LAST: %.1f m/s, %d°, %.1f m"},
 	"hint_meter1": {"sv": "Sikta med musen. Klicka (eller mellanslag) tre gånger:", "en": "Aim with the mouse. Click (or space) three times:"},
 	"hint_meter2": {"sv": "1 ta sats, 2 lås kraften i gröna, 3 släpp mitt i.", "en": "1 wind up, 2 lock power in the green, 3 release dead centre."},
+	"death_title": {"sv": "DU DOG.", "en": "YOU DIED."},
+	"death_restart": {"sv": "R = FÖRSÖK IGEN    ESC = MENY", "en": "R = TRY AGAIN    ESC = MENU"},
 	"grade_perfect": {"sv": "PERFEKT!", "en": "PERFECT!"},
 	"grade_good": {"sv": "BRA", "en": "GOOD"},
 	"grade_off": {"sv": "SNETT", "en": "WONKY"},
@@ -32,6 +34,19 @@ const UI := {
 	"king_early": {"sv": "DU FÄLLDE KUNGEN FÖR TIDIGT.\nDU FÖRLORAR.\nR = FÖRSÖK IGEN", "en": "YOU FELLED THE KING TOO EARLY.\nYOU LOSE.\nR = TRY AGAIN"},
 	"king_win": {"sv": "KUNGEN ÄR FÄLLD. DU VANN.\n...den här gången.\nR = NY RUNDA", "en": "THE KING HAS FALLEN. YOU WIN.\n...this time.\nR = NEW ROUND"},
 }
+
+
+const POOLS := {
+	"death_sub": {
+		"sv": ["Du rörde kungen. Man rör inte kungen.", "Kungen tittade på dig. Sen var du borta.", "Dödsorsak: kubb.", "Din familj får en pinne och ett brev.", "Ängen tackar för din kropp. Den blir fin gödsel."],
+		"en": ["You touched the king. One does not touch the king.", "The king looked at you. Then you were gone.", "Cause of death: kubb.", "Your family will receive a baton and a letter.", "The meadow thanks you for your body. It makes fine compost."],
+	},
+}
+
+
+func pick(key: String) -> String:
+	var arr: Array = POOLS.get(key, {}).get(current, [key])
+	return arr[randi() % arr.size()]
 
 
 func t(key: String) -> String:

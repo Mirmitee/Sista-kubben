@@ -41,11 +41,11 @@ const PAD_SCALE := 0.45    # gamepad-spakar är snabbare än en mus
 ##           över precisionsmätaren,
 ## tryck 3 = släpp. Mitt i det gröna = rakt. Långt ut = snett, och
 ##           längst ut tappar du greppet och det blir helikopter.
-const METER_TIME := 1.0    # sekunder från tom till full kraft
-const ACC_TIME := 0.6      # sekunder för markören att svepa över
+const METER_TIME := 1.25   # sekunder från tom till full kraft
+const ACC_TIME := 0.8      # sekunder för markören att svepa över
 const METER_ANGLE := 0.62  # kastvinkel i mätarläget (~35°)
-const ACC_AIM_ERR := 0.07  # rad sidofel vid markören längst ut
-const PERFECT := 0.12      # |markör| under detta = perfekt
+const ACC_AIM_ERR := 0.05  # rad sidofel vid markören längst ut
+const PERFECT := 0.18      # |markör| under detta = perfekt
 
 var stand_x := 0.0
 var aim := 0.0             # positiv = höger

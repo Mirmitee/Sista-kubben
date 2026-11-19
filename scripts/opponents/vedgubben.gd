@@ -54,6 +54,10 @@ func _init() -> void:
 			"sv": ["Du fällde kungen. Han var min pappa.", "Kungen faller sist. Alla vet det. Nu vet du det."],
 			"en": ["You felled the king. He was my father.", "The king falls last. Everyone knows. Now you know."],
 		},
+		"king_death": {
+			"sv": ["...du rörde honom.", "Nej. Nej nej nej. Inte kungen.", "Det där borde du inte ha gjort."],
+			"en": ["...you touched him.", "No. No no no. Not the king.", "You shouldn't have done that."],
+		},
 		"king_simple": {
 			"sv": ["Kungen reser sig. Han är förlåtande. Ikväll.", "Vi låtsas att det där inte hände. Förenklade regler, för förenklade människor."],
 			"en": ["The king gets back up. He's forgiving. Tonight.", "We'll pretend that didn't happen. Simplified rules, for simplified people."],

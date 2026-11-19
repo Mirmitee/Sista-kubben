@@ -16,7 +16,10 @@ var was_fallen := false
 func setup(king: bool, seed := 1) -> void:
 	is_king = king
 	var size := KING_SIZE if king else SIZE
-	mass = 1.7 if king else 0.5
+	mass = 1.7 if king else 0.3
+	# tyngdpunkten lite högt upp gör kubbarna lättare att välta
+	center_of_mass_mode = RigidBody3D.CENTER_OF_MASS_MODE_CUSTOM
+	center_of_mass = Vector3(0, size.y * 0.18, 0)
 	var tint := Color(1.25, 1.15, 1.05) if king else Color(1.2, 1.15, 1.1)
 	# lite självlysande så de syns i skymningen (som att de fångar månljuset)
 	add_child(PS1.box(size, PS1.mat(PS1.wood(seed), tint, Vector2.ONE, 0.35)))
@@ -26,7 +29,7 @@ func setup(king: bool, seed := 1) -> void:
 	col.shape = bs
 	add_child(col)
 	var pm := PhysicsMaterial.new()
-	pm.friction = 0.55
+	pm.friction = 0.4
 	pm.bounce = 0.12
 	physics_material_override = pm
 	can_sleep = true
@@ -53,7 +56,7 @@ func height() -> float:
 
 
 func is_fallen() -> bool:
-	return global_transform.basis.y.normalized().dot(Vector3.UP) < 0.5
+	return global_transform.basis.y.normalized().dot(Vector3.UP) < 0.71  # lutar mer än 45° = fälld
 
 
 func teleport(t: Transform3D) -> void:
