@@ -69,6 +69,9 @@ var _felled_valid: Array[Kubb] = []
 var _line_mark: MeshInstance3D
 var _double_next := false
 var _touch_t := 0.0
+var _extras: Array[Baton] = []
+var _homing_targets: Array[Vector3] = []
+var _boom_done := false
 var _streak := 0
 var _opp_left := 0
 var _opp_total := 0
@@ -367,16 +370,15 @@ func _begin_match() -> void:
 
 ## Kubbleken ställs upp på hans baslinje (blandad), resten är vanliga.
 func _place_deck() -> void:
-	var deck: Array = Run.cards.duplicate() if Run.active else []
-	deck.shuffle()
+	# dina 5 kubbar står alltid på samma plats, vänster till höger
 	var mm := Run.mod("theirs_mass_mult", 1.0)
-	var i := 0
 	for k in kubbs:
-		if k.home.origin.z < -1.0:
-			k.set_kind(deck[i] if i < deck.size() else "", mm)
-			i += 1
-		else:
-			k.set_kind("")
+		k.set_kind("")
+	var row := side_kubbs("theirs")
+	row.sort_custom(func(a, b): return a.home.origin.x < b.home.origin.x)
+	for i in row.size():
+		var id: String = Run.cards[i] if Run.active and i < Run.cards.size() else ""
+		row[i].set_kind(id, mm)
 	# motståndarens egna specialkubbar: slump, fler senare nätter och hos bossen
 	if not Run.active:
 		return
@@ -455,8 +457,28 @@ func _next_baton() -> void:
 	_refresh_ui()
 
 
+func _bdef() -> Dictionary:
+	return Cards.BATONS.get(Run.cur_baton(), {}) if Run.active else {}
+
+
 func _on_thrown(b: RigidBody3D, info: Dictionary) -> void:
 	_last_info = info
+	_extras.clear()
+	_homing_targets.assign(thrower.magnet_targets)
+	var bd := _bdef()
+	if b is Baton and mode == Mode.MATCH and bd.has("multishot"):
+		# multikast: fler pinnar i en solfjäder
+		var n: int = bd.multishot
+		for j in n - 1:
+			var e := Baton.new()
+			e.setup(Run.cur_baton())
+			add_child(e)
+			batons.append(e)
+			e.body_entered.connect(_on_baton_hit.bind(e))
+			var yaw := (0.12 if j % 2 == 0 else -0.12) * (1 + j / 2)
+			e.global_transform = Transform3D(b.global_transform.basis.rotated(Vector3.UP, yaw), b.global_position + Vector3(randf_range(-0.05, 0.05), 0, 0))
+			e.launch(b.linear_velocity.rotated(Vector3.UP, yaw), b.angular_velocity.rotated(Vector3.UP, yaw))
+			_extras.append(e)
 	if mode == Mode.MATCH:
 		batons_left -= 1
 		var cost := int(Run.baton_stat("tooth_cost")) if Run.active and Cards.BATONS[Run.cur_baton()].has("tooth_cost") else 0
@@ -505,8 +527,12 @@ func _on_dropped(b: RigidBody3D) -> void:
 
 
 func _on_baton_hit(body: Node, b: Baton) -> void:
-	if b != current or state != State.FLYING:
+	if (b != current and not b in _extras) or state != State.FLYING:
 		return
+	var bd := _bdef() if not current_by_opp else {}
+	if bd.has("grenade") and not b.get_meta("boomed", false):
+		b.set_meta("boomed", true)
+		call_deferred("_explode_at", b.global_position, float(bd.grenade))
 	if body == king and mode == Mode.MATCH:
 		var side := "mine" if current_by_opp else "theirs"
 		if _standing_at_snapshot(side) > 0:
@@ -664,6 +690,25 @@ func _zap_random(side: String, n: int, except: Kubb = null) -> void:
 		o.apply_impulse(Vector3(randf_range(-0.4, 0.4), 0.1, randf_range(-0.4, 0.4)).normalized() * 0.45, Vector3(0, o.height() * 0.45, 0))
 
 
+## Granatpinnen: explosion var som helst.
+func _explode_at(p: Vector3, f: float) -> void:
+	Fx.boom(self, p, f)
+	Sfx.play("boom", 0.0, 1.1)
+	_shake = 0.8
+	_slowmo()
+	for o in kubbs:
+		if not o.visible:
+			continue
+		var d := o.global_position - p
+		d.y = 0.0
+		var dist := d.length()
+		var r := 1.3 * f
+		if dist < r:
+			o.sleeping = false
+			var dir := d.normalized() if dist > 0.01 else Vector3.FORWARD
+			o.apply_impulse((dir * 0.5 + Vector3.UP * 0.1) * (1.25 - dist / r), Vector3(0, o.height() * 0.45, 0))
+
+
 func _stick(b: Baton) -> void:
 	if is_instance_valid(b):
 		b.linear_velocity = Vector3.ZERO
@@ -817,10 +862,11 @@ func _apply_fate(id: String) -> void:
 	match id:
 		"kubb":
 			var pool := Run.shop_pool()
-			if not pool.is_empty() and Run.cards.size() < Run.MAX_CARDS:
+			if not pool.is_empty() and Run.free_slot() >= 0:
 				var kid: String = pool[randi() % pool.size()]
-				Run.cards.append(kid)
-				desc = Cards.title(kid) + ": " + Cards.desc(kid) + _tl(" (står upp nästa match)", " (stands up next match)")
+				var sl := Run.free_slot()
+				Run.put(kid, sl)
+				desc = _tl("Kubb %d får ", "Kubb %d gets ") % (sl + 1) + Cards.title(kid) + ": " + Cards.desc(kid) + _tl(" (nästa match)", " (next match)")
 				col = Cards.color(kid) * 0.8
 			else:
 				Run.add_teeth(3)
@@ -866,9 +912,9 @@ func _apply_fate(id: String) -> void:
 			_opp_batons_next -= 1
 		"forbannad_kubb":
 			var cp := Run.cursed_pool()
-			if not cp.is_empty() and Run.cards.size() < Run.MAX_CARDS:
+			if not cp.is_empty() and Run.free_slot() >= 0:
 				var kid: String = cp[randi() % cp.size()]
-				Run.cards.append(kid)
+				Run.put(kid, Run.free_slot())
 				desc = Cards.title(kid) + ": " + Cards.desc(kid)
 			else:
 				desc = _tl("Leken är full. Den kryper iväg igen. Puh.", "Your deck is full. It crawls away. Phew.")
@@ -944,6 +990,24 @@ func _physics_process(dt: float) -> void:
 		_shadow.visible = false
 		return
 	_fly_time += dt
+	var bdp := _bdef() if not current_by_opp else {}
+	if current is Baton and not current.touched:
+		if bdp.has("homing") and not _homing_targets.is_empty():
+			# styr mjukt mot närmaste giltiga kubb
+			var cp := current.global_position
+			var best := _homing_targets[0]
+			for t in _homing_targets:
+				if Vector2(t.x - cp.x, t.z - cp.z).length() < Vector2(best.x - cp.x, best.z - cp.z).length():
+					best = t
+			var v: Vector3 = current.linear_velocity
+			var flat := Vector3(v.x, 0, v.z)
+			var want := Vector3(best.x - cp.x, 0, best.z - cp.z).normalized() * flat.length()
+			flat = flat.lerp(want, clampf(dt * 2.5 * float(bdp.homing), 0.0, 1.0))
+			current.linear_velocity = Vector3(flat.x, v.y, flat.z)
+		if bdp.has("boomerang"):
+			# bumerangen svänger lite åt vänster i luften
+			var v2: Vector3 = current.linear_velocity
+			current.linear_velocity = v2 + Vector3(v2.z, 0, -v2.x).normalized() * dt * 1.4
 	var p := current.global_position
 	_shadow.visible = not current.touched and current is Baton
 	_shadow.global_transform = Transform3D(Basis(Vector3.UP, current.global_rotation.y), Vector3(p.x, 0.014, p.z))
@@ -1076,6 +1140,16 @@ func _evaluate() -> void:
 		opponent.say("all_down")
 	if newly > 0 and Run.active:
 		await _fate_after_throw(newly)
+	if newly == 0 and not _hit_this_throw and _bdef().has("boomerang"):
+		# bumerangen kommer tillbaka
+		batons_left += 1
+		hud.flash(_tl("BUMERANGEN KOM TILLBAKA!", "THE BOOMERANG CAME BACK!"))
+		Sfx.play("whoosh", -2.0, 1.4)
+		b.hold()
+		var tw := create_tween()
+		tw.tween_property(b, "global_position", thrower.shoulder() + Vector3(0, 0.3, -0.5), 0.6).set_trans(Tween.TRANS_SINE)
+		tw.tween_callback(b.queue_free)
+		batons.erase(b)
 	_after_throw()
 
 
@@ -1699,7 +1773,7 @@ func _run_autotest() -> void:
 	Run.fate_points = 0
 	await _fate_after_throw(7)
 	print("TEST ödespoäng kvar %d (av 7 fällda, kostnad %d)" % [Run.fate_points, Run.FATE_COST])
-	print("TEST ödeskort dragna %d, lek %d, lånad pinne '%s', denna match %s" % [Run.cards_drawn, Run.cards.size(), Run.borrowed, str(Run.temp_names)])
+	print("TEST ödeskort dragna %d, lek %d, lånad pinne '%s', denna match %s" % [Run.cards_drawn, Run.slots_used(), Run.borrowed, str(Run.temp_names)])
 	thrower.meter_phase = 1
 	thrower.meter = 0.6
 	thrower._update_pose()
@@ -1716,6 +1790,22 @@ func _run_autotest() -> void:
 	tk.raise_at(Vector3(-0.5, 0, -5.4))
 	print("TEST hans kastlinje: z %.2f (fältkubb på -5.40)" % _advance_line("theirs"))
 	print("TEST antal kubbar %d, pinnar %d" % [Cards.DEFS.size(), Cards.BATONS.size()])
+	for bid in ["trepinnen", "granatpinne", "bumerang", "malsokare"]:
+		Run.start(bid)
+		_start(Mode.MATCH, true)
+		await _wait_ready()
+		batons_left = 5
+		thrower.stand_x = 0.4
+		thrower.aim = 0.03
+		_update_magnet()
+		thrower.magnet_targets.assign(thrower.magnet_targets)
+		await get_tree().physics_frame
+		var bl := batons_left
+		thrower.launch_with(0.6, 2900.0 if bid != "bumerang" else 1500.0, 0.0)
+		while state == State.FLYING:
+			await get_tree().physics_frame
+		await get_tree().physics_frame
+		print("TEST %s: fällda %d, pinnar %d -> %d, extra pinnar i luften %d" % [bid, fallen_kubbs("theirs").size(), bl, batons_left, _extras.size()])
 	_match_over = true
 	Run.stop()
 	# butik och kort
@@ -1779,11 +1869,16 @@ func _screenshots(prefix: String) -> void:
 	vp.get_texture().get_image().save_png(prefix + "_meny.png")
 	Run.start("vanlig")
 	Run.teeth = 14
-	Run.cards.assign(["krakkubb", "tummkubb", "krutkubb"])
+	Run.cards.assign(["krakkubb", "", "krutkubb", "tummkubb", "krutkubb"])
 	menu.open("shop")
 	for i in 5:
 		await get_tree().process_frame
 	vp.get_texture().get_image().save_png(prefix + "_butik.png")
+	menu._pending = menu._offers[0]
+	menu.show_page("slot")
+	for i in 5:
+		await get_tree().process_frame
+	vp.get_texture().get_image().save_png(prefix + "_plats.png")
 	Run.choose(0)
 	Run.step_done()
 	menu.open("map")

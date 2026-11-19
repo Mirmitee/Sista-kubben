@@ -127,6 +127,8 @@ func show_page(p: String) -> void:
 		"baton": _page_baton()
 		"shop": _page_shop()
 		"victory": _page_victory()
+		"slot": _page_slot()
+		"fate_deck": _page_fate_deck()
 		"map": _page_map()
 		"fate_node": _page_fate_node()
 		"grave": _page_grave()
@@ -272,9 +274,10 @@ func _page_pause() -> void:
 	_text(_t("Vedgubben väntar. Han är bra på att vänta.", "The Woodman waits. He's good at waiting."))
 	if Run.active:
 		var names: Array[String] = []
-		for id in Run.cards:
-			names.append(Cards.title(id))
-		_text(_t("Pinne: %s   Lek: %s", "Baton: %s   Deck: %s") % [Cards.title(Run.cur_baton()), ", ".join(names) if not names.is_empty() else "-"], Color(1.0, 0.9, 0.6))
+		for i in Run.cards.size():
+			if Run.cards[i] != "":
+				names.append("%d %s" % [i + 1, Cards.title(Run.cards[i])])
+		_text(_t("Pinne: %s   Kubbar: %s", "Baton: %s   Kubbs: %s") % [Cards.title(Run.cur_baton()), ", ".join(names) if not names.is_empty() else "-"], Color(1.0, 0.9, 0.6))
 		if not Run.temp_names.is_empty():
 			_text(_t("Denna match: ", "This match: ") + ", ".join(Run.temp_names), Color(0.7, 1.0, 0.7))
 	_button(_t("FORTSÄTT", "RESUME"), func(): resume_pressed.emit())
@@ -405,26 +408,21 @@ func _page_baton() -> void:
 
 func _page_shop() -> void:
 	_title(_t("KRÅKMORS BOD", "CROW MOTHER'S SHOP"), 12)
-	_text(_t("Tänder %d   Kubbleken %d/%d   Natt %d", "Teeth %d   Kubb deck %d/%d   Night %d") % [
-		Run.teeth, Run.cards.size(), Run.MAX_CARDS, Run.night], Color(1.0, 0.9, 0.6))
+	_text(_t("Tänder %d   Uppgraderade kubbar %d/5   Natt %d", "Teeth %d   Upgraded kubbs %d/5   Night %d") % [
+		Run.teeth, Run.slots_used(), Run.night], Color(1.0, 0.9, 0.6))
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 3)
 	_box.add_child(row)
 	for id in _offers:
 		var price := Run.price(id)
-		var ok := Run.teeth >= price and Run.cards.size() < Run.MAX_CARDS
+		var ok := Run.teeth >= price
 		_card_panel(id, row, _t("%d tänder", "%d teeth") % price, _t("KÖP", "BUY"), func():
-			if Run.buy(id):
-				_offers.erase(id)
-				Sfx.play("clack", -6.0, 1.4)
-				show_page("shop"), ok)
+			_pending = id
+			show_page("slot"), ok)
 	if _curse != "":
-		var ok := Run.cards.size() < Run.MAX_CARDS
 		_card_panel(_curse, row, _t("GRATIS...", "FREE..."), _t("TA", "TAKE"), func():
-			if Run.buy(_curse):
-				_curse = ""
-				Sfx.play("bad", -6.0, 1.2)
-				show_page("shop"), ok)
+			_pending = _curse
+			show_page("slot"))
 	# ödesleken: köp nya ödeskort, bränn dåliga
 	var frow := HFlowContainer.new()
 	frow.custom_minimum_size.x = 360
@@ -448,23 +446,10 @@ func _page_shop() -> void:
 				Sfx.play("sparkle", -6.0)
 				show_page("shop"))
 		frow.add_child(fb)
-	var burned := {}
-	for id in Run.fate_deck:
-		if burned.has(id) or Run.fate_deck.size() <= 2:
-			continue
-		burned[id] = true
-		var bb := Button.new()
-		bb.text = _t("BRÄNN %s (2)", "BURN %s (2)") % Cards.fate_title(id)
-		bb.tooltip_text = Cards.fate_desc(id)
-		bb.disabled = Run.teeth < 2
-		bb.pressed.connect(func():
-			if Run.teeth >= 2 and Run.fate_deck.size() > 2:
-				Run.teeth -= 2
-				Run.fate_deck.erase(id)
-				Run.fate_pile.erase(id)
-				Sfx.play("bad", -8.0, 1.5)
-				show_page("shop"))
-		frow.add_child(bb)
+	var fdb := Button.new()
+	fdb.text = _t("BRÄNN ÖDESKORT...", "BURN FATE CARDS...")
+	fdb.pressed.connect(func(): show_page("fate_deck"))
+	frow.add_child(fdb)
 	var row2 := HBoxContainer.new()
 	_box.add_child(row2)
 	var rr := Button.new()
@@ -480,16 +465,20 @@ func _page_shop() -> void:
 	var row3 := HFlowContainer.new()
 	row3.custom_minimum_size.x = 360
 	_box.add_child(row3)
-	for id in Run.cards:
+	for i in Run.cards.size():
+		var id: String = Run.cards[i]
+		if id == "":
+			continue
 		var sb := Button.new()
 		var cursed: bool = Cards.DEFS[id].get("cursed", false)
-		sb.text = (_t("SÄLJ ", "SELL ") if not cursed else _t("KASTA ", "DROP ")) + Cards.title(id)
+		sb.text = "%d " % (i + 1) + (_t("SÄLJ ", "SELL ") if not cursed else _t("KASTA ", "DROP ")) + Cards.title(id)
 		sb.tooltip_text = Cards.desc(id)
+		var slot := i
 		sb.pressed.connect(func():
-			Run.sell(id)
+			Run.sell(slot)
 			show_page("shop"))
 		row3.add_child(sb)
-	_text(_t("Din pinne: %s. Din kubblek står på hans baslinje.", "Your baton: %s. Your kubb deck stands on his baseline.") % Cards.title(Run.baton), Color(0.8, 0.7, 0.6))
+	_text(_t("Din pinne: %s. Dina 5 kubbar står på hans baslinje, varje kubb kan bära ett kort.", "Your baton: %s. Your 5 kubbs stand on his baseline, each can carry one card.") % Cards.title(Run.baton), Color(0.8, 0.7, 0.6))
 	var tips := [
 		_t("\"Fäll fältkubbarna, annars kliver han fram och andas på dig.\"", "\"Fell the field kubbs, or he steps up and breathes on you.\""),
 		_t("\"Leffe blir sämre av korv. Alla blir det.\"", "\"Leffe gets worse from sausage. Everyone does.\""),
@@ -518,6 +507,67 @@ func _page_victory() -> void:
 	_button(_t("TILL HUVUDMENYN", "MAIN MENU"), func(): main_menu_pressed.emit())
 
 
+var _pending := ""
+
+
+func _page_fate_deck() -> void:
+	_title(_t("DIN ÖDESLEK", "YOUR FATE DECK"), 14)
+	_text(_t("Tänder %d. Bränn ett kort för 2 tänder (minst 2 kort kvar).", "Teeth %d. Burn a card for 2 teeth (at least 2 cards remain).") % Run.teeth, Color(1.0, 0.9, 0.6))
+	var row := HFlowContainer.new()
+	row.custom_minimum_size.x = 340
+	_box.add_child(row)
+	var burned := {}
+	for id in Run.fate_deck:
+		if burned.has(id) or Run.fate_deck.size() <= 2:
+			continue
+		burned[id] = true
+		var bb := Button.new()
+		bb.text = _t("BRÄNN %s (2)", "BURN %s (2)") % Cards.fate_title(id)
+		bb.tooltip_text = Cards.fate_desc(id)
+		bb.disabled = Run.teeth < 2
+		bb.pressed.connect(func():
+			if Run.teeth >= 2 and Run.fate_deck.size() > 2:
+				Run.teeth -= 2
+				Run.fate_deck.erase(id)
+				Run.fate_pile.erase(id)
+				Sfx.play("bad", -8.0, 1.5)
+				show_page("fate_deck"))
+		row.add_child(bb)
+	_button(_t("TILLBAKA TILL BODEN", "BACK TO THE SHOP"), func(): show_page("shop"))
+
+
+## Välj vilken av dina 5 kubbar kortet ska sitta på.
+func _page_slot() -> void:
+	_title(_t("VILKEN KUBB?", "WHICH KUBB?"), 14)
+	_text(Cards.title(_pending) + ": " + Cards.desc(_pending), Color(1.0, 0.85, 0.5))
+	_text(_t("Dina kubbar på hans baslinje, vänster till höger. Ett gammalt kort på kubben försvinner.", "Your kubbs on his baseline, left to right. An old card on that kubb is lost."))
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 3)
+	_box.add_child(row)
+	for i in 5:
+		var cur: String = Run.cards[i]
+		var b := Button.new()
+		b.text = "%d\n%s" % [i + 1, Cards.title(cur) if cur != "" else _t("vanlig", "plain")]
+		b.tooltip_text = Cards.desc(cur) if cur != "" else ""
+		b.custom_minimum_size = Vector2(66, 40)
+		var slot := i
+		b.pressed.connect(func():
+			var id := _pending
+			var cursed: bool = Cards.DEFS[id].get("cursed", false)
+			if Run.buy(id, slot):
+				if id == _curse:
+					_curse = ""
+				else:
+					_offers.erase(id)
+				Sfx.play("bad" if cursed else "clack", -6.0, 1.2 if cursed else 1.4)
+			_pending = ""
+			show_page("shop"))
+		row.add_child(b)
+	_button(_t("ÅNGRA", "CANCEL"), func():
+		_pending = ""
+		show_page("shop"))
+
+
 func _node_name(n: Dictionary) -> String:
 	var opp_name := {"vedgubben": _t("VEDGUBBEN", "THE WOODMAN"), "birgit": "BIRGIT", "tjock_leffe": _t("TJOCK-LEFFE", "FAT LEFFE")}
 	match n.type:
@@ -543,8 +593,8 @@ func _node_desc(n: Dictionary) -> String:
 
 func _page_map() -> void:
 	_title(_t("NATT %d AV %s", "NIGHT %d OF %s") % [Run.night, Run.nights_text()], 14)
-	_text(_t("Tänder %d   Kubbleken %d/%d   Ödesleken %d", "Teeth %d   Kubb deck %d/%d   Fate deck %d") % [
-		Run.teeth, Run.cards.size(), Run.MAX_CARDS, Run.fate_deck.size()], Color(1.0, 0.9, 0.6))
+	_text(_t("Tänder %d   Uppgraderade kubbar %d/5   Ödesleken %d", "Teeth %d   Upgraded kubbs %d/5   Fate deck %d") % [
+		Run.teeth, Run.slots_used(), Run.fate_deck.size()], Color(1.0, 0.9, 0.6))
 	for li in Run.map.size():
 		var row := HBoxContainer.new()
 		row.add_theme_constant_override("separation", 4)
@@ -628,9 +678,12 @@ func _page_grave() -> void:
 			_dug = true
 			if randf() < 0.2:
 				var cp := Run.cursed_pool()
-				if not cp.is_empty() and Run.cards.size() < Run.MAX_CARDS:
+				if not cp.is_empty():
 					var id: String = cp[randi() % cp.size()]
-					Run.cards.append(id)
+					var sl := Run.free_slot()
+					if sl < 0:
+						sl = randi() % 5
+					Run.put(id, sl)
 					_last_grave = _t("Något grep tag i din hand. %s följer med dig.", "Something grabbed your hand. %s comes with you.") % Cards.title(id)
 					Sfx.play("bad", -4.0, 0.7)
 					show_page("grave")
@@ -642,17 +695,21 @@ func _page_grave() -> void:
 			show_page("grave"))
 	if _last_grave != "":
 		_text(_last_grave, Color(0.8, 0.7, 0.9))
-	if not Run.cards.is_empty():
-		_text(_t("Begrav en kubb ur leken (förbannade ger 3 tänder):", "Bury a kubb from your deck (cursed ones give 3 teeth):"))
+	if Run.slots_used() > 0:
+		_text(_t("Begrav ett kort från en kubb (förbannade ger 3 tänder):", "Bury a card from a kubb (cursed ones give 3 teeth):"))
 		var row := HFlowContainer.new()
 		row.custom_minimum_size.x = 340
 		_box.add_child(row)
-		for id in Run.cards:
+		for i in Run.cards.size():
+			var id: String = Run.cards[i]
+			if id == "":
+				continue
 			var b := Button.new()
-			b.text = _t("BEGRAV ", "BURY ") + Cards.title(id)
+			b.text = "%d " % (i + 1) + _t("BEGRAV ", "BURY ") + Cards.title(id)
 			b.tooltip_text = Cards.desc(id)
+			var slot := i
 			b.pressed.connect(func():
-				Run.cards.erase(id)
+				Run.cards[slot] = ""
 				if Cards.DEFS[id].get("cursed", false):
 					Run.add_teeth(3)
 				Sfx.play("thud", -4.0, 0.7)

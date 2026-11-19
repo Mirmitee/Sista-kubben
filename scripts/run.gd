@@ -15,7 +15,9 @@ var active := false
 var night := 1
 var match_index := 0      # 0..OPPONENTS.size()-1
 var teeth := 0
-var cards: Array[String] = []
+## Dina 5 kubbar på hans baslinje (vänster till höger). Varje plats kan ha
+## ett uppgraderingskort ("" = vanlig kubb). Samma kort får sitta på flera.
+var cards: Array[String] = ["", "", "", "", ""]
 var baton := "vanlig"
 var stats := {"kubbs": 0, "wins": 0, "perfect": 0, "combos": 0, "teeth_total": 0}
 # karta: lager av noder, man väljer en nod per lager. Nod = {"type", "opp"}
@@ -54,7 +56,7 @@ func start(baton_id: String) -> void:
 	endless = false
 	node = {}
 	gen_map()
-	cards.clear()
+	cards.assign(["", "", "", "", ""])
 	baton = baton_id
 	stats = {"kubbs": 0, "wins": 0, "perfect": 0, "combos": 0, "teeth_total": 0}
 	clear_temp()
@@ -142,6 +144,8 @@ func mod(key: String, default := 0.0) -> float:
 	var mult := key.ends_with("_mult")
 	var v := 1.0 if mult else 0.0
 	for id in cards:
+		if id == "":
+			continue
 		var m: Dictionary = Cards.DEFS[id].get("mods", {})
 		if m.has(key):
 			v = v * m[key] if mult else v + m[key]
@@ -255,7 +259,7 @@ func shop_pool() -> Array[String]:
 	var pool: Array[String] = []
 	for id in Cards.DEFS:
 		var d: Dictionary = Cards.DEFS[id]
-		if d.get("cursed", false) or id in cards:
+		if d.get("cursed", false):
 			continue
 		if d.has("unlock") and not id in unlocked_cards:
 			continue
@@ -266,24 +270,42 @@ func shop_pool() -> Array[String]:
 func cursed_pool() -> Array[String]:
 	var pool: Array[String] = []
 	for id in Cards.DEFS:
-		if Cards.DEFS[id].get("cursed", false) and not id in cards:
+		if Cards.DEFS[id].get("cursed", false):
 			pool.append(id)
 	return pool
 
 
-func buy(id: String) -> bool:
+## Köp ett kort och sätt det på kubb nummer `slot` (0-4). Ett kort som
+## redan satt där försvinner.
+func buy(id: String, slot := -1) -> bool:
 	var p := price(id)
-	if cards.size() >= MAX_CARDS or teeth < p:
+	if slot < 0:
+		slot = free_slot()
+	if slot < 0 or teeth < p:
 		return false
 	teeth -= p
-	cards.append(id)
+	cards[slot] = id
 	return true
 
 
-func sell(id: String) -> void:
-	if not id in cards:
+func put(id: String, slot: int) -> void:
+	cards[slot] = id
+
+
+func free_slot() -> int:
+	return cards.find("")
+
+
+func slots_used() -> int:
+	return cards.filter(func(c): return c != "").size()
+
+
+## Ta bort kortet från en kubb. Vanliga kort ger halva priset tillbaka.
+func sell(slot: int) -> void:
+	var id: String = cards[slot]
+	if id == "":
 		return
-	cards.erase(id)
+	cards[slot] = ""
 	var d: Dictionary = Cards.DEFS[id]
 	if not d.get("cursed", false):
 		teeth += int(d.price / 2)
