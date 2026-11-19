@@ -19,6 +19,7 @@ var kind := ""            # specialkubb ur kubbleken ("" = vanlig)
 var _seed := 1
 var _mesh: MeshInstance3D
 var _rune: Node3D
+var _cap: MeshInstance3D
 
 
 func setup(king: bool, seed := 1) -> void:
@@ -127,6 +128,7 @@ func set_kind(id: String, mass_mult := 1.0) -> void:
 	if _rune:
 		_rune.queue_free()
 		_rune = null
+		_cap = null
 	if id == "":
 		return
 	_rune = Node3D.new()
@@ -147,3 +149,9 @@ func set_kind(id: String, mass_mult := 1.0) -> void:
 		cap = PS1.box(Vector3(0.05, 0.008, 0.05), rm)
 		cap.position.y = SIZE.y * 0.5 + 0.004
 	_rune.add_child(cap)
+	_cap = cap
+
+
+func _process(dt: float) -> void:
+	if _cap and visible:
+		_cap.rotate_y(dt * 2.2)  # specialkubbarnas märke snurrar sakta, de lever

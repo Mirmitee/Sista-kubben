@@ -22,6 +22,7 @@ func _ready() -> void:
 	_streams["zap"] = _make(0.5, _zap)
 	_streams["sparkle"] = _make(0.4, _sparkle)
 	_streams["coin"] = _make(0.25, _coin)
+	_streams["caw"] = _make(0.7, _caw)
 	for i in 12:
 		var p := AudioStreamPlayer.new()
 		add_child(p)
@@ -34,6 +35,18 @@ func _ready() -> void:
 	_drone.stream = _make(8.0, _drone_fn, true)
 	_drone.volume_db = -16.0
 	add_child(_drone)
+
+
+var _caw_t := 25.0
+
+
+func _process(dt: float) -> void:
+	# en kråka någonstans i skogen, då och då
+	if _ambient and _ambient.playing:
+		_caw_t -= dt
+		if _caw_t <= 0.0:
+			_caw_t = randf_range(18.0, 45.0)
+			play("caw", -16.0, randf_range(0.85, 1.1))
 
 
 func start_ambience() -> void:
@@ -147,3 +160,14 @@ func _sparkle(t: float, _d: float, _st: Dictionary) -> float:
 func _coin(t: float, _d: float, _st: Dictionary) -> float:
 	var f := 1320.0 if t < 0.07 else 1760.0
 	return signf(sin(TAU * f * t)) * 0.18 * exp(-t * 12.0)
+
+
+func _caw(t: float, _d: float, st: Dictionary) -> float:
+	# två hesa kraxanden
+	var local := fmod(t, 0.33)
+	if local > 0.26:
+		return 0.0
+	var f := 520.0 - local * 700.0
+	var saw := fmod(t * f, 1.0) * 2.0 - 1.0
+	st.lp = lerpf(st.lp, st.rng.randf_range(-1, 1), 0.3)
+	return (saw * 0.5 + st.lp * 0.5) * sin(PI * local / 0.26) * 0.6

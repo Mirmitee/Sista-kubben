@@ -76,6 +76,9 @@ var _using_pad := false
 var _hand: MeshInstance3D
 var _aim_line: MeshInstance3D
 var _land_mark: MeshInstance3D
+var _mark_mats: Array[Material] = []
+## var pinnen landar med kraften som visas just nu (m från kastlinjen), -1 = ingen
+var land_dist := -1.0
 
 
 func _ready() -> void:
@@ -86,9 +89,18 @@ func _ready() -> void:
 	add_child(_hand)
 	_aim_line = PS1.box(Vector3(0.02, 0.005, 1.0), PS1.mat(null, Color(0.9, 0.85, 0.6), Vector2.ONE, 0.6))
 	add_child(_aim_line)
-	_land_mark = PS1.box(Vector3(0.18, 0.006, 0.05), PS1.mat(null, Color(0.3, 1.0, 0.35), Vector2.ONE, 1.0))
+	# landningskors: följer kraften live medan mätaren fylls
+	_land_mark = MeshInstance3D.new()
 	_land_mark.visible = false
 	add_child(_land_mark)
+	for c in [Color(0.3, 1.0, 0.35), Color(1.0, 0.85, 0.25), Color(1.0, 0.3, 0.2)]:
+		_mark_mats.append(PS1.mat(null, c, Vector2.ONE, 1.0))
+	for a in [0.785, -0.785]:
+		var bar := PS1.box(Vector3(0.04, 0.006, 0.34), _mark_mats[0])
+		bar.rotation.y = a
+		_land_mark.add_child(bar)
+	var dot := PS1.box(Vector3(0.36, 0.006, 0.03), _mark_mats[0])
+	_land_mark.add_child(dot)
 
 
 func give_baton(b) -> void:
@@ -352,16 +364,59 @@ func _update_pose() -> void:
 	var length := 8.6 if Settings.aim_assist else 3.0
 	var start := Vector3(stand_x + SHOULDER.x, 0.012, throw_z)
 	_aim_line.global_transform = Transform3D(Basis(Vector3.UP, -aim).scaled(Vector3(1, 1, length)), start + f * length * 0.5)
-	# sikthjälp: var pinnen landar med den kraft du låst
-	_land_mark.visible = baton != null and Settings.aim_assist and meter_phase == 2 and not payload_kubb \
+	# sikthjälp: var pinnen landar, live medan kraften fylls och låst efteråt
+	_land_mark.visible = baton != null and Settings.aim_assist and meter_phase in [1, 2] \
 		and Run.mod("no_aim_line") == 0.0
+	land_dist = -1.0
 	if _land_mark.visible:
-		var v := MAX_SPEED * meter_power * power_factor()
-		var vy := v * sin(METER_ANGLE)
-		var vx := v * cos(METER_ANGLE)
-		var h := 0.75
-		var d := vx * (vy + sqrt(vy * vy + 2.0 * 9.81 * h)) / 9.81 - 0.2
-		_land_mark.global_transform = Transform3D(Basis(Vector3.UP, -aim), start + f * d + Vector3(0, 0.004, 0))
+		var p01 := meter if meter_phase == 1 else meter_power
+		var d := predict_distance(p01)
+		land_dist = d
+		# grönt = landar vid hans baslinje, gult = kort, rött = långt
+		var lo := World.FIELD_L + throw_z - 0.45
+		var hi := World.FIELD_L + throw_z + 0.6
+		if payload_kubb:  # en kubb ska landa i hans planhalva
+			lo = World.FIELD_L * 0.5 + 0.3
+			hi = World.FIELD_L - 0.3
+		var m: Material = _mark_mats[0]
+		if d < lo:
+			m = _mark_mats[1]
+		elif d > hi:
+			m = _mark_mats[2]
+		for c in _land_mark.get_children():
+			c.material_override = m
+		var pulse := 1.0 + 0.15 * sin(Time.get_ticks_msec() * 0.012)
+		_land_mark.global_transform = Transform3D(Basis(Vector3.UP, -aim).scaled(Vector3.ONE * pulse), start + f * d + Vector3(0, 0.004, 0))
+
+
+## Hur långt (m) ett kast med kraft 0..1 går, för markeringen och mätaren.
+func predict_distance(p01: float) -> float:
+	var g: float = 9.81 * (baton.gravity_scale if baton is RigidBody3D else 1.0)
+	var v: float
+	var ang: float
+	if payload_kubb:
+		v = 9.5 * clampf(p01, 0.0, 1.0)
+		ang = 0.75
+	else:
+		v = MAX_SPEED * clampf(p01, 0.0, 1.0) * power_factor()
+		ang = METER_ANGLE
+	var vy := v * sin(ang)
+	var vx := v * cos(ang)
+	var h := 0.75
+	return maxf(vx * (vy + sqrt(vy * vy + 2.0 * g * h)) / g - 0.2, 0.0)
+
+
+## Kraft 0..1 som landar på avståndet d (för gröna fältet på mätaren).
+func power_for_distance(d: float) -> float:
+	var lo := 0.0
+	var hi := 1.0
+	for i in 18:
+		var mid := (lo + hi) * 0.5
+		if predict_distance(mid) < d:
+			lo = mid
+		else:
+			hi = mid
+	return (lo + hi) * 0.5
 
 
 ## Medelvärde av (theta, vy, vx) över SMOOTH tick som slutar vid i.

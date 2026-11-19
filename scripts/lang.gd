@@ -48,7 +48,7 @@ const UI := {
 	"meter_acc": {"sv": "PRECISION", "en": "ACCURACY"},
 	"hint1": {"sv": "Sikta med musen. Håll vänster knapp:", "en": "Aim with the mouse. Hold left button:"},
 	"hint2": {"sv": "dra NER, svep UPP. Sikta på gröna fältet.", "en": "drag DOWN, swipe UP. Aim for the green zone."},
-	"hint3": {"sv": "A/D gå  högerklick zoom  Esc paus  H dölj tips", "en": "A/D walk  right-click zoom  Esc pause  H hide tips"},
+	"hint3": {"sv": "A/D gå  högerkl. zoom  Tab lek  Esc paus  H tips", "en": "A/D walk  RMB zoom  Tab deck  Esc pause  H hints"},
 	"heli": {"sv": "HELIKOPTERKAST! OGILTIGT", "en": "HELICOPTER THROW! INVALID"},
 	"round_over": {"sv": "RUNDAN SLUT: %d/%d FÄLLDA\nR = NY RUNDA", "en": "ROUND OVER: %d/%d DOWN\nR = NEW ROUND"},
 	"all_down": {"sv": "ALLA BASKUBBAR FÄLLDA!\nNu får du sikta på kungen.\nR = NY RUNDA", "en": "ALL BASE KUBBS DOWN!\nNow you may go for the king.\nR = NEW ROUND"},

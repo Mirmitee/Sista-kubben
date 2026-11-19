@@ -39,6 +39,14 @@ var _peak := 0.0
 var _meter_hold := 0.0
 
 
+var _sweet: ColorRect
+var _last_teeth := -1
+var _card_queue: Array = []
+var _card_busy := false
+var _deck_box: Label
+var _sweet_at := -1.0
+
+
 func _ready() -> void:
 	layer = 5
 	process_mode = Node.PROCESS_MODE_ALWAYS
@@ -66,7 +74,7 @@ func _ready() -> void:
 	_flash = _label(14, Color(1.0, 0.85, 0.2), Vector2(0, 70), Vector2(384, 20))
 	_flash.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	var ver := _label(8, Color(0.8, 0.15, 0.1), Vector2(300, 277))
-	ver.text = "SISTA KUBBEN v0.7"
+	ver.text = "SISTA KUBBEN v0.8"
 	_teeth = _label(8, Color(1.0, 0.95, 0.75), Vector2(236, 30), Vector2(140, 10))
 	_teeth.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	_cards = _label(8, Color(0.75, 0.7, 0.85), Vector2(226, 40), Vector2(150, 60))
@@ -93,12 +101,12 @@ func _ready() -> void:
 	_meter_fill.size = Vector2(0, 10)
 	_meter_fill.color = Color(0.85, 0.2, 0.1)
 	_meter_root.add_child(_meter_fill)
-	var sweet := ColorRect.new()
+	_sweet = ColorRect.new()
 	var sx := 1.0 + 120.0 * ThrowController.SWEET_SPEED / ThrowController.MAX_SPEED
-	sweet.position = Vector2(sx - 8, 0)
-	sweet.size = Vector2(16, 12)
-	sweet.color = Color(0.3, 0.8, 0.3, 0.45)
-	_meter_root.add_child(sweet)
+	_sweet.position = Vector2(sx - 8, 0)
+	_sweet.size = Vector2(16, 12)
+	_sweet.color = Color(0.3, 0.8, 0.3, 0.45)
+	_meter_root.add_child(_sweet)
 	_meter_peak = ColorRect.new()
 	_meter_peak.size = Vector2(2, 14)
 	_meter_peak.position = Vector2(1, -1)
@@ -194,7 +202,7 @@ func refresh(i: Dictionary) -> void:
 		match i.phase:
 			0: ph = Lang.t("phase_toss_you") if i.toss else Lang.t("phase_you")
 			1: ph = Lang.t("phase_opp_toss") % i.opp
-			2: ph = Lang.t("phase_opp") % i.opp
+			2: ph = Lang.t("phase_opp") % i.opp + ("   %d/%d" % [i.opp_left, i.opp_total] if i.get("opp_total", 0) > 0 else "")
 			3: ph = Lang.t("phase_toss_you")
 		_phase.text = ph
 		if Run.active:
@@ -202,7 +210,18 @@ func refresh(i: Dictionary) -> void:
 			var names: Array[String] = []
 			for id in Run.cards:
 				names.append(Cards.title(id))
+			if Run.borrowed != "":
+				names.append("~ " + Cards.title(Run.borrowed))
+			for t in Run.temp_names:
+				names.append("+ " + t)
 			_cards.text = "\n".join(names)
+			if Run.teeth != _last_teeth:
+				if _last_teeth >= 0:
+					_teeth.pivot_offset = Vector2(140, 5)
+					_teeth.scale = Vector2.ONE * 1.5
+					var tw := create_tween()
+					tw.tween_property(_teeth, "scale", Vector2.ONE, 0.35).set_trans(Tween.TRANS_BACK)
+				_last_teeth = Run.teeth
 		else:
 			_teeth.text = ""
 			_cards.text = ""
@@ -262,15 +281,18 @@ func update_meter(v: float, holding: bool, angle_deg: float) -> void:
 
 
 ## Mätarläget: fas 1 = kraft fylls, fas 2 = markören sveper.
-func update_timing(phase: int, live: float, locked: float, cursor: float, perfect := 0.18) -> void:
+func update_timing(phase: int, live: float, locked: float, cursor: float, perfect := 0.18, sweet01 := -1.0, dist := -1.0) -> void:
 	_meter_root.visible = true
+	if sweet01 > 0.0:
+		_sweet_at = lerpf(_sweet_at if _sweet_at > 0.0 else sweet01, sweet01, 0.2)
+		_sweet.position.x = 1.0 + 120.0 * _sweet_at - 8.0
 	_acc_green.position.x = 1.0 + 60.0 * (1.0 - perfect)
 	_acc_green.size.x = 120.0 * perfect
 	_acc_root.visible = phase == 2 or _meter_hold < 1.5
 	if phase == 1:
 		_meter_hold = 0.0
 		_peak = live
-		_meter_label.text = Lang.t("meter_idle")
+		_meter_label.text = Lang.t("meter_idle") + ("   %.1f m" % dist if dist >= 0.0 else "")
 	elif phase == 2:
 		_meter_hold = 0.0
 		_peak = locked
@@ -284,7 +306,7 @@ func update_timing(phase: int, live: float, locked: float, cursor: float, perfec
 			_acc_root.visible = false
 	_meter_fill.size.x = 120.0 * _peak
 	_meter_peak.position.x = 1.0 + 120.0 * _peak
-	var sweet := ThrowController.SWEET_SPEED / ThrowController.MAX_SPEED
+	var sweet := _sweet_at if _sweet_at > 0.0 else ThrowController.SWEET_SPEED / ThrowController.MAX_SPEED
 	var d := absf(_peak - sweet)
 	_meter_fill.color = Color(0.3, 0.85, 0.3) if d < 0.07 else (Color(0.9, 0.7, 0.2) if d < 0.14 else Color(0.85, 0.2, 0.1))
 
@@ -336,3 +358,87 @@ func death(title: String, sub: String) -> void:
 func clear_death() -> void:
 	_blood.color.a = 0.0
 	_death.modulate.a = 0.0
+
+
+## Ödeskortet glider in från höger, vänds och glider ut igen.
+func fate_card(title: String, desc: String, col: Color) -> void:
+	_card_queue.append([title, desc, col])
+	if not _card_busy:
+		_show_cards()
+
+
+func _show_cards() -> void:
+	_card_busy = true
+	while not _card_queue.is_empty():
+		var c: Array = _card_queue.pop_front()
+		var pc := PanelContainer.new()
+		var st := StyleBoxFlat.new()
+		st.bg_color = Color(0.06, 0.02, 0.04, 0.95)
+		st.border_color = c[2]
+		st.set_border_width_all(2)
+		st.set_content_margin_all(4)
+		pc.add_theme_stylebox_override("panel", st)
+		pc.custom_minimum_size = Vector2(120, 0)
+		pc.size = Vector2(120, 60)
+		pc.position = Vector2(392, 108)
+		pc.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var v := VBoxContainer.new()
+		v.add_theme_constant_override("separation", 1)
+		pc.add_child(v)
+		v.add_child(_mk(6, Color(0.7, 0.6, 0.5), "ÖDESKORT" if Lang.current == "sv" else "FATE CARD"))
+		v.add_child(_mk(8, (c[2] as Color).lightened(0.3), c[0]))
+		var d := _mk(7, Color(0.9, 0.85, 0.8), c[1])
+		d.autowrap_mode = TextServer.AUTOWRAP_WORD
+		d.custom_minimum_size = Vector2(112, 0)
+		v.add_child(d)
+		_play_root.add_child(pc)
+		pc.pivot_offset = Vector2(60, 30)
+		pc.scale = Vector2(0.05, 1.0)
+		var tw := create_tween()
+		tw.set_parallel(true)
+		tw.tween_property(pc, "position:x", 258.0, 0.3).set_trans(Tween.TRANS_BACK)
+		tw.tween_property(pc, "scale:x", 1.0, 0.35).set_delay(0.1)
+		tw.chain().tween_interval(2.6)
+		tw.chain().tween_property(pc, "position:x", 392.0, 0.3)
+		await tw.finished
+		pc.queue_free()
+	_card_busy = false
+
+
+func _mk(size: int, color: Color, text: String) -> Label:
+	var l := Label.new()
+	var ls := LabelSettings.new()
+	ls.font_size = size
+	ls.font_color = color
+	ls.shadow_color = Color(0, 0, 0, 0.9)
+	ls.shadow_offset = Vector2(1, 1)
+	l.label_settings = ls
+	l.text = text
+	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return l
+
+
+## Håll Tab (eller Back på handkontrollen) för att se din lek.
+func show_deck(on: bool) -> void:
+	if _deck_box == null:
+		_deck_box = _label(8, Color(0.95, 0.9, 0.8), Vector2(20, 40), Vector2(344, 160))
+		_deck_box.autowrap_mode = TextServer.AUTOWRAP_WORD
+		var bg := ColorRect.new()
+		bg.color = Color(0.02, 0.0, 0.02, 0.85)
+		bg.show_behind_parent = true
+		bg.set_anchors_preset(Control.PRESET_FULL_RECT)
+		bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_deck_box.add_child(bg)
+	_deck_box.visible = on
+	if not on:
+		return
+	var sv := Lang.current == "sv"
+	var lines: Array[String] = []
+	lines.append(("PINNE: " if sv else "BATON: ") + Cards.title(Run.cur_baton()) + " - " + Cards.desc(Run.cur_baton()))
+	lines.append(("KUBBLEKEN %d/%d" if sv else "KUBB DECK %d/%d") % [Run.cards.size(), Run.MAX_CARDS])
+	for id in Run.cards:
+		lines.append("  " + Cards.title(id) + ": " + Cards.desc(id))
+	if not Run.temp_names.is_empty():
+		lines.append(("DENNA MATCH: " if sv else "THIS MATCH: ") + ", ".join(Run.temp_names))
+	lines.append(("Kungens nåd kvar: %d" if sv else "King's mercy left: %d") % Run.king_shield_left)
+	_deck_box.text = "\n".join(lines)

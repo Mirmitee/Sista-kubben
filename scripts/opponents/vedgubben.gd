@@ -62,6 +62,10 @@ func _init() -> void:
 			"sv": ["...du rörde honom.", "Nej. Nej nej nej. Inte kungen.", "Det där borde du inte ha gjort."],
 			"en": ["...you touched him.", "No. No no no. Not the king.", "You shouldn't have done that."],
 		},
+		"effect": {
+			"sv": ["Vad var det där?! Det står inte i reglerna.", "Mina kubbar ska inte explodera. Det är min grej.", "Fusk! Vackert, men fusk.", "Jag kände det i mina årsringar."],
+			"en": ["What was that?! That's not in the rules.", "My kubbs aren't supposed to explode. That's my thing.", "Cheating! Beautiful, but cheating.", "I felt that in my growth rings."],
+		},
 		"advance": {
 			"sv": ["Dina fältkubbar står kvar. Då kliver jag närmare. Hej.", "Ett steg fram. Jag luktar mossa nu, va?", "Närmare. Alltid närmare."],
 			"en": ["Your field kubbs still stand. So I step closer. Hello.", "One step forward. I smell of moss now, don't I?", "Closer. Always closer."],

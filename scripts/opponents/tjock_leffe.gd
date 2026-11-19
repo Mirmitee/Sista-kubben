@@ -36,6 +36,7 @@ func _init() -> void:
 		"drop": {"sv": ["Halkig pinne? Jag har korvflott på allt.", "Hoppsan. Det händer mig med korvar."], "en": ["Slippery baton? I've got sausage grease on everything.", "Whoops. Happens to me with sausages."]},
 		"sky": {"sv": ["Till månen! Ta med en korv till mig."], "en": ["To the moon! Bring me back a sausage."]},
 		"idle": {"sv": ["Jag hinner äta tre korvar till. Okej, fyra.", "Kasta nu, jag ska hem och se Bingolotto."], "en": ["I've got time for three more sausages. Okay, four.", "Throw already, I'm going home to watch the bingo."]},
+		"effect": {"sv": ["AJ! Det där brände i magen!", "Vem har stoppat smällare i kubbarna? Jag vill också!", "Leffe gillar inte blixtar. Leffe gillar korv."], "en": ["OW! That burned my belly!", "Who put firecrackers in the kubbs? I want some too!", "Leffe doesn't like lightning. Leffe likes sausage."]},
 		"advance": {"sv": ["Ha! Du missade. Leffe flyttar fram stolen.", "Kortare promenad för Leffe. Tack!", "Närmare kubbarna, närmare korven."], "en": ["Ha! You missed. Leffe moves his chair up.", "Shorter walk for Leffe. Thanks!", "Closer to the kubbs, closer to the sausage."]},
 		"my_turn": {"sv": ["Leffes tur! Akta knäna.", "Nu ska ni få se 1987.", "*rapar* Okej. Nu."], "en": ["Leffe's turn! Mind your knees.", "Now you'll see 1987.", "*burps* Okay. Now."]},
 		"opp_hit": {"sv": ["BOOM! Leffe-kraft!", "Det är korven. Korven ger kraft.", "Ha! Ring en ambulans till kubben."], "en": ["BOOM! Leffe power!", "It's the sausage. The sausage gives power.", "Ha! Call an ambulance for that kubb."]},

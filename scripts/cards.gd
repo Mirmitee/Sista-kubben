@@ -254,3 +254,24 @@ static func unlock_text(id: String) -> String:
 	if stat == "best_night" and n > 3:
 		return "Vinn en hel run" if Lang.current == "sv" else "Win a whole run"
 	return (pair[0] if Lang.current == "sv" else pair[1]) % n
+
+
+## Ödeskort: dras efter varje kast där du fäller minst en kubb (och när du
+## vinner en match). [vikt, typ, sv, en]. Typen avgör vad som händer i
+## main._apply_fate().
+const FATE := [
+	[10, "kubb", ["Kråkmors gåva", "En slumpad kubb går med i din lek."], ["Crow Mother's Gift", "A random kubb joins your deck."]],
+	[7, "pinne", ["Lånad pinne", "Du kastar med en annan pinne resten av matchen. Kanske en du inte låst upp."], ["Borrowed Baton", "You throw with another baton for the rest of the match. Maybe one you haven't unlocked."]],
+	[9, "extra", ["Fickpinne", "+1 pinne den här turen. Den låg i fickan hela tiden."], ["Pocket Baton", "+1 baton this turn. It was in your pocket all along."]],
+	[12, "tander", ["Tandfen", "+3 tänder. Hon frågade inte."], ["Tooth Fairy", "+3 teeth. She didn't ask."]],
+	[4, "tander_stor", ["Gammal käke", "+7 tänder ur en käke i gräset."], ["Old Jaw", "+7 teeth from a jaw in the grass."]],
+	[7, "gront", ["Midsommarvind", "Gröna fältet 40 % bredare resten av matchen."], ["Midsummer Breeze", "Green zone 40% wider for the rest of the match."]],
+	[7, "lugn", ["Lugna händer", "Mätarna går 25 % långsammare resten av matchen."], ["Steady Hands", "Meters run 25% slower for the rest of the match."]],
+	[6, "dubbel", ["Dubbla tänder", "Nästa kast med träff ger dubbla tänder."], ["Double Teeth", "Your next throw that hits gives double teeth."]],
+	[6, "blixt", ["Åskväder", "Blixten slår ner på en av hans kubbar. Nu."], ["Thunderstorm", "Lightning strikes one of his kubbs. Now."]],
+	[5, "skakig", ["Hans mardröm", "Motståndaren kastar 30 % sämre resten av matchen."], ["His Nightmare", "The opponent throws 30% worse for the rest of the match."]],
+	[4, "nad", ["Kungens öga", "Kungen tål en träff till den här matchen."], ["The King's Eye", "The king forgives one more hit this match."]],
+	[5, "forbannad_kubb", ["Något i gräset", "FÖRBANNAD. En förbannad kubb kryper in i din lek."], ["Something in the Grass", "CURSED. A cursed kubb crawls into your deck."]],
+	[5, "darr", ["Darrhänt", "FÖRBANNAD. Precisionsmarkören går 20 % fortare resten av matchen."], ["Shaky Hands", "CURSED. The accuracy cursor is 20% faster for the rest of the match."]],
+	[3, "hans_pinne", ["Han hittar en pinne", "FÖRBANNAD. Motståndaren får en extra pinne nästa tur."], ["He Finds a Baton", "CURSED. The opponent gets an extra baton next turn."]],
+]

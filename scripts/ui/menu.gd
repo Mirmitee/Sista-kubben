@@ -193,6 +193,10 @@ func _toggle(label: String, key: String) -> void:
 func _page_title() -> void:
 	_title("SISTA KUBBEN", 24)
 	_title(_t("en midsommar du aldrig glömmer", "a midsummer you'll never forget"), 8, Color(0.7, 0.5, 0.45))
+	if Run.lifetime.runs > 0:
+		_text(_t("Runs %d   Vinster %d   Bästa natt %d   Kubbar %d   Pinnar %d/%d", "Runs %d   Wins %d   Best night %d   Kubbs %d   Batons %d/%d") % [
+			Run.lifetime.runs, Run.lifetime.wins, mini(Run.lifetime.best_night, 3), Run.lifetime.kubbs,
+			Cards.BATONS.keys().filter(func(id): return Run.is_unlocked_baton(id)).size(), Cards.BATONS.size()], Color(0.6, 0.5, 0.45))
 	_box.add_child(HSeparator.new())
 	_button(_t("SPELA", "PLAY"), func(): show_page("rules"))
 	_button(_t("TRÄNA PÅ GÖSTA (HUNDEN)", "PRACTICE ON GÖSTA (THE DOG)"), func(): training_pressed.emit())
@@ -254,6 +258,13 @@ func _page_controls() -> void:
 func _page_pause() -> void:
 	_title(_t("PAUS", "PAUSED"), 16)
 	_text(_t("Vedgubben väntar. Han är bra på att vänta.", "The Woodman waits. He's good at waiting."))
+	if Run.active:
+		var names: Array[String] = []
+		for id in Run.cards:
+			names.append(Cards.title(id))
+		_text(_t("Pinne: %s   Lek: %s", "Baton: %s   Deck: %s") % [Cards.title(Run.cur_baton()), ", ".join(names) if not names.is_empty() else "-"], Color(1.0, 0.9, 0.6))
+		if not Run.temp_names.is_empty():
+			_text(_t("Denna match: ", "This match: ") + ", ".join(Run.temp_names), Color(0.7, 1.0, 0.7))
 	_button(_t("FORTSÄTT", "RESUME"), func(): resume_pressed.emit())
 	_button(_t("BÖRJA OM RUNDAN", "RESTART ROUND"), func(): restart_pressed.emit())
 	_button(_t("INSTÄLLNINGAR", "SETTINGS"), func(): show_page("settings"))
@@ -426,7 +437,18 @@ func _page_shop() -> void:
 			Run.sell(id)
 			show_page("shop"))
 		row3.add_child(sb)
-	_text(_t("Din kubblek står på hans baslinje. Träffa dem för effekterna.", "Your kubb deck stands on his baseline. Hit them for the effects."), Color(0.8, 0.7, 0.6))
+	_text(_t("Din pinne: %s. Din kubblek står på hans baslinje.", "Your baton: %s. Your kubb deck stands on his baseline.") % Cards.title(Run.baton), Color(0.8, 0.7, 0.6))
+	var tips := [
+		_t("\"Fäll fältkubbarna, annars kliver han fram och andas på dig.\"", "\"Fell the field kubbs, or he steps up and breathes on you.\""),
+		_t("\"Leffe blir sämre av korv. Alla blir det.\"", "\"Leffe gets worse from sausage. Everyone does.\""),
+		_t("\"Krutkubben mitt i raden. Lita på mig. Jag har bara ett öga kvar.\"", "\"Powder kubb in the middle of the row. Trust me. I have one eye left.\""),
+		_t("\"Perfekta kast i rad ger tänder. Jag tar dem sen.\"", "\"Perfect throws in a row give teeth. I'll take them later.\""),
+		_t("\"Håll Tab under matchen så ser du din lek. Eller blunda. Samma sak.\"", "\"Hold Tab during the match to see your deck. Or close your eyes. Same thing.\""),
+		_t("\"Ödeskorten ljuger aldrig. Ibland.\"", "\"The fate cards never lie. Sometimes.\""),
+		_t("\"Rör inte kungen. Han är kittlig och hämndlysten.\"", "\"Don't touch the king. He's ticklish and vengeful.\""),
+		_t("\"Förbannade kubbar ger mest. Det är därför de är förbannade.\"", "\"Cursed kubbs pay the most. That's why they're cursed.\""),
+	]
+	_text(_t("Kråkmors spådom: ", "Crow Mother foretells: ") + tips[(Run.night * 7 + Run.match_index * 3 + Run.teeth) % tips.size()], Color(0.75, 0.6, 0.85))
 	_text(_t("Kråkmor: \"Förbannade kubbar är gratis. Det kostar senare.\"", "Crow Mother: \"Cursed kubbs are free. They cost later.\""), Color(0.7, 0.5, 0.8))
 	_button(_t("FORTSÄTT TILL NÄSTA MATCH", "ON TO THE NEXT MATCH"), func(): shop_done.emit())
 

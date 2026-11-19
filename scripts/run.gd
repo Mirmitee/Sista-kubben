@@ -19,6 +19,10 @@ var baton := "vanlig"
 var stats := {"kubbs": 0, "wins": 0, "perfect": 0, "combos": 0, "teeth_total": 0}
 var opp_mods := {}        # motståndarens specialregler för aktuell match
 var king_shield_left := 0
+var temp_mods := {}       # välsignelser/förbannelser från ödeskort, bara den här matchen
+var temp_names: Array[String] = []
+var borrowed := ""       # lånad pinne från ödeskort, bara den här matchen
+var cards_drawn := 0
 
 # meta
 var unlocked_cards: Array[String] = []
@@ -38,12 +42,15 @@ func start(baton_id: String) -> void:
 	cards.clear()
 	baton = baton_id
 	stats = {"kubbs": 0, "wins": 0, "perfect": 0, "combos": 0, "teeth_total": 0}
+	clear_temp()
+	cards_drawn = 0
 	lifetime.runs += 1
 	save_meta()
 
 
 func stop() -> void:
 	active = false
+	clear_temp()
 	opp_mods = {}
 
 
@@ -66,9 +73,11 @@ func mod(key: String, default := 0.0) -> float:
 		var m: Dictionary = Cards.DEFS[id].get("mods", {})
 		if m.has(key):
 			v = v * m[key] if mult else v + m[key]
-	var b: Dictionary = Cards.BATONS[baton]
+	var b: Dictionary = Cards.BATONS[cur_baton()]
 	if b.has(key):
 		v = v * b[key] if mult else v + b[key]
+	if temp_mods.has(key):
+		v = v * temp_mods[key] if mult else v + temp_mods[key]
 	if opp_mods.has(key):
 		v = v * opp_mods[key] if mult else v + opp_mods[key]
 	if not mult and v == 0.0:
@@ -77,7 +86,26 @@ func mod(key: String, default := 0.0) -> float:
 
 
 func baton_stat(key: String) -> float:
-	return Cards.BATONS.get(baton, Cards.BATONS["vanlig"]).get(key, 1.0)
+	return Cards.BATONS.get(cur_baton(), Cards.BATONS["vanlig"]).get(key, 1.0)
+
+
+func cur_baton() -> String:
+	return borrowed if borrowed != "" else baton
+
+
+## Ny match: ödeskortens tillfälliga effekter försvinner.
+func clear_temp() -> void:
+	temp_mods = {}
+	temp_names.clear()
+	borrowed = ""
+
+
+func add_temp(key: String, v: float, name: String) -> void:
+	if key.ends_with("_mult"):
+		temp_mods[key] = temp_mods.get(key, 1.0) * v
+	else:
+		temp_mods[key] = temp_mods.get(key, 0.0) + v
+	temp_names.append(name)
 
 
 func add_teeth(n: int) -> void:
