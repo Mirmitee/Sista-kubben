@@ -206,7 +206,7 @@ func refresh(i: Dictionary) -> void:
 			3: ph = Lang.t("phase_toss_you")
 		_phase.text = ph
 		if Run.active:
-			_teeth.text = Lang.t("teeth_hud") % [Run.teeth, Run.night, Run.NIGHTS] + "   " + ("ÖDE " if Lang.current == "sv" else "FATE ") + "*".repeat(Run.fate_points) + "-".repeat(maxi(Run.FATE_COST - Run.fate_points, 0))
+			_teeth.text = Lang.t("teeth_hud") % [Run.teeth, Run.night, Run.nights_text()] + "   " + ("ÖDE " if Lang.current == "sv" else "FATE ") + "*".repeat(Run.fate_points) + "-".repeat(maxi(Run.FATE_COST - Run.fate_points, 0))
 			var names: Array[String] = []
 			for id in Run.cards:
 				names.append(Cards.title(id))

@@ -131,7 +131,8 @@ func _ready() -> void:
 		else:
 			_new_training())
 	menu.main_menu_pressed.connect(_to_menu)
-	menu.shop_done.connect(_after_shop)
+	menu.shop_done.connect(_node_done)
+	menu.map_pick.connect(_on_map_pick)
 	Run.unlocked.connect(func(t: String): hud.toast(Lang.t("unlocked") + " " + t))
 	Lang.changed.connect(_refresh_ui)
 	Settings.changed.connect(_refresh_ui)
@@ -231,8 +232,41 @@ func _to_menu() -> void:
 
 
 func _start_run(baton_id: String) -> void:
+	if mode == Mode.MATCH:
+		await hud.fade_out()
+		_to_menu()
 	Run.start(baton_id)
-	_start(Mode.MATCH)
+	menu.open("map")
+
+
+## Spelaren valde en nod på kartan.
+func _on_map_pick(i: int) -> void:
+	var n := Run.choose(i)
+	match n.type:
+		"shop":
+			menu.open("shop")
+		"fate":
+			menu.open("fate_node")
+		"grave":
+			menu.open("grave")
+		_:
+			_play_match()
+
+
+func _node_done() -> void:
+	Run.step_done()
+	menu.open("map")
+
+
+func _play_match() -> void:
+	menu.close()
+	if mode != Mode.MATCH:
+		_start(Mode.MATCH)
+		return
+	await hud.fade_out()
+	_begin_match()
+	thrower.input_enabled = true
+	hud.fade_in()
 
 
 func _start(m: Mode, instant := false) -> void:
@@ -300,7 +334,7 @@ func _begin_match() -> void:
 	_clear_batons()
 	_reset_kubbs()
 	_set_opponent(Run.opponent_id() if Run.active else "vedgubben")
-	opponent.setup_for_night(Run.night)
+	opponent.setup_for_night(Run.night + (1 if Run.is_elite() else 0) + (1 if Run.night > Run.NIGHTS else 0))
 	Run.opp_mods = opponent.mods_for_night(Run.night)
 	Run.clear_temp()
 	_double_next = false
@@ -316,7 +350,7 @@ func _begin_match() -> void:
 	hud.clear_death()
 	hud.center("")
 	_ghost.visible = false
-	var intro: String = Lang.t("night") % [Run.night, Run.NIGHTS] + "\n" + opponent.display_name[Lang.current]
+	var intro: String = Lang.t("night") % [Run.night, Run.nights_text()] + "\n" + (_tl("ELIT: ", "ELITE: ") if Run.is_elite() else "") + opponent.display_name[Lang.current]
 	if opponent.rule_text[Lang.current] != "":
 		intro += "\n" + opponent.rule_text[Lang.current]
 	hud.banner(intro)
@@ -1123,7 +1157,7 @@ func _end_player_turn() -> void:
 		Fx.ring(self, Vector3(0, 0, adv), Color(1.0, 0.35, 0.2), 1.5)
 		await opponent.walk_to_z(clampf(adv - 1.0, OPP_Z, -5.0), 0.9)
 	await get_tree().create_timer(1.0).timeout
-	var opp_n := maxi(1, 6 + int(Run.mod("opp_batons_add")) + _opp_batons_next)
+	var opp_n := maxi(1, 6 + int(Run.mod("opp_batons_add")) + _opp_batons_next + opponent.extra_batons)
 	_opp_batons_next = 0
 	_opp_total = opp_n
 	_opp_left = opp_n
@@ -1317,6 +1351,8 @@ func _win_match() -> void:
 	state = State.OVER
 	thrower.cancel_hold()
 	var reward := 8 + Run.night * 2 + int(Run.mod("win_teeth_add")) + maxi(batons_left, 0)
+	if Run.is_elite():
+		reward = int(reward * 1.5)
 	reward += mini(5, int(Run.teeth / 5)) * int(Run.mod("interest"))
 	Fx.confetti(self, king.global_position + Vector3(0, 0.3, 0))
 	Sfx.play("sparkle", 0.0, 1.0)
@@ -1329,7 +1365,7 @@ func _win_match() -> void:
 	if won_all:
 		menu.open("victory")
 	else:
-		menu.open("shop")
+		menu.open("map")
 
 
 func _after_shop() -> void:
@@ -1603,6 +1639,27 @@ func _run_autotest() -> void:
 	print("TEST grönt med midsommarkubben: före %.2f" % thrower.perfect())
 	Run.buy("stangkubb")
 	print("   efter %.2f" % thrower.perfect())
+	# kartan: gå igenom tre nätter och in i den oändliga
+	Run.start("vanlig")
+	var won := false
+	var path: Array[String] = []
+	for guard in 40:
+		var n := Run.choose(randi() % Run.map[Run.layer].size())
+		path.append(n.type + ("/" + n.opp if n.has("opp") else ""))
+		if n.type in ["match", "elite", "boss"]:
+			if Run.advance():
+				won = true
+				break
+		else:
+			Run.step_done()
+	print("TEST karta: %d noder, vann runnen %s, natt %d, %s" % [path.size(), won, Run.night, Run.nights_text()])
+	print("   väg: %s" % ", ".join(path.slice(0, 5)))
+	Run.endless = true
+	print("TEST oändlig natt: %s" % Run.nights_text())
+	_set_opponent("birgit")
+	opponent.setup_for_night(2)
+	print("TEST Birgit: %s, extra pinnar %d, fel %.3f" % [opponent.display_name.sv, opponent.extra_batons, opponent.error_yaw])
+	_set_opponent("vedgubben")
 	# träning
 	_start(Mode.TRAINING, true)
 	for i in 3:
@@ -1639,7 +1696,7 @@ func _screenshots(prefix: String) -> void:
 	for i in 5:
 		await get_tree().process_frame
 	vp.get_texture().get_image().save_png(prefix + "_pinne.png")
-	Run.match_index = 1
+	Run.node = {"type": "boss", "opp": "tjock_leffe"}
 	_start(Mode.MATCH, true)
 	thrower.mouse_aim = false
 	thrower.stand_x = -0.18

@@ -8,7 +8,8 @@ signal unlocked(text: String)
 const META_PATH := "user://meta.cfg"
 const MAX_CARDS := 5
 const NIGHTS := 3
-const OPPONENTS := ["vedgubben", "tjock_leffe"]  # per natt, sista = boss
+const OPPONENTS := ["vedgubben", "tjock_leffe"]  # gammal ordning (används om ingen karta)
+const NORMAL_OPPS := ["vedgubben", "birgit"]
 
 var active := false
 var night := 1
@@ -17,6 +18,13 @@ var teeth := 0
 var cards: Array[String] = []
 var baton := "vanlig"
 var stats := {"kubbs": 0, "wins": 0, "perfect": 0, "combos": 0, "teeth_total": 0}
+# karta: lager av noder, man väljer en nod per lager. Nod = {"type", "opp"}
+# typer: match, elite, shop, fate, grave, boss
+var map: Array = []
+var layer := 0
+var picked: Array[int] = []
+var node := {}
+var endless := false
 var opp_mods := {}        # motståndarens specialregler för aktuell match
 var king_shield_left := 0
 var temp_mods := {}       # välsignelser/förbannelser från ödeskort, bara den här matchen
@@ -43,6 +51,9 @@ func start(baton_id: String) -> void:
 	night = 1
 	match_index = 0
 	teeth = 4
+	endless = false
+	node = {}
+	gen_map()
 	cards.clear()
 	baton = baton_id
 	stats = {"kubbs": 0, "wins": 0, "perfect": 0, "combos": 0, "teeth_total": 0}
@@ -62,11 +73,65 @@ func stop() -> void:
 
 
 func opponent_id() -> String:
+	if not node.is_empty():
+		return node.get("opp", "vedgubben")
 	return OPPONENTS[match_index]
 
 
 func is_boss() -> bool:
+	if not node.is_empty():
+		return node.get("type", "") == "boss"
 	return match_index == OPPONENTS.size() - 1
+
+
+func nights_text() -> String:
+	return "∞" if endless or night > NIGHTS else str(NIGHTS)
+
+
+func is_elite() -> bool:
+	return node.get("type", "") == "elite"
+
+
+func _m(t: String) -> Dictionary:
+	return {"type": t, "opp": NORMAL_OPPS[randi() % NORMAL_OPPS.size()]}
+
+
+## En natts karta: match, vila/bod, match eller elit, bod, boss.
+func gen_map() -> void:
+	var a := {"type": "match", "opp": "vedgubben"}
+	var b := {"type": "match", "opp": "birgit"}
+	var rest := [{"type": "shop"}, {"type": "fate"}, {"type": "grave"}]
+	rest.shuffle()
+	var rest2 := [{"type": "shop"}, {"type": "grave"}, {"type": "fate"}]
+	rest2.shuffle()
+	map = [
+		[a, b] if randf() < 0.5 else [b, a],
+		rest.slice(0, 2),
+		[_m("match"), _m("elite")],
+		[{"type": "shop"}, rest2[1]] if rest2[1].type != "shop" else [{"type": "shop"}, {"type": "grave"}],
+		[{"type": "boss", "opp": "tjock_leffe"}],
+	]
+	layer = 0
+	picked.clear()
+
+
+func choose(i: int) -> Dictionary:
+	node = map[layer][i]
+	picked.append(i)
+	return node
+
+
+## Noden är klar: nästa lager, eller nästa natt med en ny karta.
+## Returnerar true om natt 3 just blev klar (och vi inte kör oändligt).
+func step_done() -> bool:
+	layer += 1
+	if layer >= map.size():
+		night += 1
+		lifetime.best_night = maxi(lifetime.best_night, night)
+		gen_map()
+		save_meta()
+		return night == NIGHTS + 1 and not endless
+	return false
 
 
 ## Summerar en modifierare från kort, vald pinne och motståndaren.
@@ -160,19 +225,16 @@ func is_unlocked_baton(id: String) -> bool:
 
 ## Efter vunnen match: nästa motståndare eller nästa natt. Returnerar
 ## true om hela runnen är vunnen.
+## Efter vunnen match. Returnerar true om hela runnen (tre nätter) är vunnen.
 func advance() -> bool:
 	stats.wins += 1
 	lifetime.wins += 1
 	if opponent_id() == "tjock_leffe":
 		lifetime.leffe_beaten += 1
-	match_index += 1
-	if match_index >= OPPONENTS.size():
-		match_index = 0
-		night += 1
-		lifetime.best_night = maxi(lifetime.best_night, night)
+	var won := step_done()
 	check_unlocks()
 	save_meta()
-	return night > NIGHTS
+	return won
 
 
 func on_kubbs(n: int) -> void:

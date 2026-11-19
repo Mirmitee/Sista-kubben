@@ -5,6 +5,7 @@ extends CanvasLayer
 
 signal run_start(baton_id: String)
 signal shop_done
+signal map_pick(index: int)
 signal training_pressed
 signal resume_pressed
 signal restart_pressed
@@ -126,6 +127,9 @@ func show_page(p: String) -> void:
 		"baton": _page_baton()
 		"shop": _page_shop()
 		"victory": _page_victory()
+		"map": _page_map()
+		"fate_node": _page_fate_node()
+		"grave": _page_grave()
 	# första knappen får fokus så att tangentbord och gamepad funkar
 	await get_tree().process_frame
 	for c in _box.get_children():
@@ -400,8 +404,8 @@ func _page_baton() -> void:
 
 func _page_shop() -> void:
 	_title(_t("KRÅKMORS BOD", "CROW MOTHER'S SHOP"), 12)
-	_text(_t("Tänder %d   Kubbleken %d/%d   Nästa: natt %d, %s", "Teeth %d   Kubb deck %d/%d   Next: night %d, %s") % [
-		Run.teeth, Run.cards.size(), Run.MAX_CARDS, Run.night, Run.opponent_id().replace("_", "-").capitalize()], Color(1.0, 0.9, 0.6))
+	_text(_t("Tänder %d   Kubbleken %d/%d   Natt %d", "Teeth %d   Kubb deck %d/%d   Night %d") % [
+		Run.teeth, Run.cards.size(), Run.MAX_CARDS, Run.night], Color(1.0, 0.9, 0.6))
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 3)
 	_box.add_child(row)
@@ -497,7 +501,7 @@ func _page_shop() -> void:
 	]
 	_text(_t("Kråkmors spådom: ", "Crow Mother foretells: ") + tips[(Run.night * 7 + Run.match_index * 3 + Run.teeth) % tips.size()], Color(0.75, 0.6, 0.85))
 	_text(_t("Kråkmor: \"Förbannade kubbar är gratis. Det kostar senare.\"", "Crow Mother: \"Cursed kubbs are free. They cost later.\""), Color(0.7, 0.5, 0.8))
-	_button(_t("FORTSÄTT TILL NÄSTA MATCH", "ON TO THE NEXT MATCH"), func(): shop_done.emit())
+	_button(_t("TILLBAKA TILL KARTAN", "BACK TO THE MAP"), func(): shop_done.emit())
 
 
 func _page_victory() -> void:
@@ -505,7 +509,161 @@ func _page_victory() -> void:
 	_text(_t("Tre nätter. Ingen ska få veta vad du såg.", "Three nights. Nobody will know what you saw."))
 	_text(_t("Fällda kubbar: %d   Kombos: %d   Perfekta: %d   Tänder totalt: %d", "Kubbs felled: %d   Combos: %d   Perfects: %d   Teeth total: %d") % [
 		Run.stats.kubbs, Run.stats.combos, Run.stats.perfect, Run.stats.teeth_total])
+	_text(_t("Men natten tar inte slut. Den har aldrig tagit slut.", "But the night doesn't end. It never has."), Color(0.8, 0.4, 0.4))
+	_button(_t("IN I DEN OÄNDLIGA NATTEN", "INTO THE ENDLESS NIGHT"), func():
+		Run.endless = true
+		Sfx.play("bad", -4.0, 0.6)
+		show_page("map"))
 	_button(_t("TILL HUVUDMENYN", "MAIN MENU"), func(): main_menu_pressed.emit())
+
+
+func _node_name(n: Dictionary) -> String:
+	var opp_name := {"vedgubben": _t("VEDGUBBEN", "THE WOODMAN"), "birgit": "BIRGIT", "tjock_leffe": _t("TJOCK-LEFFE", "FAT LEFFE")}
+	match n.type:
+		"match": return _t("MATCH: ", "MATCH: ") + opp_name.get(n.opp, "?")
+		"elite": return _t("ELIT: ", "ELITE: ") + opp_name.get(n.opp, "?")
+		"boss": return "BOSS: " + opp_name.get(n.opp, "?")
+		"shop": return _t("KRÅKMORS BOD", "CROW MOTHER'S SHOP")
+		"fate": return _t("ÖDESSTENEN", "THE FATE STONE")
+		"grave": return _t("GRAVGÅRDEN", "THE GRAVEYARD")
+	return "?"
+
+
+func _node_desc(n: Dictionary) -> String:
+	match n.type:
+		"match": return _t("Vanlig match.", "Regular match.")
+		"elite": return _t("Svårare. 50 % fler tänder.", "Harder. 50% more teeth.")
+		"boss": return _t("Han äter dina pinnar.", "He eats your batons.")
+		"shop": return _t("Köp kubbar och ödeskort.", "Buy kubbs and fate cards.")
+		"fate": return _t("Välj ett gratis ödeskort.", "Pick a free fate card.")
+		"grave": return _t("Gräv efter tänder eller begrav en kubb.", "Dig for teeth or bury a kubb.")
+	return ""
+
+
+func _page_map() -> void:
+	_title(_t("NATT %d AV %s", "NIGHT %d OF %s") % [Run.night, Run.nights_text()], 14)
+	_text(_t("Tänder %d   Kubbleken %d/%d   Ödesleken %d", "Teeth %d   Kubb deck %d/%d   Fate deck %d") % [
+		Run.teeth, Run.cards.size(), Run.MAX_CARDS, Run.fate_deck.size()], Color(1.0, 0.9, 0.6))
+	for li in Run.map.size():
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 4)
+		row.alignment = BoxContainer.ALIGNMENT_CENTER
+		_box.add_child(row)
+		var nodes: Array = Run.map[li]
+		for ni in nodes.size():
+			var n: Dictionary = nodes[ni]
+			if li == Run.layer:
+				var b := Button.new()
+				b.text = _node_name(n)
+				b.tooltip_text = _node_desc(n)
+				b.custom_minimum_size = Vector2(140, 0)
+				var idx: int = ni
+				b.pressed.connect(func():
+					Sfx.play("clack", -6.0, 1.2)
+					map_pick.emit(idx))
+				row.add_child(b)
+			else:
+				var l := Label.new()
+				var done := li < Run.layer
+				var chosen := done and Run.picked.size() > li and Run.picked[li] == ni
+				l.text = ("> " if chosen else "") + _node_name(n)
+				l.custom_minimum_size = Vector2(140, 0)
+				l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+				var c := Color(0.45, 0.35, 0.3)
+				if chosen:
+					c = Color(0.6, 0.9, 0.5)
+				elif not done:
+					c = Color(0.85, 0.7, 0.6)
+				l.add_theme_color_override("font_color", c)
+				row.add_child(l)
+	if Run.layer < Run.map.size():
+		var hints: Array[String] = []
+		for n in Run.map[Run.layer]:
+			hints.append(_node_name(n) + ": " + _node_desc(n))
+		_text("  ".join(hints), Color(0.7, 0.6, 0.55))
+	_text(_t("Välj väg. Ängen minns vilken.", "Choose your path. The meadow remembers which."), Color(0.7, 0.5, 0.8))
+
+
+var _fate_free: Array[String] = []
+
+
+func _page_fate_node() -> void:
+	_title(_t("ÖDESSTENEN", "THE FATE STONE"), 14)
+	_text(_t("En sten med tre ristningar. En av dem lägger sig i din ödeslek.", "A stone with three carvings. One of them joins your fate deck."))
+	if _fate_free.is_empty():
+		var fp: Array[String] = []
+		for id in Cards.FATE:
+			if not Cards.FATE[id].get("cursed", false):
+				fp.append(id)
+		fp.shuffle()
+		_fate_free.assign(fp.slice(0, 3))
+	for id in _fate_free:
+		var b := Button.new()
+		b.text = Cards.fate_title(id) + ": " + Cards.fate_desc(id)
+		b.autowrap_mode = TextServer.AUTOWRAP_WORD
+		b.custom_minimum_size = Vector2(340, 0)
+		b.pressed.connect(func():
+			Run.fate_deck.append(id)
+			Run.fate_pile.append(id)
+			_fate_free.clear()
+			Sfx.play("sparkle", -4.0)
+			shop_done.emit())
+		_box.add_child(b)
+	_button(_t("TA INGET (+2 tänder)", "TAKE NOTHING (+2 teeth)"), func():
+		Run.add_teeth(2)
+		_fate_free.clear()
+		shop_done.emit())
+
+
+var _dug := false
+
+
+func _page_grave() -> void:
+	_title(_t("GRAVGÅRDEN", "THE GRAVEYARD"), 14)
+	_text(_t("Kors av björk. Någon har grävt här förut. Någon gräver fortfarande.", "Birch crosses. Someone has dug here before. Someone is still digging."))
+	_text(_t("Tänder %d", "Teeth %d") % Run.teeth, Color(1.0, 0.9, 0.6))
+	if not _dug:
+		_button(_t("GRÄV (5-9 tänder, eller något annat)", "DIG (5-9 teeth, or something else)"), func():
+			_dug = true
+			if randf() < 0.2:
+				var cp := Run.cursed_pool()
+				if not cp.is_empty() and Run.cards.size() < Run.MAX_CARDS:
+					var id: String = cp[randi() % cp.size()]
+					Run.cards.append(id)
+					_last_grave = _t("Något grep tag i din hand. %s följer med dig.", "Something grabbed your hand. %s comes with you.") % Cards.title(id)
+					Sfx.play("bad", -4.0, 0.7)
+					show_page("grave")
+					return
+			var n := randi_range(5, 9)
+			Run.add_teeth(n)
+			_last_grave = _t("Du hittade %d tänder. Inga av dem är dina. Än.", "You found %d teeth. None of them are yours. Yet.") % n
+			Sfx.play("coin", -4.0)
+			show_page("grave"))
+	if _last_grave != "":
+		_text(_last_grave, Color(0.8, 0.7, 0.9))
+	if not Run.cards.is_empty():
+		_text(_t("Begrav en kubb ur leken (förbannade ger 3 tänder):", "Bury a kubb from your deck (cursed ones give 3 teeth):"))
+		var row := HFlowContainer.new()
+		row.custom_minimum_size.x = 340
+		_box.add_child(row)
+		for id in Run.cards:
+			var b := Button.new()
+			b.text = _t("BEGRAV ", "BURY ") + Cards.title(id)
+			b.tooltip_text = Cards.desc(id)
+			b.pressed.connect(func():
+				Run.cards.erase(id)
+				if Cards.DEFS[id].get("cursed", false):
+					Run.add_teeth(3)
+				Sfx.play("thud", -4.0, 0.7)
+				show_page("grave"))
+			row.add_child(b)
+	_button(_t("LÄMNA GRAVGÅRDEN", "LEAVE THE GRAVEYARD"), func():
+		_dug = false
+		_last_grave = ""
+		shop_done.emit())
+
+
+var _last_grave := ""
 
 
 func back() -> bool:

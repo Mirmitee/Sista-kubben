@@ -15,6 +15,9 @@ var error_yaw := 0.03
 var error_speed := 0.05
 var baton_push := 1.0     # hur hårt hans pinnar knuffar
 var player_batons_add := 0  # fusk som påverkar spelarens pinnar
+var extra_batons := 0       # fler pinnar för motståndaren
+## Svårighet: alla motståndare kastar så här mycket bättre än förut.
+const DIFFICULTY := 0.72
 var rule_text := {"sv": "", "en": ""}
 
 var _head: Node3D
@@ -48,7 +51,7 @@ func mods_for_night(_night: int) -> Dictionary:
 
 
 func setup_for_night(night: int) -> void:
-	var k := pow(0.8, night - 1)
+	var k := maxf(pow(0.8, night - 1), 0.25) * DIFFICULTY
 	error_yaw *= k
 	error_speed *= k
 
