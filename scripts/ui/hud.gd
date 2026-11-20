@@ -74,7 +74,7 @@ func _ready() -> void:
 	_flash = _label(14, Color(1.0, 0.85, 0.2), Vector2(0, 96), Vector2(640, 20))
 	_flash.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	var ver := _label(8, Color(0.8, 0.15, 0.1), Vector2(546, 349))
-	ver.text = "SISTA KUBBEN v0.16"
+	ver.text = "SISTA KUBBEN v0.17"
 	_teeth = _label(8, Color(1.0, 0.95, 0.75), Vector2(422, 40), Vector2(210, 10))
 	_teeth.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	_cards = _label(8, Color(0.75, 0.7, 0.85), Vector2(422, 52), Vector2(210, 120))
@@ -229,6 +229,13 @@ func refresh(i: Dictionary) -> void:
 				names.append(("HAND: " if Lang.current == "sv" else "HAND: ") + ", ".join(hn))
 			if Run.borrowed != "":
 				names.append("~ " + Cards.title(Run.borrowed))
+			if Run.night_mod != "stilla":
+				names.append("* " + Cards.night_title(Run.night_mod).to_upper())
+			if not Run.keyring.is_empty():
+				var kn: Array[String] = []
+				for c in Run.keyring:
+					kn.append(Cards.charm_title(c))
+				names.append(("RING: " if Lang.current == "sv" else "RING: ") + ", ".join(kn))
 			for t in Run.temp_names:
 				names.append("+ " + t)
 			_cards.text = "\n".join(names)
@@ -340,6 +347,36 @@ func speech(who: String, text: String) -> void:
 		_speech_tween.kill()
 	_speech_tween = create_tween()
 	_speech_tween.tween_property(_speech, "visible_ratio", 1.0, 0.025 * _speech.text.length())
+
+
+var _tut_panel: Panel
+var _tut_lbl: Label
+
+
+## Rutan där Gösta förklarar spelet. Tom text gömmer den.
+func tutorial(text: String) -> void:
+	if _tut_panel == null:
+		_tut_panel = Panel.new()
+		_tut_panel.add_theme_stylebox_override("panel", Art.frame_style(Color(0.9, 0.7, 0.35), Color(0.08, 0.05, 0.02, 0.92), 16, 4))
+		_tut_panel.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+		_tut_panel.position = Vector2(140, 84)
+		_tut_panel.size = Vector2(360, 86)
+		_tut_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_play_root.add_child(_tut_panel)
+		_tut_lbl = _mk(9, Color(1.0, 0.92, 0.7), "")
+		_tut_lbl.position = Vector2(8, 6)
+		_tut_lbl.size = Vector2(344, 74)
+		_tut_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD
+		_tut_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		_tut_panel.add_child(_tut_lbl)
+	_tut_panel.visible = text != ""
+	_tut_lbl.text = text
+	_tut_lbl.visible_ratio = 0.0
+	var tw := create_tween()
+	tw.tween_property(_tut_lbl, "visible_ratio", 1.0, 0.012 * text.length())
+	_tut_panel.scale = Vector2(1.06, 1.06)
+	_tut_panel.pivot_offset = _tut_panel.size * 0.5
+	create_tween().tween_property(_tut_panel, "scale", Vector2.ONE, 0.2).set_trans(Tween.TRANS_BACK)
 
 
 func center(text: String) -> void:
@@ -478,6 +515,13 @@ func show_deck(on: bool, his: Array = [], board: Array = [], opp_name := "") -> 
 	var lines: Array[String] = []
 	lines.append(("PINNE: " if sv else "BATON: ") + Cards.title(Run.cur_baton()) + " - " + Cards.desc(Run.cur_baton()))
 	lines.append("DINA KUBBAR (vänster till höger, på båda baslinjerna):" if sv else "YOUR KUBBS (left to right, on both baselines):")
+	if not Run.keyring.is_empty():
+		var kn: Array[String] = []
+		for c in Run.keyring:
+			kn.append(Cards.charm_title(c) + " (" + Cards.charm_desc(c) + ")")
+		lines.append(("NYCKELRING: " if sv else "KEY RING: ") + "  ".join(kn))
+	if Run.night_mod != "stilla":
+		lines.append(("NATTEN: " if sv else "THE NIGHT: ") + Cards.night_title(Run.night_mod) + " - " + Cards.night_desc(Run.night_mod))
 	for i in Run.cards.size():
 		var id: String = Run.cards[i]
 		lines.append("  %d " % (i + 1) + ((Cards.title(id) + ": " + Cards.desc(id)) if id != "" else ("vanlig kubb" if sv else "plain kubb")))
@@ -486,7 +530,8 @@ func show_deck(on: bool, his: Array = [], board: Array = [], opp_name := "") -> 
 				lines.append("      * " + Cards.rune_title(r) + ": " + Cards.rune_desc(r))
 		if id != "":
 			var df := Cards.def_of(id)
-			lines.append(("      FÖRSVAR (din sida) " if sv else "      DEFENSE (your side) ") + Cards.def_title(df) + ": " + Cards.def_desc(df))
+			var lv: int = Run.def_lvl[i]
+			lines.append(("      FÖRSVAR (din sida) " if sv else "      DEFENSE (your side) ") + Cards.def_title(df) + " " + ["I", "II", "III"][lv] + ": " + Cards.def_desc(df) + ((" " + Cards.def_level_text(df, lv)) if lv > 0 else ""))
 		if Run.grow_chips[i] > 0 or Run.grow_mult[i] > 0:
 			lines.append(("      vuxit: +%d marker, +%d multi" if sv else "      grown: +%d chips, +%d mult") % [Run.grow_chips[i], Run.grow_mult[i]])
 	if not Run.temp_names.is_empty():
@@ -654,9 +699,10 @@ func _build_score() -> void:
 	panel.add_theme_stylebox_override("panel", Art.frame_style(Color(0.6, 0.12, 0.08), Color(0.06, 0.01, 0.03, 0.9), 16, 4))
 	panel.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	panel.position = Vector2(-3, -3)
-	panel.size = Vector2(132, 100)
+	panel.size = Vector2(132, 54)
 	panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_score_root.add_child(panel)
+	_score_panel = panel
 	_goal_lbl = _mk(7, Color(0.85, 0.5, 0.45), "")
 	_goal_lbl.position = Vector2(4, 2)
 	_score_root.add_child(_goal_lbl)
@@ -697,12 +743,52 @@ func _build_score() -> void:
 	_tally_root.add_child(_flames)
 	_chips_lbl.text = "0"
 	_mult_lbl.text = "0"
+	_tally_root.visible = false
 	_fast_lbl = _label(10, Color(1.0, 0.6, 0.3), Vector2(568, 238))
 	_fast_lbl.text = ">> x3"
 	_fast_lbl.visible = false
 
 
 var _goal_big: Label
+var _score_panel: Panel
+var _tally_on := false
+var _show_tw: Tween
+
+
+var _steal_lbl: Label
+
+
+## Hans poäng räknas med samma rutor, fast röda och baklänges.
+func tally_steal(on: bool) -> void:
+	if _steal_lbl == null:
+		_steal_lbl = _mk(8, Color(1.0, 0.25, 0.2), "")
+		_steal_lbl.position = Vector2(0, 36)
+		_steal_lbl.size = Vector2(118, 10)
+		_steal_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		_tally_root.add_child(_steal_lbl)
+	_steal_lbl.text = ("HAN STJÄL DINA POÄNG" if Lang.current == "sv" else "HE STEALS YOUR POINTS") if on else ""
+	_tally_root.modulate = Color(1.0, 0.55, 0.55, _tally_root.modulate.a) if on else Color(1, 1, 1, _tally_root.modulate.a)
+
+
+## Rutorna syns bara medan ett kast räknas.
+func _tally_show(on: bool) -> void:
+	if on == _tally_on:
+		return
+	_tally_on = on
+	if _show_tw:
+		_show_tw.kill()
+	_show_tw = create_tween().set_parallel(true)
+	if on:
+		_tally_root.visible = true
+		_tally_root.modulate.a = 0.0
+		_tally_root.scale = Vector2(1.0, 0.2)
+		_show_tw.tween_property(_score_panel, "size:y", 100.0, 0.15)
+		_show_tw.tween_property(_tally_root, "modulate:a", 1.0, 0.12)
+		_show_tw.tween_property(_tally_root, "scale", Vector2.ONE, 0.2).set_trans(Tween.TRANS_BACK)
+	else:
+		_show_tw.tween_property(_tally_root, "modulate:a", 0.0, 0.25)
+		_show_tw.tween_property(_score_panel, "size:y", 54.0, 0.3).set_delay(0.15)
+		_show_tw.chain().tween_callback(func(): _tally_root.visible = false)
 var _chips_box: ColorRect
 var _mult_box: ColorRect
 var _flames: Control
@@ -743,6 +829,7 @@ func tally(chips: int, mult: float, reset := false) -> void:
 		_tally_tw.kill()
 	if reset:
 		_total_lbl.text = ""
+	_tally_show(true)
 	_chips_v = chips
 	_mult_v = mult
 	_heat = maxf(_heat, clampf(log(maxf(chips * mult, 1.0)) / log(10.0) - 1.0, 0.0, 4.0))
@@ -776,7 +863,8 @@ func tally_total(total: int) -> void:
 	_tally_tw.tween_callback(func():
 		_chips_lbl.text = "0"
 		_mult_lbl.text = "0"
-		_total_lbl.text = "")
+		_total_lbl.text = ""
+		_tally_show(false))
 
 
 ## Flytande siffra i valfri färg.

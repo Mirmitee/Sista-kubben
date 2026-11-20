@@ -18,6 +18,8 @@ var _legs: Array[Node3D] = []
 var _tail: Node3D
 var _visual: Node3D
 var _tip := 0.0
+var _size := 1.0
+var _col: CollisionShape3D
 
 const LINES := {
 	"start": {
@@ -25,8 +27,8 @@ const LINES := {
 		"en": ["That's Gösta. He's not mine. Throw at him.", "Gösta has lived on the meadow for a hundred years. Nobody knows why.", "Practice. Gösta volunteers. He has no choice."],
 	},
 	"hit": {
-		"sv": ["VOFF?!", "Gösta kommer att minnas det här.", "*gnäll* ... *morr*", "Han blev inte fulare av det. Det gick inte.", "Gösta lägger sig ner och tänker över sitt liv.", "BONK. Gösta ser på dig med sitt bra öga.", "Gösta har anmält dig till ängsrådet."],
-		"en": ["WOOF?!", "Gösta will remember this.", "*whine* ... *growl*", "That didn't make him uglier. It couldn't.", "Gösta lies down to think about his life.", "BONK. Gösta stares at you with his good eye.", "Gösta has reported you to the meadow council."],
+		"sv": ["VOFF?!", "Gösta kommer att minnas det här.", "*gnäll* ... *morr*", "Han blev inte fulare av det. Det gick inte.", "Gösta lägger sig ner och tänker över sitt liv.", "BONK. Gösta ser på dig med sitt bra öga.", "Gösta har anmält dig till ängsrådet.", "UUOOOH. Gösta krympte. Det är vetenskapligt omöjligt.", "Gösta är nu en mellanstor hund. Snart en liten.", "Gösta stönar i en tonart som inte finns.", "Det där stönet hördes ända till Mora."],
+		"en": ["WOOF?!", "Gösta will remember this.", "*whine* ... *growl*", "That didn't make him uglier. It couldn't.", "Gösta lies down to think about his life.", "BONK. Gösta stares at you with his good eye.", "Gösta has reported you to the meadow council.", "UUOOOH. Gösta shrank. That is scientifically impossible.", "Gösta is now a medium dog. Soon a small one.", "Gösta groans in a key that does not exist.", "That groan was heard all the way to Mora."],
 	},
 	"miss": {
 		"sv": ["Gösta gäspar.", "Gösta slickar sig någonstans. Respektlöst.", "Gösta tittar på pinnen. Pinnen tittar på Gösta.", "Gösta har sett bättre kast. Av en mås.", "Gösta kliar sig. Något faller av. Det var inte pinnen."],
@@ -94,7 +96,13 @@ func setup() -> void:
 	col.shape = bs
 	col.position = Vector3(0, 0.42, -0.17)
 	add_child(col)
+	_col = col
 	_pick_target()
+
+
+func reset() -> void:
+	hits = 0
+	_size = 1.0
 
 
 func say(event: String) -> void:
@@ -110,8 +118,15 @@ func bonk() -> void:
 	hits += 1
 	_state = "down"
 	_timer = 2.2
-	say("hit")
-	Sfx.play("bad", -6.0, 1.6)
+	# varje träff krymper honom, och varje stön går upp en ton
+	var streak := (hits - 1) % 9
+	Sfx.play("groan", 2.0, 0.75 * pow(1.122, streak))
+	if streak == 8:
+		_size = 1.0
+		spoke.emit("GÖSTA", "*POFF* " + ("Gösta är tillbaka i full storlek. Han har inte förlåtit dig." if Lang.current == "sv" else "Gösta is back to full size. He has not forgiven you."))
+	else:
+		_size = maxf(_size * 0.84, 0.3)
+		say("hit")
 
 
 func _pick_target() -> void:
@@ -153,4 +168,9 @@ func _physics_process(dt: float) -> void:
 	var want_tip := PI * 0.5 if _state == "down" else 0.0
 	_tip = lerpf(_tip, want_tip, dt * 10.0)
 	_visual.rotation.z = _tip
-	_visual.position.y = -0.17 if _state == "sit" else 0.0
+	_visual.position.y = (-0.17 if _state == "sit" else 0.0) * _size
+	var sc := lerpf(_visual.scale.x / 1.4, _size, dt * 8.0)
+	_visual.scale = Vector3.ONE * 1.4 * sc
+	if _col:
+		_col.scale = Vector3.ONE * sc
+		_col.position = Vector3(0, 0.42, -0.17) * sc

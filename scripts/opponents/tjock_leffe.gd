@@ -15,6 +15,13 @@ func _init() -> void:
 	rule_text = {"sv": "Äter upp en av dina pinnar varje tur. Kastar slarvigt men tungt.",
 		"en": "Eats one of your batons every turn. Throws sloppy but heavy."}
 	lines = {
+		"steal": {"sv": ["Leffe tar poängen! Leffe tar allt som ligger framme!", "Dina poäng är mina nu. Som korvarna på grillfesten.", "Mums. Poäng med senap."], "en": ["Leffe takes the points! Leffe takes anything left out!", "Your points are mine now. Like the sausages at the barbecue.", "Yum. Points with mustard."]},
+		"big_score": {"sv": ["Hörru! Det där var inte schysst!", "Leffe har sett det där förut. 1987. Det var Leffe."], "en": ["Hey! That wasn't fair!", "Leffe has seen that before. 1987. It was Leffe."]},
+		"night": {"sv": ["Vädret? Leffe svettas oavsett.", "Bra grillväder. Allt väder är grillväder."], "en": ["Weather? Leffe sweats either way.", "Good barbecue weather. All weather is barbecue weather."]},
+		"phase2": {"sv": ["OKEJ. Nu tar Leffe av sig kepsen. Det betyder krig.", "Leffe har ätit en korv till. Leffe är starkare nu."], "en": ["OKAY. Leffe takes off his cap. That means war.", "Leffe ate another sausage. Leffe is stronger now."]},
+		"phase3": {"sv": ["SISTA KORVEN! LEFFE KASTAR MED BÅDA HÄNDERNA!", "Nu blir det grillfest på riktigt. Ni är grillen."], "en": ["LAST SAUSAGE! LEFFE THROWS WITH BOTH HANDS!", "Now it's a real barbecue. You are the grill."]},
+		"last_words": {"sv": ["Säg till mamma... att korven... var god...", "Leffe... är... mätt..."], "en": ["Tell mum... the sausage... was good...", "Leffe... is... full..."]},
+		"chatter": {"sv": ["Vet du vad bästa korven är? Nästa.", "Leffe har ett eget kubbset. Hemma. I badkaret.", "Hälsa på grannen. Det var han som var kubben förut.", "Om du vinner bjuder Leffe på korv. Du kommer inte att vinna."], "en": ["Know what the best sausage is? The next one.", "Leffe has his own kubb set. At home. In the bathtub.", "Say hi to the neighbour. He used to be the kubb.", "If you win, Leffe buys the sausages. You won't win."]},
 		"start": {
 			"sv": ["Tjena. Leffe. Kubb-SM-mästare 1987. Ingen annan kom, men ändå.", "Jag har ätit fjorton korvar idag. Jag är redo.", "Mamma sa att jag inte fick spela med främlingar. Mamma är död."],
 			"en": ["Hey. Leffe. Kubb champion 1987. Nobody else showed up, but still.", "I've eaten fourteen sausages today. I'm ready.", "Mum said I couldn't play with strangers. Mum is dead."],

@@ -7,6 +7,7 @@ signal run_start(baton_id: String)
 signal shop_done
 signal map_pick(index: int)
 signal training_pressed
+signal tutorial_pressed
 signal resume_pressed
 signal restart_pressed
 signal main_menu_pressed
@@ -21,6 +22,15 @@ var _rune_offers: Array[String] = []
 var _curse := ""
 var _fate_offers: Array[String] = []
 var _reroll := 2
+var _charm_offers: Array[String] = []
+var _packs_bought: Array[String] = []
+var _pack_kind := ""
+var _pack_items: Array[String] = []
+const PACKS := {
+	"kubb": {"price": 6, "n": 3, "col": Color(0.8, 0.55, 0.3), "sv": ["Kubbpaket", "3 kubbar, ta 1 gratis."], "en": ["Kubb Pack", "3 kubbs, take 1 for free."]},
+	"rune": {"price": 5, "n": 3, "col": Color(0.4, 0.7, 1.0), "sv": ["Runpaket", "3 runor, ta 1 gratis."], "en": ["Rune Pack", "3 runes, take 1 for free."]},
+	"charm": {"price": 8, "n": 2, "col": Color(0.9, 0.8, 0.4), "sv": ["Berlockpaket", "2 berlocker, ta 1 till nyckelringen."], "en": ["Charm Pack", "2 charms, take 1 for your key ring."]},
+}
 var _baton_page := 0
 const BATONS_PER_PAGE := 4
 
@@ -82,6 +92,7 @@ func open(p: String) -> void:
 	visible = true
 	if p == "shop":
 		_reroll = 2
+		_packs_bought.clear()
 		_gen_shop()
 	show_page(p)
 
@@ -101,6 +112,16 @@ func _gen_shop() -> void:
 	_fate_offers.assign(fp.slice(0, 2))
 	var cp := Run.cursed_pool()
 	_curse = cp[randi() % cp.size()] if not cp.is_empty() and randf() < 0.85 else ""
+	_charm_offers.assign(_charm_pool().slice(0, 2))
+
+
+func _charm_pool() -> Array[String]:
+	var out: Array[String] = []
+	for id in Cards.CHARMS:
+		if not id in Run.keyring:
+			out.append(id)
+	out.shuffle()
+	return out
 
 
 func close() -> void:
@@ -127,6 +148,8 @@ func show_page(p: String) -> void:
 		"pause": _page_pause()
 		"baton": _page_baton()
 		"shop": _page_shop()
+		"shop2": _page_shop2()
+		"pack": _page_pack()
 		"victory": _page_victory()
 		"slot": _page_slot()
 		"fate_deck": _page_fate_deck()
@@ -214,6 +237,7 @@ func _page_title() -> void:
 		_text(_t("Bästa kast %d poäng   Bästa run %d poäng", "Best throw %d points   Best run %d points") % [int(Run.lifetime.get("best_throw", 0)), int(Run.lifetime.get("best_score", 0))], Color(1.0, 0.75, 0.4))
 	_box.add_child(HSeparator.new())
 	_button(_t("SPELA", "PLAY"), func(): show_page("rules"))
+	_button(_t("LÄR DIG SPELA (GÖSTA FÖRKLARAR)", "LEARN TO PLAY (GÖSTA EXPLAINS)"), func(): tutorial_pressed.emit())
 	_button(_t("TRÄNA PÅ GÖSTA (HUNDEN)", "PRACTICE ON GÖSTA (THE DOG)"), func(): training_pressed.emit())
 	_button(_t("INSTÄLLNINGAR", "SETTINGS"), func(): show_page("settings"))
 	_button(_t("KONTROLLER", "CONTROLS"), func(): show_page("controls"))
@@ -509,7 +533,191 @@ func _page_shop() -> void:
 		_t("\"Förbannade kubbar ger mest. Det är därför de är förbannade.\"", "\"Cursed kubbs pay the most. That's why they're cursed.\""),
 	]
 	_text(_t("Kråkmors spådom: ", "Crow Mother foretells: ") + tips[(Run.night * 7 + Run.match_index * 3 + Run.teeth) % tips.size()], Color(0.75, 0.6, 0.85))
+	_button(_t("BAKFICKAN: PAKET, BERLOCKER, FÖRSVAR >", "BACK POCKET: PACKS, CHARMS, DEFENSE >"), func(): show_page("shop2"))
 	_button(_t("TILLBAKA TILL KARTAN", "BACK TO THE MAP"), func(): shop_done.emit())
+
+
+## Litet pixelkort med titel, text och en knapp.
+func _mini_card(kind: String, col: Color, title: String, desc: String, foot: String, btn: String, cb: Callable, enabled := true, parent: Container = null) -> void:
+	var pc := PanelContainer.new()
+	pc.add_theme_stylebox_override("panel", Art.card_style(kind, (col * 0.8).clamp(Color(0.2, 0.2, 0.2), Color(1, 1, 1)), 112, 150, title.hash() % 97))
+	pc.custom_minimum_size = Vector2(112, 150)
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 1)
+	pc.add_child(v)
+	var t := Label.new()
+	t.text = title
+	t.add_theme_color_override("font_color", Color(1.0, 0.85, 0.5))
+	v.add_child(t)
+	var dl := Label.new()
+	dl.text = desc
+	dl.autowrap_mode = TextServer.AUTOWRAP_WORD
+	dl.custom_minimum_size = Vector2(100, 50)
+	dl.add_theme_color_override("font_color", Color(0.85, 0.78, 0.7))
+	v.add_child(dl)
+	if foot != "":
+		var fl := Label.new()
+		fl.text = foot
+		fl.add_theme_color_override("font_color", Color(1.0, 0.95, 0.7))
+		v.add_child(fl)
+	var b := Button.new()
+	b.text = btn
+	b.disabled = not enabled
+	b.pressed.connect(func():
+		Sfx.play("click", -6.0)
+		cb.call())
+	v.add_child(b)
+	(parent if parent else _box).add_child(pc)
+
+
+## Andra sidan av boden: boosterpaket, berlocker till nyckelringen och
+## uppgradering av försvar.
+func _page_shop2() -> void:
+	_title(_t("KRÅKMORS BAKFICKA", "CROW MOTHER'S BACK POCKET"), 12)
+	_text(_t("Tänder %d   Nyckelring %d/%d", "Teeth %d   Key ring %d/%d") % [Run.teeth, Run.keyring.size(), Cards.MAX_CHARMS], Color(1.0, 0.9, 0.6))
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 3)
+	_box.add_child(row)
+	for pk in PACKS:
+		var d: Dictionary = PACKS[pk]
+		var pr := maxi(1, int(d.price) - int(Run.mod("shop_discount")))
+		var done: bool = pk in _packs_bought
+		var full: bool = pk == "charm" and Run.keyring.size() >= Cards.MAX_CHARMS
+		var kind: String = pk
+		_mini_card("pack", d.col, d[Lang.current][0], d[Lang.current][1], _t("%d tänder", "%d teeth") % pr,
+			_t("ÖPPNAT", "OPENED") if done else _t("ÖPPNA", "OPEN"), func():
+				if Run.teeth < pr:
+					return
+				Run.teeth -= pr
+				_packs_bought.append(kind)
+				_open_pack(kind), not done and not full and Run.teeth >= pr, row)
+	for id in _charm_offers:
+		var cpr := Run.charm_price(id)
+		var cid: String = id
+		_mini_card("charm", Cards.CHARMS[id].col, Cards.charm_title(id), Cards.charm_desc(id), _t("%d tänder", "%d teeth") % cpr, _t("KÖP", "BUY"), func():
+			if Run.teeth >= cpr and Run.add_charm(cid):
+				Run.teeth -= cpr
+				_charm_offers.erase(cid)
+				Sfx.play("coin", -4.0, 1.3)
+			show_page("shop2"), Run.teeth >= cpr and Run.keyring.size() < Cards.MAX_CHARMS, row)
+	# nyckelringen
+	var kr := HFlowContainer.new()
+	kr.custom_minimum_size.x = 600
+	_box.add_child(kr)
+	var kl := Label.new()
+	kl.text = _t("NYCKELRING:", "KEY RING:")
+	kl.add_theme_color_override("font_color", Color(0.95, 0.85, 0.45))
+	kr.add_child(kl)
+	if Run.keyring.is_empty():
+		var el := Label.new()
+		el.text = _t("tom. Den skramlar ändå.", "empty. It rattles anyway.")
+		kr.add_child(el)
+	for c in Run.keyring:
+		var cb := Button.new()
+		var cid2: String = c
+		cb.text = _t("SÄLJ %s (+%d)", "SELL %s (+%d)") % [Cards.charm_title(c), int(Cards.CHARMS[c].price / 2)]
+		cb.tooltip_text = Cards.charm_desc(c)
+		cb.pressed.connect(func():
+			Run.keyring.erase(cid2)
+			Run.teeth += int(Cards.CHARMS[cid2].price / 2)
+			Sfx.play("click", -6.0)
+			show_page("shop2"))
+		kr.add_child(cb)
+	# försvar
+	var dr := HFlowContainer.new()
+	dr.custom_minimum_size.x = 600
+	_box.add_child(dr)
+	var dlb := Label.new()
+	dlb.text = _t("FÖRSVAR:", "DEFENSE:")
+	dlb.add_theme_color_override("font_color", Color(0.6, 0.8, 1.0))
+	dr.add_child(dlb)
+	var any := false
+	for i in 5:
+		var cid3: String = Run.cards[i]
+		if cid3 == "":
+			continue
+		var df := Cards.def_of(cid3)
+		if df == "":
+			continue
+		any = true
+		var lvl: int = Run.def_lvl[i]
+		var ub := Button.new()
+		var slot := i
+		var roman := ["I", "II", "III"]
+		if lvl >= 2:
+			ub.text = "%d %s III (MAX)" % [i + 1, Cards.def_title(df)]
+			ub.disabled = true
+		else:
+			var up := Run.def_up_price(i)
+			ub.text = "%d %s %s > %s (%d)" % [i + 1, Cards.def_title(df), roman[lvl], roman[lvl + 1], up]
+			ub.disabled = Run.teeth < up
+		ub.tooltip_text = Cards.def_desc(df) + " " + Cards.def_level_text(df, mini(lvl + 1, 2))
+		ub.pressed.connect(func():
+			if Run.upgrade_def(slot):
+				Sfx.play("clack2", -2.0, 0.7)
+			show_page("shop2"))
+		dr.add_child(ub)
+	if not any:
+		var nl := Label.new()
+		nl.text = _t("Inga försvar än. Köp kubbkort, varje kort har ett försvar.", "No defenses yet. Buy kubb cards, each card has a defense.")
+		dr.add_child(nl)
+	_text(_t("Kråkmor: \"Paket är som ägg. Man vet aldrig vad som kläcks. Ofta en kråka.\"", "Crow Mother: \"Packs are like eggs. You never know what hatches. Usually a crow.\""), Color(0.75, 0.6, 0.85))
+	_button(_t("< TILLBAKA TILL BODEN", "< BACK TO THE SHOP"), func(): show_page("shop"))
+
+
+func _open_pack(kind: String) -> void:
+	_pack_kind = kind
+	_pack_items.clear()
+	var n: int = PACKS[kind].n
+	match kind:
+		"kubb":
+			var pool := Run.shop_pool()
+			pool.shuffle()
+			_pack_items.assign(pool.slice(0, n))
+		"rune":
+			var rp: Array = Cards.RUNES.keys()
+			rp.shuffle()
+			_pack_items.assign(rp.slice(0, n))
+		"charm":
+			_pack_items.assign(_charm_pool().slice(0, n))
+	Sfx.play("sparkle", 0.0, 0.9)
+	Sfx.play("clack2", -4.0, 0.6)
+	show_page("pack")
+
+
+func _page_pack() -> void:
+	var d: Dictionary = PACKS[_pack_kind]
+	_title(d[Lang.current][0].to_upper() + _t(" ÖPPNAT!", " OPENED!"), 14, (d.col as Color).clamp(Color(0.3, 0.3, 0.3), Color(1, 1, 1)))
+	_text(_t("Välj ett. Resten tar kråkorna.", "Pick one. The crows take the rest."))
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 3)
+	_box.add_child(row)
+	for id in _pack_items:
+		var iid: String = id
+		match _pack_kind:
+			"kubb":
+				_card_panel(id, row, _t("GRATIS", "FREE"), _t("TA", "TAKE"), func():
+					_pending = "pk:" + iid
+					show_page("slot"))
+			"rune":
+				var rk: String = Cards.RUNES[id].get("kind", "enh")
+				_mini_card(rk if rk in ["enh", "ed", "seal"] else "enh", Cards.RUNES[id].col, Cards.rune_title(id), Cards.rune_desc(id), _t("GRATIS", "FREE"), _t("TA", "TAKE"), func():
+					_pending = "pr:" + iid
+					show_page("slot"), true, row)
+			"charm":
+				_mini_card("charm", Cards.CHARMS[id].col, Cards.charm_title(id), Cards.charm_desc(id), _t("GRATIS", "FREE"), _t("TA", "TAKE"), func():
+					Run.add_charm(iid)
+					_charm_offers.erase(iid)
+					Sfx.play("coin", -4.0, 1.3)
+					show_page("shop2"), Run.keyring.size() < Cards.MAX_CHARMS, row)
+	# paketet poppar in
+	row.pivot_offset = Vector2(180, 75)
+	row.scale = Vector2(0.6, 0.6)
+	row.modulate.a = 0.0
+	var tw := create_tween().set_parallel(true)
+	tw.tween_property(row, "scale", Vector2.ONE, 0.35).set_trans(Tween.TRANS_BACK)
+	tw.tween_property(row, "modulate:a", 1.0, 0.2)
+	_button(_t("HOPPA ÖVER", "SKIP"), func(): show_page("shop2"))
 
 
 func _page_victory() -> void:
@@ -557,12 +765,13 @@ func _page_fate_deck() -> void:
 ## Välj vilken av dina 5 kubbar kortet ska sitta på.
 func _page_slot() -> void:
 	_title(_t("VILKEN KUBB?", "WHICH KUBB?"), 14)
-	var is_rune := _pending.begins_with("r:")
-	var rid := _pending.substr(2) if is_rune else ""
+	var is_rune := _pending.begins_with("r:") or _pending.begins_with("pr:")
+	var rid := _pending.substr(_pending.find(":") + 1) if is_rune else ""
 	if is_rune:
 		_text(Cards.rune_title(rid) + ": " + Cards.rune_desc(rid), Color(0.6, 0.85, 1.0))
 	else:
-		_text(Cards.title(_pending) + ": " + Cards.desc(_pending), Color(1.0, 0.85, 0.5))
+		var kid := _pending.trim_prefix("pk:")
+		_text(Cards.title(kid) + ": " + Cards.desc(kid), Color(1.0, 0.85, 0.5))
 	_text(_t("Dina kubbar på hans baslinje, vänster till höger. Ett gammalt kort på kubben försvinner.", "Your kubbs on his baseline, left to right. An old card on that kubb is lost."))
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 3)
@@ -577,6 +786,18 @@ func _page_slot() -> void:
 		var slot := i
 		b.pressed.connect(func():
 			var id := _pending
+			if id.begins_with("pr:"):
+				Run.set_rune(slot, id.substr(3))
+				Sfx.play("sparkle", -4.0, 1.2)
+				_pending = ""
+				show_page("shop2")
+				return
+			if id.begins_with("pk:"):
+				Run.put(id.substr(3), slot)
+				Sfx.play("clack", -6.0, 1.4)
+				_pending = ""
+				show_page("shop2")
+				return
 			if id.begins_with("r:"):
 				if Run.buy_rune(id.substr(2), slot):
 					_rune_offers.erase(id.substr(2))
@@ -626,6 +847,8 @@ func _page_map() -> void:
 	_title(_t("NATT %d AV %s", "NIGHT %d OF %s") % [Run.night, Run.nights_text()], 14)
 	_text(_t("Tänder %d   Uppgraderade kubbar %d/5   Ödesleken %d", "Teeth %d   Upgraded kubbs %d/5   Fate deck %d") % [
 		Run.teeth, Run.slots_used(), Run.fate_deck.size()], Color(1.0, 0.9, 0.6))
+	if Run.night_mod != "":
+		_text(_t("Nattens väder: ", "Tonight's weather: ") + Cards.night_title(Run.night_mod).to_upper() + ". " + Cards.night_desc(Run.night_mod), (Cards.NIGHT_MODS[Run.night_mod].col as Color).clamp(Color(0.4, 0.4, 0.4), Color(1, 1, 1)))
 	for li in Run.map.size():
 		var row := HBoxContainer.new()
 		row.add_theme_constant_override("separation", 4)

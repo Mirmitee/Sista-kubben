@@ -16,6 +16,8 @@ var error_speed := 0.05
 var baton_push := 1.0     # hur hårt hans pinnar knuffar
 var player_batons_add := 0  # fusk som påverkar spelarens pinnar
 var extra_batons := 0       # fler pinnar för motståndaren
+var steal_bonus := 0.0      # extra multi när han stjäl poäng
+var phase := 1              # bossfas
 ## Svårighet: alla motståndare kastar så här mycket bättre än förut.
 const DIFFICULTY := 0.85
 var rule_text := {"sv": "", "en": ""}

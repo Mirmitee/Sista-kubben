@@ -23,6 +23,7 @@ func _ready() -> void:
 	_streams["sparkle"] = _make(0.4, _sparkle)
 	_streams["coin"] = _make(0.25, _coin)
 	_streams["caw"] = _make(0.7, _caw)
+	_streams["groan"] = _make(0.95, _groan)
 	for i in 12:
 		var p := AudioStreamPlayer.new()
 		add_child(p)
@@ -278,3 +279,17 @@ func _accordion(t: float, d: float, st: Dictionary) -> float:
 	v *= 0.85 + 0.15 * sin(TAU * 5.2 * t)
 	st.lp = lerpf(st.lp, v, 0.35)
 	return st.lp * 1.0 + st.rng.randf_range(-1, 1) * 0.01
+
+
+func _groan(t: float, d: float, _st: Dictionary) -> float:
+	# ett långt, plågat "uuoooh" från en hund som har fått nog
+	var f0 := 190.0 - t * 70.0 + sin(TAU * 6.0 * t) * 6.0 * t
+	var f1 := 420.0 + t * 260.0
+	var f2 := 820.0 + t * 200.0
+	var v := 0.0
+	for k in range(1, 14):
+		var fk := f0 * k
+		var a := exp(-pow((fk - f1) / 130.0, 2)) + 0.55 * exp(-pow((fk - f2) / 220.0, 2))
+		v += sin(TAU * f0 * k * t) * a
+	var env := minf(t * 12.0, 1.0) * clampf((d - t) * 3.0, 0.0, 1.0)
+	return v * 0.32 * env

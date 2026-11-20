@@ -54,3 +54,7 @@ ps1_snap={
 "type": "float",
 "value": 240.0
 }
+fog_mul={
+"type": "float",
+"value": 1.0
+}

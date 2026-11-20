@@ -224,6 +224,46 @@ static func icon(img: Image, kind: String, c: Color, o: Vector2i, seed := 1) -> 
 			if kind == "fate_bad":
 				for i in 4:
 					_px(img, o.x - 6 + i * 4, o.y + 8 + (i % 2), Color(0.8, 0.0, 0.05))
+		"charm":
+			# nyckelring: en ring med en liten nyckel som dinglar
+			var metal := Color(0.75, 0.72, 0.65)
+			for a in 28:
+				var ang := TAU * a / 28.0
+				_px(img, o.x + int(cos(ang) * 7), o.y - 4 + int(sin(ang) * 7), metal.darkened(0.3 * sin(ang + 1.0)))
+				_px(img, o.x + int(cos(ang) * 6), o.y - 4 + int(sin(ang) * 6), dark)
+			_line(img, Vector2i(o.x + 2, o.y + 3), Vector2i(o.x + 5, o.y + 9), dark, 2)
+			for y in range(-3, 4):
+				for x in range(-3, 4):
+					if x * x + y * y <= 9:
+						_px(img, o.x + 6 + x, o.y + 11 + y, _dq(c.lightened(0.15 - y * 0.05), x, y, 5.0))
+			_px(img, o.x + 5, o.y + 10, Color(1, 1, 1))
+			_line(img, Vector2i(o.x - 3, o.y + 3), Vector2i(o.x - 6, o.y + 11), c.darkened(0.3), 2)
+			_rect(img, o.x - 8, o.y + 10, 3, 2, c.darkened(0.3))
+		"def":
+			# sköld med nitar
+			for y in range(-9, 10):
+				var half := 8 if y < 2 else 8 - (y - 1)
+				for x in range(-half, half + 1):
+					var g := c.darkened(0.1 + (x + 8) * 0.025)
+					_px(img, o.x + x, o.y + y, _dq(g, x, y, 6.0))
+				_px(img, o.x - half - 1, o.y + y, dark)
+				_px(img, o.x + half + 1, o.y + y, dark)
+			_rect(img, o.x - 1, o.y - 8, 2, 16, hi)
+			for p in [Vector2i(-5, -6), Vector2i(5, -6), Vector2i(-5, 1), Vector2i(5, 1)]:
+				_px(img, o.x + p.x, o.y + p.y, Color(1, 1, 0.8))
+		"pack":
+			# folieförpackning med rivkant och en kråka på
+			for y in range(-11, 12):
+				for x in range(-8, 9):
+					var sh := Color.from_hsv(fmod((x - y + 30) / 40.0 + seed * 0.07, 1.0), 0.35, 1.0)
+					_px(img, o.x + x, o.y + y, _dq(c.lerp(sh, 0.35).darkened(absf(x) * 0.02), x, y, 6.0))
+			for x in range(-8, 9):
+				_px(img, o.x + x, o.y - 11 + (x % 2), dark)
+				_px(img, o.x + x, o.y + 11 - (x % 2), dark)
+			_rect(img, o.x - 3, o.y - 2, 6, 4, dark)
+			_px(img, o.x + 3, o.y - 1, Color(1, 0.8, 0.2))
+			_line(img, Vector2i(o.x - 6, o.y + 1), Vector2i(o.x - 3, o.y - 1), dark)
+			_line(img, Vector2i(o.x + 5, o.y + 1), Vector2i(o.x + 2, o.y - 1), dark)
 		_:
 			_rect(img, o.x - 4, o.y - 4, 8, 8, c)
 

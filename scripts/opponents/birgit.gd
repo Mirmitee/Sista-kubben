@@ -14,6 +14,11 @@ func _init() -> void:
 	rule_text = {"sv": "Hon nynnar. Kraftmätaren går 15 % fortare. Natt 2 och 3 stickar hon en extra pinne åt sig.",
 		"en": "She hums. The power meter runs 15% faster. On nights 2 and 3 she knits herself an extra baton."}
 	lines = {
+		"steal": {"sv": ["Jag lägger dina poäng i syskrinet, vännen.", "Mormor tar det här. Mormor tar allt till slut.", "Tack för poängen, de ska bli grytlappar."], "en": ["I'll put your points in my sewing box, dear.", "Granny takes this. Granny takes everything in the end.", "Thank you for the points, they'll be potholders."]},
+		"big_score": {"sv": ["Oj oj oj, så duktig du är. Det kommer att straffa sig.", "Kråkorna såg det där. De berättar för alla.", "Nu blev mormor arg. Mormor blir aldrig arg."], "en": ["Oh my, aren't you clever. That will cost you.", "The crows saw that. They tell everyone.", "Now granny is angry. Granny is never angry."]},
+		"night": {"sv": ["Ta på dig en kofta, det är väder i natt.", "Mormor har stickat den här natten själv."], "en": ["Put on a cardigan, there's weather tonight.", "Granny knitted this night herself."]},
+		"last_words": {"sv": ["Mina kråkor... ta hand om... nej, ät honom.", "Mormor kommer tillbaka. Mormor kommer alltid tillbaka."], "en": ["My crows... look after... no, eat him.", "Granny will be back. Granny always comes back."]},
+		"chatter": {"sv": ["Vill du ha en kaka? Den är bakad på mossa och sorg.", "Min man spelade kubb. Nu är han en kubb.", "Kråkorna säger att du fuskar. Kråkorna ljuger aldrig. Nästan.", "Sitt rakt i ryggen när du kastar, annars växer du snett."], "en": ["Would you like a cookie? Baked with moss and grief.", "My husband played kubb. Now he is a kubb.", "The crows say you cheat. The crows never lie. Almost.", "Stand up straight when you throw, or you'll grow crooked."]},
 		"start": {
 			"sv": ["Nämen hej lilla vän! Ska vi leka? Vi ska leka.", "Jag har bakat. Du får smaka sen. Om du vinner. Du vinner inte.", "Min Gunnar spelade också kubb. Han ligger under kungen nu.", "Så fin du är. Som en liten fältkubb."],
 			"en": ["Well hello little friend! Shall we play? We shall play.", "I've baked. You can have some later. If you win. You won't.", "My Gunnar played kubb too. He lies under the king now.", "Aren't you lovely. Like a little field kubb."],

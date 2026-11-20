@@ -213,7 +213,7 @@ var _def_node: Node3D
 
 
 ## Försvarskortet syns som en sköldplatta på fram- och baksidan.
-func set_def(id: String) -> void:
+func set_def(id: String, lvl := 0) -> void:
 	defense = id
 	if _def_node:
 		_def_node.queue_free()
@@ -221,7 +221,7 @@ func set_def(id: String) -> void:
 	if id == "" or is_king:
 		return
 	var d: Dictionary = Cards.DEFENSE[id]
-	mass *= float(d.get("mass", 1.0))
+	mass *= float(d.get("mass", 1.0)) + (1.5 * lvl if d.has("mass") else 0.0)
 	_def_node = Node3D.new()
 	add_child(_def_node)
 	var m := PS1.mat(null, (d.col as Color).clamp(Color(0.25, 0.25, 0.25), Color(1.6, 1.6, 1.6)), Vector2.ONE, 0.95)

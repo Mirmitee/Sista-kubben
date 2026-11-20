@@ -29,6 +29,10 @@ var grow_mult: Array[int] = [0, 0, 0, 0, 0]
 var def_cards: Array[String] = ["", "", "", "", ""]
 ## Pinnkort i handen: dina nästa pinnar (en per kast).
 var hand: Array[String] = []
+var keyring: Array[String] = []        # berlocker (jokrar) hela runnen
+var def_lvl: Array[int] = [0, 0, 0, 0, 0]  # försvarsnivå per plats
+var night_mod := "stilla"
+var tutorial := false
 var override := ""
 var score_total := 0
 var stats := {"kubbs": 0, "wins": 0, "perfect": 0, "combos": 0, "teeth_total": 0}
@@ -72,6 +76,9 @@ func start(baton_id: String) -> void:
 	baton = baton_id
 	score_total = 0
 	randomize_runes()
+	keyring.clear()
+	def_lvl.assign([0, 0, 0, 0, 0])
+	roll_night()
 
 	stats = {"kubbs": 0, "wins": 0, "perfect": 0, "combos": 0, "teeth_total": 0}
 	clear_temp()
@@ -146,6 +153,7 @@ func step_done() -> bool:
 		night += 1
 		lifetime.best_night = maxi(lifetime.best_night, night)
 		gen_map()
+		roll_night()
 		save_meta()
 		return night == NIGHTS + 1 and not endless
 	return false
@@ -164,6 +172,13 @@ func mod(key: String, default := 0.0) -> float:
 		var m: Dictionary = Cards.DEFS[id].get("mods", {})
 		if m.has(key):
 			v = v * m[key] if mult else v + m[key]
+	for c in keyring:
+		var cm: Dictionary = Cards.CHARMS[c].mods
+		if cm.has(key):
+			v = v * cm[key] if mult else v + cm[key]
+	var nm: Dictionary = Cards.NIGHT_MODS.get(night_mod, {}).get("mods", {})
+	if nm.has(key):
+		v = v * nm[key] if mult else v + nm[key]
 	var b: Dictionary = Cards.BATONS[cur_baton()]
 	if b.has(key):
 		v = v * b[key] if mult else v + b[key]
@@ -238,6 +253,37 @@ func set_rune(slot: int, id: String) -> void:
 		"enh": enh[slot] = id
 		"ed": ed[slot] = id
 		_: seal[slot] = id
+
+
+## Ny natt, nytt väder. Första natten är oftast lugn.
+func roll_night() -> void:
+	var ids: Array = Cards.NIGHT_MODS.keys()
+	ids.erase("stilla")
+	night_mod = "stilla" if night == 1 and randf() < 0.5 else str(ids[randi() % ids.size()])
+
+
+func charm_price(id: String) -> int:
+	return maxi(1, int(Cards.CHARMS[id].price) - int(mod("shop_discount")))
+
+
+func add_charm(id: String) -> bool:
+	if keyring.size() >= Cards.MAX_CHARMS or id in keyring:
+		return false
+	keyring.append(id)
+	return true
+
+
+func def_up_price(slot: int) -> int:
+	return 5 + 4 * def_lvl[slot]
+
+
+func upgrade_def(slot: int) -> bool:
+	var p := def_up_price(slot)
+	if def_lvl[slot] >= 2 or teeth < p or cards[slot] == "":
+		return false
+	teeth -= p
+	def_lvl[slot] += 1
+	return true
 
 
 func def_price(id: String) -> int:

@@ -84,6 +84,8 @@ var _throw_xmult := 1.0    # från träffeffekter under kastet
 var _batons_bonus_next := 0
 var _match_felled := 0
 var _throw_no := 0         # vilket kast i turen
+var _match_throws := 0     # kast som fällt något den här matchen
+var _stolen := 0           # poäng han tagit den här matchen
 var _tier := 0             # hur många av månens krav som nåtts
 var _extra_draws := 0
 var _fast := false
@@ -155,7 +157,12 @@ func _ready() -> void:
 	menu = Menu.new()
 	add_child(menu)
 	menu.run_start.connect(_start_run)
-	menu.training_pressed.connect(func(): _start(Mode.TRAINING))
+	menu.training_pressed.connect(func():
+		_tut = 0
+		_start(Mode.TRAINING))
+	menu.tutorial_pressed.connect(func():
+		_tut = 1
+		_start(Mode.TRAINING))
 	menu.resume_pressed.connect(_resume)
 	menu.restart_pressed.connect(func():
 		_resume()
@@ -326,6 +333,7 @@ func _start(m: Mode, instant := false) -> void:
 	get_tree().paused = false
 	_set_dog_active(m == Mode.TRAINING)
 	_set_kubbs_active(m == Mode.MATCH)
+	_apply_night_look()
 	thrower.input_enabled = true
 	hud.set_playing(true)
 	if m == Mode.MATCH:
@@ -379,6 +387,8 @@ func _clear_batons() -> void:
 # ---------------------------------------------------------------- match
 
 func _begin_match() -> void:
+	_tut = 0
+	hud.tutorial("")
 	for n in get_tree().get_nodes_in_group("finale"):
 		n.queue_free()
 	_clear_batons()
@@ -394,6 +404,8 @@ func _begin_match() -> void:
 	_batons_bonus_next = 0
 	_match_felled = 0
 	_tier = 0
+	_match_throws = 0
+	_stolen = 0
 	hud.set_score(0, _target(), true)
 	_match_teeth = Run.teeth
 	Run.king_shield_left = int(Run.mod("king_shield"))
@@ -410,11 +422,24 @@ func _begin_match() -> void:
 	if opponent.rule_text[Lang.current] != "":
 		intro += "\n" + opponent.rule_text[Lang.current]
 	opponent.say("start")
+	_apply_night_look()
 	await _setup_intro()
 	if _match_over or mode != Mode.MATCH:
 		return
 	hud.banner(intro)
+	if Run.active and Run.night_mod != "stilla":
+		var nc: Color = Cards.NIGHT_MODS[Run.night_mod].col
+		hud.big(Cards.night_title(Run.night_mod).to_upper() + ": " + Cards.night_desc(Run.night_mod), nc)
+		opponent.say("night")
 	_start_player_turn()
+
+
+## Nattens väder syns: dimman tätnar.
+func _apply_night_look() -> void:
+	var f := 1.0
+	if Run.active and mode == Mode.MATCH:
+		f = float(Cards.NIGHT_MODS.get(Run.night_mod, {}).get("fog", 1.0))
+	RenderingServer.global_shader_parameter_set("fog_mul", f)
 
 
 ## Uppställningen: kamera över planen, dina 5 kubbar släpps ner en i taget
@@ -532,7 +557,7 @@ func _place_deck() -> void:
 			# samma kort på din sida: utseendet, och kortets försvar
 			mrow[i].def_slot = i
 			mrow[i].set_kind(Run.cards[i], 1.0)
-			mrow[i].set_def(Cards.def_of(Run.cards[i]))
+			mrow[i].set_def(Cards.def_of(Run.cards[i]), Run.def_lvl[i])
 	var row := side_kubbs("theirs")
 	row.sort_custom(func(a, b): return a.home.origin.x < b.home.origin.x)
 	for i in row.size():
@@ -592,6 +617,8 @@ func _start_player_turn() -> void:
 	_batons_bonus_next = 0
 	batons_left = batons_per_turn
 	_throw_no = 0
+	if turn > 1 and randf() < 0.45:
+		opponent.say("chatter")
 	if opponent.player_batons_add < 0 and turn > 0:
 		opponent.say("eat")
 	# kyrkklockan: var tredje tur välter en slumpad motståndarkubb
@@ -633,7 +660,59 @@ func _bdef() -> Dictionary:
 	return Cards.BATONS.get(Run.cur_baton(), {}) if Run.active else {}
 
 
+# ---------------------------------------------------------------- tutorial
+
+var _tut := 0
+
+const TUT := [
+	"",
+	["VOFF. Jag är Gösta och jag ska lära dig kubb. Kastet går i tre tryck: KLICKA (eller mellanslag) en gång för att ta sats. KLICKA igen för att låsa KRAFTEN. KLICKA en tredje gång när markören är i det gröna för PRECISION. Kasta en pinne nu.",
+	"WOOF. I'm Gösta and I'll teach you kubb. A throw is three presses: CLICK (or space) once to wind up. CLICK again to lock the POWER. CLICK a third time with the marker in the green for ACCURACY. Throw a baton now."],
+	["Bra! A och D flyttar dig i sidled, musen siktar. Pinnen ska snurra som en väderkvarn, aldrig som en helikopter. Träffa mig nu. Jag lovar att stöna.",
+	"Good! A and D move you sideways, the mouse aims. The baton must spin end over end, never like a helicopter. Hit me now. I promise to groan."],
+	["UUOOH. Ser du? Jag krympte. I matchen fäller du hans kubbar. Varje fälld kubb ger MARKER (blå) gånger MULTI (röd). Fäll alla hans kubbar och sist KUNGEN i mitten. Rör kungen för tidigt och du dör. Kasta igen.",
+	"UUOOH. See? I shrank. In a match you fell his kubbs. Each felled kubb gives CHIPS (blue) times MULT (red). Fell all his kubbs and the KING in the middle last. Touch the king too early and you die. Throw again."],
+	["Sen kastar han tillbaka på DINA kubbar. Varje kubbkort du har ger din kubb ett FÖRSVAR, som sköld eller taggar. När han fäller dina kubbar STJÄL han poäng. Håll TAB i matchen så ser du hela planen. Kasta igen.",
+	"Then he throws back at YOUR kubbs. Every kubb card you own gives your kubb a DEFENSE, like a shield or thorns. When he fells your kubbs he STEALS points. Hold TAB in a match to see the whole field. Throw again."],
+	["Klarar du BLODMÅNENS krav vinner du matchen, och dina poäng blir TÄNDER. Hos Kråkmor köper du kubbkort, runor, boosterpaket och berlocker till din NYCKELRING. Varje natt har sitt eget väder. Ett kast till.",
+	"Meet the BLOOD MOON's demand and you win the match, and your points become TEETH. At Crow Mother's you buy kubb cards, runes, booster packs and charms for your KEY RING. Every night has its own weather. One more throw."],
+	["Det var allt. Tre nätter, sex matcher och Tjock-Leffe på slutet. Förlorar du en match är runnen slut. Gösta ska lägga sig nu. Kasta på mig hur länge du vill, eller tryck Esc.",
+	"That's it. Three nights, six matches and Fat Leffe at the end. Lose one match and the run is over. Gösta is going to lie down now. Throw at me as long as you like, or press Esc."],
+]
+
+
+func _tut_show() -> void:
+	if _tut <= 0 or _tut >= TUT.size():
+		hud.tutorial("")
+		return
+	hud.tutorial("GÖSTA: " + TUT[_tut][0 if Lang.current == "sv" else 1])
+	Sfx.play("groan", -10.0, 1.3)
+
+
+## Nästa steg när spelaren gjort det Gösta bad om.
+func _tut_event(ev: String) -> void:
+	if mode != Mode.TRAINING or _tut <= 0:
+		return
+	var ok := false
+	match _tut:
+		1, 3, 4, 5: ok = ev == "throw"
+		2: ok = ev == "hit"
+		6: ok = ev == "throw"
+	if not ok:
+		return
+	_tut += 1
+	if _tut >= TUT.size():
+		_tut = 0
+		hud.tutorial("")
+		hud.big(_tl("DU KAN SPELA NU. TYVÄRR.", "YOU CAN PLAY NOW. UNFORTUNATELY."), Color(1.0, 0.8, 0.4))
+		return
+	var tw := create_tween()
+	tw.tween_interval(0.9 if ev == "throw" else 1.4)
+	tw.tween_callback(_tut_show)
+
+
 func _on_thrown(b: RigidBody3D, info: Dictionary) -> void:
+	_tut_event("throw")
 	_last_info = info
 	_extras.clear()
 	_homing_targets.assign(thrower.magnet_targets)
@@ -751,6 +830,7 @@ func _on_baton_hit(body: Node, b: Baton) -> void:
 		if not _hit_this_throw:
 			_hit_this_throw = true
 			dog.bonk()
+			_tut_event("hit")
 			_slowmo()
 			_shake = 0.5
 			hud.popup(camera.unproject_position(b.global_position), "VOFF!")
@@ -1134,6 +1214,7 @@ func _target() -> int:
 		t *= 1.4
 	if Run.is_elite():
 		t *= 1.2
+	t *= Run.mod("target_mult", 1.0)
 	return int(snappedf(t, 10.0))
 
 
@@ -1296,15 +1377,20 @@ func _score_throw() -> void:
 				await _tick(k, label, st[3], step, 12 if st[0] == "x" else 10)
 				step += 1
 	if n >= 2:
-		mult += (n - 1) * 2
+		var cb := int((n - 1) * 2 * Run.mod("combo_x_mult", 1.0))
+		mult += cb
 		hud.tally(chips, mult)
-		await _tick(any, ("KOMBO +%d MULTI" if sv else "COMBO +%d MULT") % ((n - 1) * 2), MULT_COL, step, 12)
+		await _tick(any, ("KOMBO +%d MULTI" if sv else "COMBO +%d MULT") % cb, MULT_COL, step, 12)
 		step += 1
 	if _last_info.get("grade", "") == "perfect":
 		mult += 2
 		hud.tally(chips, mult)
 		await _tick(any, ("PERFEKT +2 MULTI" if sv else "PERFECT +2 MULT"), MULT_COL, step)
 		step += 1
+	_match_throws += 1
+	step = await _charm_steps(n, any, step, [chips, mult])
+	chips = _cm[0]
+	mult = _cm[1]
 	for k in kubbs:
 		if k.slot >= 0 and k.visible and not k.is_fallen() and Run.enh[k.slot] == "stal":
 			mult *= 1.5
@@ -1329,11 +1415,105 @@ func _score_throw() -> void:
 	if total >= 200:
 		Fx.big_boom(self, any.global_position, clampf(total / 600.0, 0.6, 1.6))
 		Sfx.play("boom", -3.0, 0.9)
+	if total >= _target() * 0.5:
+		opponent.say("big_score")
 	if total >= 1000:
 		hud.big(_tl("SÅ MÅNGA POÄNG ATT MÅNEN BLEV RÄDD", "SO MANY POINTS THE MOON GOT SCARED"), Color(1.0, 0.4, 0.2))
 		Fx.confetti(self, any.global_position)
 	hud.set_score(score, _goal())
 	_check_tier()
+
+
+var _cm := [0, 1.0]
+
+
+## Nyckelringen och nattens väder lägger på sina effekter.
+func _charm_steps(n: int, any: Node3D, step: int, cm: Array) -> int:
+	var sv := Lang.current == "sv"
+	var chips: int = cm[0]
+	var mult: float = cm[1]
+	var steps: Array = []
+	var fc := int(Run.mod("first_chips"))
+	if fc > 0 and _throw_no == 1:
+		steps.append(["c", fc, ("+%d ROSTIG NYCKEL" if sv else "+%d RUSTY KEY") % fc, CHIP_COL])
+	var fm := int(Run.mod("field_multi"))
+	if fm > 0:
+		var nf := _felled_valid.filter(func(k): return k.field).size()
+		if nf > 0:
+			steps.append(["m", fm * nf, ("+%d MULTI KRÅKFJÄDER" if sv else "+%d MULT CROW FEATHER") % (fm * nf), MULT_COL])
+	var gm := int(Run.mod("grow_multi"))
+	if gm > 0:
+		steps.append(["m", gm * _match_throws, ("+%d MULTI MYGGA" if sv else "+%d MULT MOSQUITO") % (gm * _match_throws), MULT_COL])
+	var sc := int(Run.mod("stand_chips"))
+	if sc > 0:
+		var ns := kubbs.filter(func(k): return k.side == "mine" and k.visible and not k.is_king and not k.is_fallen()).size()
+		if ns > 0:
+			steps.append(["c", sc * ns, ("+%d LJUSSTUMP" if sv else "+%d CANDLE") % (sc * ns), CHIP_COL])
+	var flat := int(Run.mod("flat_multi"))
+	if flat > 0:
+		steps.append(["m", flat, ("+%d MULTI" if sv else "+%d MULT") % flat, MULT_COL])
+	var kt := int(Run.mod("kubb_teeth"))
+	if kt > 0:
+		steps.append(["t", kt * n, ("+%d TÄNDER" if sv else "+%d TEETH") % (kt * n), TEETH_COL])
+	var lx := Run.mod("last_x_mult", 1.0)
+	if lx > 1.0 and batons_left == 0:
+		steps.append(["x", lx, ("X%s BLODSTEN" if sv else "X%s BLOODSTONE") % str(lx), XMULT_COL])
+	var px := Run.mod("perfect_x_mult", 1.0)
+	if px > 1.0 and _last_info.get("grade", "") == "perfect":
+		steps.append(["x", px, ("X%s GRODLÅR" if sv else "X%s FROG LEG") % str(px), XMULT_COL])
+	var bx := Run.mod("big_x_mult", 1.0)
+	if bx > 1.0 and n >= 3:
+		steps.append(["x", bx, ("X%s VARGTAND" if sv else "X%s WOLF FANG") % str(bx), XMULT_COL])
+	var nx := Run.mod("night_x_mult", 1.0)
+	if nx > 1.0:
+		steps.append(["x", nx, "X%s " % str(nx) + Cards.night_title(Run.night_mod).to_upper(), XMULT_COL])
+	for st in steps:
+		match st[0]:
+			"c": chips += int(st[1])
+			"m": mult += float(st[1])
+			"x":
+				mult *= float(st[1])
+				Fx.boom(self, any.global_position, 0.35)
+				Sfx.play("boom", -10.0, 1.6)
+			"t": Run.add_teeth(int(st[1]))
+		hud.tally(chips, mult)
+		await _tick(any, st[2], st[3], step, 12 if st[0] == "x" else 10)
+		step += 1
+	_cm = [chips, mult]
+	return step
+
+
+## Han fäller dina kubbar och stjäl poäng: marker x multi, fast baklänges.
+func _opp_score(n: int) -> void:
+	if not Run.active or mode != Mode.MATCH or n <= 0:
+		return
+	var sv := Lang.current == "sv"
+	var chips := 0
+	for k in _felled_valid:
+		chips += 15 if k.field else 10
+	if chips == 0:
+		chips = 10 * n
+	var mult := 1.0 + (n - 1) * 2 + opponent.steal_bonus
+	var scale := pow(1.8, Run.night - 1) * Run.mod("steal_mult", 1.0)
+	if Run.is_boss():
+		scale *= 1.3
+	var total := int(chips * mult * scale)
+	if total <= 0:
+		return
+	hud.tally(chips, mult, true)
+	hud.tally_steal(true)
+	await get_tree().create_timer(0.35).timeout
+	var stolen := mini(total, score)
+	hud.tally_total(-total)
+	score = maxi(score - total, 0)
+	_stolen += stolen
+	hud.set_score(score, _goal())
+	hud.popup_col(camera.unproject_position(opponent.global_position + Vector3(0, 2.4, 0)), ("-%d POÄNG" if sv else "-%d POINTS") % total, Color(1.0, 0.2, 0.2), 14)
+	Sfx.play("bad", -2.0, 0.8)
+	_shake = 0.4
+	opponent.say("steal")
+	await get_tree().create_timer(0.3).timeout
+	hud.tally_steal(false)
 
 
 func _check_tier() -> void:
@@ -1430,18 +1610,21 @@ func _def_hit(k: Kubb, b: Baton) -> void:
 	var sv := Lang.current == "sv"
 	match k.defense:
 		"taggar":
-			_opp_cut += 1
+			_opp_cut += 1 + _dl(k) / 2
 			_def_pop(k, "TAGGAR! HAN TAPPAR EN PINNE" if sv else "THORNS! HE LOSES A BATON")
 			Sfx.play("bad", -6.0, 1.6)
 			opponent.flinch()
 		"spegel":
+			Run.add_teeth(_dl(k))
 			call_deferred("_mirror", b)
 			_def_pop(k, "SPEGEL!" if sv else "MIRROR!")
 			Sfx.play("sparkle", -2.0, 1.5)
 		"mossa":
+			Run.add_teeth(_dl(k))
 			call_deferred("_stick", b)
 			_def_pop(k, "FAST I MOSSAN" if sv else "STUCK IN THE MOSS")
 		"spoke":
+			Run.add_teeth(_dl(k))
 			call_deferred("_teleport_kubb", k, Color(0.85, 0.9, 1.0))
 			_def_pop(k, "BU!" if sv else "BOO!")
 
@@ -1461,22 +1644,23 @@ func _def_fell() -> int:
 	for k in _felled_valid.duplicate():
 		match k.defense:
 			"skold":
-				if not _shield_used.has(k):
-					_shield_used[k] = true
+				if _shield_used.get(k, 0) < 1 + _dl(k):
+					_shield_used[k] = _shield_used.get(k, 0) + 1
 					k.teleport(_snapshot[k])
 					_felled_valid.erase(k)
 					saved += 1
 					_def_pop(k, "SKÖLDEN HÖLL!" if sv else "THE SHIELD HELD!")
 					Sfx.play("clack2", 0.0, 0.6)
 			"hamnd":
-				_charge += 6
-				_def_pop(k, "HÄMND: +6 MULTI LADDAT" if sv else "REVENGE: +6 MULT CHARGED")
+				var hc := 6 + 5 * _dl(k)
+				_charge += hc
+				_def_pop(k, ("HÄMND: +%d MULTI LADDAT" if sv else "REVENGE: +%d MULT CHARGED") % hc)
 				Sfx.play("bad", -4.0, 0.7)
 			"falla":
 				_def_pop(k, "FÄLLAN SLÅR IGEN!" if sv else "THE TRAP SNAPS!")
-				_zap_random("theirs", 1)
+				_zap_random("theirs", 1 + _dl(k) / 2)
 			"blackfisk":
-				_opp_cut += 1
+				_opp_cut += 1 + _dl(k) / 2
 				_def_pop(k, "BLÄCK! HAN TAPPAR EN PINNE" if sv else "INK! HE LOSES A BATON")
 	return saved
 
@@ -1487,7 +1671,7 @@ func _after_opp_defense() -> void:
 		return
 	var sv := Lang.current == "sv"
 	for k in fallen_kubbs("mine"):
-		if k.defense == "rotter" and randf() < 0.5:
+		if k.defense == "rotter" and randf() < 0.5 + 0.2 * _dl(k):
 			if k.field:
 				k.raise_at(k.global_position)
 			else:
@@ -1497,10 +1681,19 @@ func _after_opp_defense() -> void:
 			await get_tree().create_timer(0.3).timeout
 	var guarded := kubbs.filter(func(k): return k.defense != "" and k.side == "mine")
 	if not guarded.is_empty() and guarded.all(func(k): return not k.is_fallen()) and kubbs.any(func(k): return k.defense == "bastion" and k.side == "mine"):
-		Run.add_teeth(4)
-		hud.big("BASTIONEN STÅR! +4 TÄNDER" if sv else "THE BASTION STANDS! +4 TEETH", Color(0.8, 0.85, 1.0))
+		var bt := 4
+		for bk in kubbs:
+			if bk.defense == "bastion" and bk.side == "mine":
+				bt = maxi(bt, 4 + 3 * _dl(bk))
+		Run.add_teeth(bt)
+		hud.big(("BASTIONEN STÅR! +%d TÄNDER" if sv else "THE BASTION STANDS! +%d TEETH") % bt, Color(0.8, 0.85, 1.0))
 		Sfx.play("coin", -2.0)
 	_refresh_ui()
+
+
+## Försvarsnivå (0-2) för kubbens plats.
+func _dl(k: Kubb) -> int:
+	return Run.def_lvl[k.def_slot] if k.def_slot >= 0 and k.def_slot < 5 else 0
 
 
 func _def_kubb(i: int) -> Kubb:
@@ -1615,7 +1808,7 @@ func _apply_choice(o: String) -> void:
 				if mk.home.origin.x == BASE_X[sl] and not mk.field and mk.slot < 0:
 					mk.def_slot = sl
 					mk.set_kind(id)
-					mk.set_def(Cards.def_of(id))
+					mk.set_def(Cards.def_of(id), Run.def_lvl[sl])
 			var extra := (_tl(" (ersätter %s)", " (replaces %s)") % Cards.title(old)) if old != "" else ""
 			hud.fate_card(v[0], _tl("Kubb %d: ", "Kubb %d: ") % (sl + 1) + Cards.desc(id) + extra, v[2])
 			hud.toast(_tl("HÅLL TAB FÖR ATT SE VAR KUBB %d STÅR", "HOLD TAB TO SEE WHERE KUBB %d STANDS") % (sl + 1))
@@ -1970,7 +2163,10 @@ func _end_player_turn() -> void:
 	# 3. motståndarens pinnar (han kliver fram om dina fältkubbar står kvar)
 	phase = Phase.OPP_THROW
 	_refresh_ui()
-	opponent.say("my_turn")
+	if await _boss_phase_check():
+		pass
+	else:
+		opponent.say("my_turn")
 	var adv := _advance_line("theirs")
 	if adv > -World.FIELD_L + 0.05:
 		hud.flash(Lang.t("opp_advance"))
@@ -2016,6 +2212,38 @@ func _end_player_turn() -> void:
 		await _player_toss(k)
 	thrower.input_enabled = true
 	_start_player_turn()
+
+
+## Tjock-Leffe byter fas när hans baslinje faller: fas 2 vid 3 kvar,
+## fas 3 vid 1 kvar. Han blir större, argare och kastar fler pinnar.
+func _boss_phase_check() -> bool:
+	if not Run.active or Run.opponent_id() != "tjock_leffe":
+		return false
+	var left := side_kubbs("theirs", true).filter(func(k): return k.visible and not k.field and not k.is_king).size()
+	var want := 3 if left <= 1 else (2 if left <= 3 else 1)
+	if want <= opponent.phase:
+		return false
+	opponent.phase = want
+	opponent.extra_batons += 1
+	opponent.error_yaw *= 0.8
+	opponent.error_speed *= 0.8
+	opponent.steal_bonus += 2.0 * (want - 1)
+	opponent.baton_push += 0.5
+	var title := _tl("FAS %d: LEFFE BLIR ARG", "PHASE %d: LEFFE GETS ANGRY") % want if want == 2 else _tl("FAS 3: SISTA KORVEN", "PHASE 3: THE LAST SAUSAGE")
+	_intro_cam = [Vector3(opponent.global_position.x * 0.6, 1.6, opponent.global_position.z + 5.0), opponent.global_position + Vector3(0, 1.2, 0)]
+	opponent.say("phase%d" % want)
+	Sfx.play("boom", 0.0, 0.5)
+	Sfx.play("bad", 0.0, 0.5)
+	var tw := create_tween()
+	tw.tween_property(opponent, "scale", Vector3.ONE * (1.0 + 0.18 * (want - 1)) * 1.15, 0.25).set_trans(Tween.TRANS_BACK)
+	tw.tween_property(opponent, "scale", Vector3.ONE * (1.0 + 0.18 * (want - 1)), 0.3)
+	Fx.big_boom(self, opponent.global_position + Vector3(0, 0.2, 0.6), 1.0)
+	Fx.flash_light(self, opponent.global_position + Vector3(0, 2.0, 1.0), Color(1.0, 0.2, 0.05), 6.0, 8.0, 0.8)
+	_shake = 0.9
+	hud.big(title + "  " + _tl("+1 PINNE, STJÄL MER", "+1 BATON, STEALS MORE"), Color(1.0, 0.3, 0.1))
+	await get_tree().create_timer(1.6).timeout
+	_intro_cam = []
+	return true
 
 
 ## Kastlinjen för den som kastar MOT andra sidan: står fältkubbar kvar på
@@ -2067,7 +2295,7 @@ func _opp_throw() -> void:
 	var vakt := 1.0
 	for k in side_kubbs("mine", true):
 		if k.defense == "vakt":
-			vakt *= 1.15
+			vakt *= 1.15 + 0.1 * _dl(k)
 	var err := opponent.error_yaw * Run.mod("opp_error_mult", 1.0) * vakt
 	v = v.rotated(Vector3.UP, randfn(0.0, err)) * (1.0 + randfn(0.0, opponent.error_speed * Run.mod("opp_error_mult", 1.0)))
 	var f := Vector3(v.x, 0, v.z).normalized()
@@ -2096,9 +2324,11 @@ func _evaluate_opp() -> void:
 			_lose_run()
 			return
 		king.teleport(_snapshot[king])
-	opponent.say("opp_hit" if newly > 0 else "opp_miss")
 	if newly > 0:
 		hud.popup(camera.unproject_position(Vector3(0, 0.2, -1.5)), "AJ!")
+		await _opp_score(newly)
+	else:
+		opponent.say("opp_miss")
 	_refresh_ui()
 
 
@@ -2195,6 +2425,8 @@ func _win_match() -> void:
 	if Run.is_elite():
 		reward = int(reward * 1.5)
 	reward += mini(5, int(Run.teeth / 5)) * int(Run.mod("interest"))
+	var conv := _score_teeth()
+	reward += conv
 	Run.add_teeth(reward)
 	var won_all := Run.advance()
 	if not _autotest:
@@ -2203,7 +2435,7 @@ func _win_match() -> void:
 		return
 	Fx.confetti(self, king.global_position + Vector3(0, 0.3, 0))
 	Sfx.play("sparkle", 0.0, 1.0)
-	hud.center(Lang.t("win_title") % reward + "\n" + _summary() + "\n" + _tl("Tänder den här matchen: %d", "Teeth this match: %d") % maxi(Run.teeth - _match_teeth, 0))
+	hud.center(Lang.t("win_title") % reward + "\n" + _tl("POÄNG %s  =  %d TÄNDER   (han stal %d)", "SCORE %s  =  %d TEETH   (he stole %d)") % [str(score), conv, _stolen] + "\n" + _summary() + "\n" + _tl("Tänder den här matchen: %d", "Teeth this match: %d") % maxi(Run.teeth - _match_teeth, 0))
 	await get_tree().create_timer(3.0).timeout
 	if mode != Mode.MATCH:
 		return
@@ -2215,6 +2447,11 @@ func _win_match() -> void:
 
 ## Kungen faller: en enorm explosion, sen smälter motståndaren ner i
 ## ängen till en röd pöl. Inga hoppskräck, bara obehag.
+## Poäng blir tänder: 4 tänder per uppfyllt krav, max 30.
+func _score_teeth() -> int:
+	return clampi(int(score * 4.0 / maxf(_target(), 1.0) * Run.mod("conv_mult", 1.0)), 0, 30)
+
+
 func _king_finale() -> void:
 	var kp := king.global_position
 	_intro_cam = [Vector3(kp.x * 0.5, 1.4, kp.z + 3.2), kp + Vector3(0, 0.3, 0)]
@@ -2236,10 +2473,24 @@ func _king_finale() -> void:
 			k.sleeping = false
 			k.apply_impulse(Vector3(randf_range(-0.4, 0.4), 0.9, randf_range(-0.4, 0.4)), Vector3(0, 0.05, 0))
 	await get_tree().create_timer(0.6).timeout
-	# kameran vänder sig mot honom, och han smälter
+	# kameran vänder sig mot honom, och han dör på sitt eget sätt
 	var op := opponent.global_position
 	_intro_cam = [Vector3(op.x * 0.6, 1.7, op.z + 6.0), op + Vector3(0, 1.1, 0)]
-	await get_tree().create_timer(0.7).timeout
+	await get_tree().create_timer(0.5).timeout
+	opponent.say("last_words")
+	await get_tree().create_timer(0.6).timeout
+	match Run.opponent_id() if Run.active else "":
+		"vedgubben": await _death_splinter(op)
+		"birgit": await _death_crows(op)
+		"tjock_leffe": await _death_sausage(op)
+		_: await _death_melt(op)
+	await get_tree().create_timer(1.0).timeout
+	_intro_cam = []
+
+
+
+## Standarddöden: han smälter ner till en blodpöl.
+func _death_melt(op: Vector3) -> void:
 	Sfx.play("bad", 0.0, 0.45)
 	var puddle := PS1.cylinder(0.1, 0.01, PS1.mat(null, Color(0.35, 0.0, 0.02), Vector2.ONE, 0.3), 10, 0.0)
 	add_child(puddle)
@@ -2262,9 +2513,122 @@ func _king_finale() -> void:
 	Sfx.play("boom", 0.0, 0.5)
 	Sfx.play("caw", 0.0)
 	opponent.visible = false
-	await get_tree().create_timer(1.0).timeout
-	_intro_cam = []
 
+
+## En bit som flyger iväg och studsar på ängen.
+func _chunk(size: Vector3, m: Material, at: Vector3, vel: Vector3) -> RigidBody3D:
+	var rb := RigidBody3D.new()
+	rb.collision_layer = 0
+	rb.collision_mask = 1
+	rb.mass = 0.2
+	var cs := CollisionShape3D.new()
+	var bs := BoxShape3D.new()
+	bs.size = size
+	cs.shape = bs
+	rb.add_child(cs)
+	rb.add_child(PS1.box(size, m))
+	rb.add_to_group("finale")
+	add_child(rb)
+	rb.global_position = at
+	rb.rotation = Vector3(randf() * TAU, randf() * TAU, randf() * TAU)
+	rb.linear_velocity = vel
+	rb.angular_velocity = Vector3(randf_range(-12, 12), randf_range(-12, 12), randf_range(-12, 12))
+	return rb
+
+
+## Vedgubben spricker upp i ved och sågspån.
+func _death_splinter(op: Vector3) -> void:
+	for i in 6:
+		opponent.flinch()
+		opponent.rotation.z = randf_range(-0.08, 0.08)
+		Sfx.play("clack2", -2.0, randf_range(0.4, 0.7))
+		Fx.burst(self, op + Vector3(randf_range(-0.3, 0.3), randf_range(0.8, 2.4), 0.2), Color(0.75, 0.6, 0.4), 10, 1.5, 0.8, 0.03, 9.8, 0.3, 0.5)
+		_shake = 0.3
+		await get_tree().create_timer(0.22).timeout
+	Fx.big_boom(self, op + Vector3(0, 1.2, 0), 1.4)
+	Sfx.play("boom", 0.0, 0.7)
+	Sfx.play("clack", 2.0, 0.5)
+	_shake = 1.0
+	opponent.visible = false
+	for i in 26:
+		var m := PS1.mat(PS1.wood(i), Color(1.0, 0.85, 0.65) * randf_range(0.6, 1.1))
+		var sz := Vector3(randf_range(0.05, 0.12), randf_range(0.2, 0.55), randf_range(0.05, 0.12))
+		_chunk(sz, m, op + Vector3(randf_range(-0.3, 0.3), randf_range(0.4, 2.4), randf_range(-0.2, 0.2)),
+			Vector3(randf_range(-4, 4), randf_range(2, 7), randf_range(-1, 5)))
+	for i in 10:
+		Fx.burst(self, op + Vector3(randf_range(-1, 1), 0.3, randf_range(-1, 1)), Color(0.8, 0.7, 0.5), 6, 0.8, 1.2, 0.04, 2.0, 0.6, 0.3)
+		Fx.fire(self, op + Vector3(randf_range(-0.8, 0.8), 0, randf_range(-0.8, 0.8)), 0.8, 1.2)
+		await get_tree().create_timer(0.12).timeout
+	Sfx.play("caw", 0.0)
+	await get_tree().create_timer(1.2).timeout
+
+
+## Birgit löses upp i en flock kråkor. Kvar blir koftan.
+func _death_crows(op: Vector3) -> void:
+	var black := PS1.mat(null, Color(0.05, 0.04, 0.07))
+	var tw := create_tween()
+	tw.tween_property(opponent, "scale", Vector3(1.1, 0.9, 1.1), 0.4)
+	tw.tween_property(opponent, "scale", Vector3(0.7, 0.05, 0.7), 1.6).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	for i in 30:
+		var crow := Node3D.new()
+		crow.add_to_group("finale")
+		add_child(crow)
+		crow.global_position = op + Vector3(randf_range(-0.4, 0.4), randf_range(0.6, 2.2), randf_range(-0.3, 0.3))
+		var body := PS1.box(Vector3(0.12, 0.08, 0.2), black)
+		crow.add_child(body)
+		for sgn in [-1.0, 1.0]:
+			var wing := PS1.box(Vector3(0.22, 0.02, 0.1), black)
+			wing.position = Vector3(sgn * 0.14, 0.02, 0)
+			crow.add_child(wing)
+			var wt := create_tween().set_loops(8)
+			wt.tween_property(wing, "rotation:z", sgn * 0.9, 0.08)
+			wt.tween_property(wing, "rotation:z", -sgn * 0.5, 0.08)
+		var dest := crow.global_position + Vector3(randf_range(-6, 6), randf_range(4, 9), randf_range(-6, 2))
+		crow.look_at(dest)
+		var ct := create_tween()
+		ct.tween_property(crow, "global_position", dest, randf_range(1.4, 2.4)).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN)
+		ct.tween_callback(crow.queue_free)
+		if i % 4 == 0:
+			Sfx.play("caw", -2.0 - i * 0.1, randf_range(0.8, 1.3))
+			Fx.burst(self, crow.global_position, Color(0.1, 0.08, 0.12), 8, 1.4, 1.0, 0.03, 1.0, 0.5, 0.2)
+		_shake = 0.2
+		await get_tree().create_timer(0.06).timeout
+	await tw.finished
+	opponent.visible = false
+	var cloth := PS1.cylinder(0.5, 0.06, PS1.mat(PS1.cloth(), Color(1.2, 0.6, 0.7)), 7)
+	cloth.add_to_group("finale")
+	add_child(cloth)
+	cloth.global_position = Vector3(op.x, 0.03, op.z)
+	Sfx.play("bad", -4.0, 0.5)
+	await get_tree().create_timer(1.2).timeout
+
+
+## Tjock-Leffe blåses upp och smäller i ett regn av korvar.
+func _death_sausage(op: Vector3) -> void:
+	var tw := create_tween()
+	for i in 5:
+		tw.tween_property(opponent, "scale", Vector3.ONE * (1.0 + 0.15 * (i + 1)), 0.18).set_trans(Tween.TRANS_BACK)
+		tw.tween_property(opponent, "scale", Vector3.ONE * (1.0 + 0.12 * (i + 1)), 0.1)
+	for i in 5:
+		Sfx.play("thud", -2.0, 0.5 + i * 0.12)
+		_shake = 0.2 + i * 0.08
+		await get_tree().create_timer(0.28).timeout
+	Fx.big_boom(self, op + Vector3(0, 1.0, 0), 2.0)
+	Fx.big_boom(self, op + Vector3(0, 0.4, 0.4), 1.2)
+	Sfx.play("boom", 4.0, 0.5)
+	Sfx.play("boom", 0.0, 0.8)
+	_shake = 1.6
+	opponent.visible = false
+	Fx.burst(self, op + Vector3(0, 1.0, 0), Color(1.0, 0.85, 0.1), 40, 3.5, 1.2, 0.05, 9.8, 0.4, 0.8)
+	var sm := PS1.mat(null, Color(0.75, 0.28, 0.18), Vector2.ONE, 0.2)
+	for i in 34:
+		_chunk(Vector3(0.07, 0.07, 0.3), sm, op + Vector3(randf_range(-0.4, 0.4), randf_range(0.5, 1.8), randf_range(-0.3, 0.3)),
+			Vector3(randf_range(-6, 6), randf_range(3, 10), randf_range(-2, 6)))
+	for i in 8:
+		Fx.fire(self, op + Vector3(randf_range(-1.2, 1.2), 0, randf_range(-1.2, 1.2)), 1.2, 1.8)
+		await get_tree().create_timer(0.15).timeout
+	hud.big(_tl("DET REGNAR KORV", "IT'S RAINING SAUSAGES"), Color(1.0, 0.6, 0.3))
+	await get_tree().create_timer(1.4).timeout
 
 func _after_shop() -> void:
 	menu.close()
@@ -2291,7 +2655,7 @@ func _new_training() -> void:
 	_clear_batons()
 	_reset_kubbs()
 	stats = {"throws": 0, "hits": 0, "heli": 0, "longest": 0.0}
-	dog.hits = 0
+	dog.reset()
 	hud.center("")
 	hud.clear_death()
 	_ghost.visible = false
@@ -2302,7 +2666,11 @@ func _new_training() -> void:
 	for k in kubbs:
 		k.set_kind("")
 	_next_baton()
-	dog.say("start")
+	if _tut > 0:
+		_tut_show()
+	else:
+		hud.tutorial("")
+		dog.say("start")
 
 
 # ---------------------------------------------------------------- kamera
@@ -2824,4 +3192,40 @@ func _screenshots(prefix: String) -> void:
 	vp.get_texture().get_image().save_png(prefix + "_smalter.png")
 	await get_tree().create_timer(1.2).timeout
 	vp.get_texture().get_image().save_png(prefix + "_smalter2.png")
+	for oid in ["birgit", "vedgubben"]:
+		Run.node = {"type": "match", "opp": oid}
+		_start(Mode.MATCH, true)
+		for i in 10:
+			await get_tree().process_frame
+		while _intro:
+			await get_tree().process_frame
+		hud.tally(25, 3.0, true)
+		hud.tally_steal(true)
+		await get_tree().create_timer(0.3).timeout
+		vp.get_texture().get_image().save_png(prefix + "_stjal_" + oid + ".png")
+		hud.tally_steal(false)
+		_king_finale()
+		await get_tree().create_timer(3.6).timeout
+		vp.get_texture().get_image().save_png(prefix + "_dod_" + oid + ".png")
+		await get_tree().create_timer(1.0).timeout
+		vp.get_texture().get_image().save_png(prefix + "_dod2_" + oid + ".png")
+	_to_menu()
+	Run.keyring.assign(["blodsten", "korvbit"])
+	Run.cards.assign(["krutkubb", "fyrverkeri", "", "tummkubb", "midnatt"])
+	Run.def_lvl[1] = 1
+	Run.teeth = 30
+	menu.open("shop")
+	menu.show_page("shop2")
+	for i in 5:
+		await get_tree().process_frame
+	vp.get_texture().get_image().save_png(prefix + "_bakficka.png")
+	menu._open_pack("charm")
+	for i in 30:
+		await get_tree().process_frame
+	vp.get_texture().get_image().save_png(prefix + "_paket.png")
+	_tut = 3
+	_start(Mode.TRAINING, true)
+	for i in 90:
+		await get_tree().process_frame
+	vp.get_texture().get_image().save_png(prefix + "_tutorial.png")
 	get_tree().quit()
