@@ -426,7 +426,7 @@ func _page_shop() -> void:
 			show_page("slot"))
 	# runor: förstärkningar, utgåvor, sigill för en av dina kubbar
 	var rrow := HFlowContainer.new()
-	rrow.custom_minimum_size.x = 480
+	rrow.custom_minimum_size.x = 600
 	_box.add_child(rrow)
 	var rl := Label.new()
 	rl.text = _t("RUNOR:", "RUNES:")
@@ -444,7 +444,7 @@ func _page_shop() -> void:
 		rrow.add_child(rb)
 	# ödesleken: köp nya ödeskort, bränn dåliga
 	var frow := HFlowContainer.new()
-	frow.custom_minimum_size.x = 480
+	frow.custom_minimum_size.x = 600
 	_box.add_child(frow)
 	var fl := Label.new()
 	fl.text = _t("ÖDESLEK %d kort:", "FATE DECK %d cards:") % Run.fate_deck.size()
@@ -482,7 +482,7 @@ func _page_shop() -> void:
 		show_page("shop"))
 	row2.add_child(rr)
 	var row3 := HFlowContainer.new()
-	row3.custom_minimum_size.x = 480
+	row3.custom_minimum_size.x = 600
 	_box.add_child(row3)
 	for i in Run.cards.size():
 		var id: String = Run.cards[i]
@@ -532,7 +532,7 @@ func _page_fate_deck() -> void:
 	_title(_t("DIN ÖDESLEK", "YOUR FATE DECK"), 14)
 	_text(_t("Tänder %d. Bränn ett kort för 2 tänder (minst 2 kort kvar).", "Teeth %d. Burn a card for 2 teeth (at least 2 cards remain).") % Run.teeth, Color(1.0, 0.9, 0.6))
 	var row := HFlowContainer.new()
-	row.custom_minimum_size.x = 460
+	row.custom_minimum_size.x = 580
 	_box.add_child(row)
 	var burned := {}
 	for id in Run.fate_deck:
@@ -683,7 +683,7 @@ func _page_fate_node() -> void:
 		var b := Button.new()
 		b.text = Cards.fate_title(id) + ": " + Cards.fate_desc(id)
 		b.autowrap_mode = TextServer.AUTOWRAP_WORD
-		b.custom_minimum_size = Vector2(440, 0)
+		b.custom_minimum_size = Vector2(560, 0)
 		b.pressed.connect(func():
 			Run.fate_deck.append(id)
 			Run.fate_pile.append(id)
@@ -729,7 +729,7 @@ func _page_grave() -> void:
 	if Run.slots_used() > 0:
 		_text(_t("Begrav ett kort från en kubb (förbannade ger 3 tänder):", "Bury a card from a kubb (cursed ones give 3 teeth):"))
 		var row := HFlowContainer.new()
-		row.custom_minimum_size.x = 460
+		row.custom_minimum_size.x = 580
 		_box.add_child(row)
 		for i in Run.cards.size():
 			var id: String = Run.cards[i]
