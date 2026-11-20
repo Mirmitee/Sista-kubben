@@ -74,7 +74,7 @@ func _ready() -> void:
 	_flash = _label(14, Color(1.0, 0.85, 0.2), Vector2(0, 70), Vector2(384, 20))
 	_flash.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	var ver := _label(8, Color(0.8, 0.15, 0.1), Vector2(300, 277))
-	ver.text = "SISTA KUBBEN v0.10"
+	ver.text = "SISTA KUBBEN v0.11"
 	_teeth = _label(8, Color(1.0, 0.95, 0.75), Vector2(166, 30), Vector2(210, 10))
 	_teeth.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	_cards = _label(8, Color(0.75, 0.7, 0.85), Vector2(226, 40), Vector2(150, 60))
@@ -84,6 +84,7 @@ func _ready() -> void:
 	_banner.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_banner.autowrap_mode = TextServer.AUTOWRAP_WORD
 	_banner.modulate.a = 0.0
+	_build_score()
 	_toast = _label(8, Color(0.6, 1.0, 0.6), Vector2(0, 150), Vector2(384, 12))
 	_toast.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_toast.modulate.a = 0.0
@@ -195,7 +196,9 @@ func refresh(i: Dictionary) -> void:
 		_phase.text = ""
 		_teeth.text = ""
 		_cards.text = ""
+		_score_root.visible = false
 	else:
+		_score_root.visible = Run.active
 		lines.append(Lang.t("hud") % [i.left, i.total])
 		_icons.text = Lang.t("kubbs_line") % [i.theirs, i.theirs_field, i.mine, i.mine_field]
 		var ph := ""
@@ -209,8 +212,14 @@ func refresh(i: Dictionary) -> void:
 			_teeth.text = Lang.t("teeth_hud") % [Run.teeth, Run.night, Run.nights_text()]
 			var names: Array[String] = []
 			for si in Run.cards.size():
-				if Run.cards[si] != "":
-					names.append("%d %s" % [si + 1, Cards.title(Run.cards[si])])
+				var rt := Run.runes_text(si)
+				if Run.cards[si] != "" or rt != "":
+					names.append("%d %s%s" % [si + 1, Cards.title(Run.cards[si]) if Run.cards[si] != "" else "", (" [" + rt + "]") if rt != "" else ""])
+			if not Run.hand.is_empty():
+				var hn: Array[String] = []
+				for h in Run.hand:
+					hn.append(Cards.title(h))
+				names.append(("HAND: " if Lang.current == "sv" else "HAND: ") + ", ".join(hn))
 			if Run.borrowed != "":
 				names.append("~ " + Cards.title(Run.borrowed))
 			for t in Run.temp_names:
@@ -440,11 +449,21 @@ func show_deck(on: bool, his: Array = []) -> void:
 	for i in Run.cards.size():
 		var id: String = Run.cards[i]
 		lines.append("  %d " % (i + 1) + ((Cards.title(id) + ": " + Cards.desc(id)) if id != "" else ("vanlig kubb" if sv else "plain kubb")))
+		for r in [Run.enh[i], Run.ed[i], Run.seal[i]]:
+			if r != "":
+				lines.append("      * " + Cards.rune_title(r) + ": " + Cards.rune_desc(r))
+		if Run.grow_chips[i] > 0 or Run.grow_mult[i] > 0:
+			lines.append(("      vuxit: +%d marker, +%d multi" if sv else "      grown: +%d chips, +%d mult") % [Run.grow_chips[i], Run.grow_mult[i]])
 	if not Run.temp_names.is_empty():
 		lines.append(("DENNA MATCH: " if sv else "THIS MATCH: ") + ", ".join(Run.temp_names))
 	for id in his:
 		lines.append(("  HANS " if sv else "  HIS ") + Cards.title(id) + ": " + Cards.desc(id))
 	lines.append(("Kungens nåd kvar: %d" if sv else "King's mercy left: %d") % Run.king_shield_left)
+	if not Run.hand.is_empty():
+		var hn: Array[String] = []
+		for h in Run.hand:
+			hn.append(Cards.title(h))
+		lines.append(("PINNKORT I HANDEN: " if sv else "BATON CARDS IN HAND: ") + ", ".join(hn))
 	_deck_box.text = "\n".join(lines)
 
 
@@ -454,6 +473,15 @@ var _choice_root: Control
 
 ## Två ödeskort i mitten av skärmen. Klicka på ett, eller tryck 1 / 2.
 func choose_fate(a: Array, b: Array) -> int:
+	return await choose_cards([a, b], "ÖDET ERBJUDER. VÄLJ ETT." if Lang.current == "sv" else "FATE OFFERS. CHOOSE ONE.")
+
+
+var _choice_n := 2
+
+
+## 2-3 kort i mitten. view = [titel, text, färg, (typ)]. Klicka eller 1/2/3.
+func choose_cards(opts: Array, header: String) -> int:
+	_choice_n = opts.size()
 	_choice_root = Control.new()
 	_choice_root.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_play_root.add_child(_choice_root)
@@ -461,17 +489,19 @@ func choose_fate(a: Array, b: Array) -> int:
 	dim.color = Color(0.02, 0.0, 0.02, 0.6)
 	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_choice_root.add_child(dim)
-	var head := _mk(12, Color(1.0, 0.85, 0.5), "ÖDET ERBJUDER. VÄLJ ETT." if Lang.current == "sv" else "FATE OFFERS. CHOOSE ONE.")
+	var head := _mk(12, Color(1.0, 0.85, 0.5), header)
 	head.position = Vector2(0, 46)
 	head.size = Vector2(384, 16)
 	head.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_choice_root.add_child(head)
-	var opts := [a, b]
-	for i in 2:
+	var w := 132.0 if opts.size() <= 2 else 112.0
+	var gap := 16.0 if opts.size() <= 2 else 8.0
+	var x0 := (384.0 - (w * opts.size() + gap * (opts.size() - 1))) * 0.5
+	for i in opts.size():
 		var c: Array = opts[i]
 		var btn := Button.new()
-		btn.position = Vector2(52 + i * 148, 72)
-		btn.size = Vector2(132, 112)
+		btn.position = Vector2(x0 + i * (w + gap), 72)
+		btn.size = Vector2(w, 118)
 		btn.focus_mode = Control.FOCUS_ALL
 		var st := StyleBoxFlat.new()
 		st.bg_color = Color(0.08, 0.02, 0.05, 0.97)
@@ -485,18 +515,18 @@ func choose_fate(a: Array, b: Array) -> int:
 		btn.add_theme_stylebox_override("focus", sth)
 		btn.add_theme_stylebox_override("pressed", sth)
 		var v := VBoxContainer.new()
-		v.position = Vector2(6, 6)
-		v.size = Vector2(120, 100)
+		v.position = Vector2(5, 5)
+		v.size = Vector2(w - 10, 106)
 		v.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		btn.add_child(v)
-		v.add_child(_mk(7, Color(0.7, 0.6, 0.5), "%d" % (i + 1)))
+		v.add_child(_mk(7, (c[2] as Color).lightened(0.2), "%d  %s" % [i + 1, c[3] if c.size() > 3 else ""]))
 		var t := _mk(10, (c[2] as Color).lightened(0.3), c[0])
 		t.autowrap_mode = TextServer.AUTOWRAP_WORD
-		t.custom_minimum_size = Vector2(120, 0)
+		t.custom_minimum_size = Vector2(w - 10, 0)
 		v.add_child(t)
-		var d := _mk(8, Color(0.9, 0.85, 0.8), c[1])
+		var d := _mk(7 if opts.size() > 2 else 8, Color(0.9, 0.85, 0.8), c[1])
 		d.autowrap_mode = TextServer.AUTOWRAP_WORD
-		d.custom_minimum_size = Vector2(120, 0)
+		d.custom_minimum_size = Vector2(w - 10, 0)
 		v.add_child(d)
 		var idx := i
 		btn.pressed.connect(func(): fate_chosen.emit(idx))
@@ -524,3 +554,272 @@ func _unhandled_key_input(e: InputEvent) -> void:
 		elif e.keycode == KEY_2:
 			fate_chosen.emit(1)
 			get_viewport().set_input_as_handled()
+		elif e.keycode == KEY_3 and _choice_n >= 3:
+			fate_chosen.emit(2)
+			get_viewport().set_input_as_handled()
+
+
+# ---------------------------------------------------------------- poäng
+
+var _score_root: Control
+var _score_lbl: Label
+var _goal_lbl: Label
+var _bar_bg: ColorRect
+var _bar: ColorRect
+var _tally_root: Control
+var _chips_lbl: Label
+var _mult_lbl: Label
+var _total_lbl: Label
+var _fast_lbl: Label
+var _score := 0
+var _shown := 0.0
+var _goal := 1
+var _tick_t := 0.0
+var _tally_tw: Tween
+
+
+func _box(col: Color, pos: Vector2, sz: Vector2, parent: Control, r: ColorRect = null) -> Label:
+	if r == null:
+		r = ColorRect.new()
+	r.color = col
+	r.position = pos
+	r.size = sz
+	r.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	parent.add_child(r)
+	r.pivot_offset = sz * 0.5
+	var l := _mk(14, Color(1, 1, 1), "0")
+	l.size = sz
+	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	l.pivot_offset = sz * 0.5
+	r.add_child(l)
+	return l
+
+
+func _build_score() -> void:
+	# Balatro-panel till vänster: månens krav, poäng och stora marker x multi
+	_score_root = Control.new()
+	_score_root.position = Vector2(4, 44)
+	_score_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_play_root.add_child(_score_root)
+	var panel := ColorRect.new()
+	panel.color = Color(0.06, 0.01, 0.03, 0.82)
+	panel.size = Vector2(126, 92)
+	panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_score_root.add_child(panel)
+	var edge := ColorRect.new()
+	edge.color = Color(0.5, 0.06, 0.05, 0.9)
+	edge.size = Vector2(126, 1)
+	edge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_score_root.add_child(edge)
+	_goal_lbl = _mk(7, Color(0.85, 0.5, 0.45), "")
+	_goal_lbl.position = Vector2(4, 2)
+	_score_root.add_child(_goal_lbl)
+	_goal_big = _mk(14, Color(1.0, 0.22, 0.15), "0")
+	_goal_big.position = Vector2(4, 10)
+	_score_root.add_child(_goal_big)
+	_score_lbl = _mk(12, Color(1.0, 0.9, 0.55), "0")
+	_score_lbl.position = Vector2(4, 28)
+	_score_lbl.pivot_offset = Vector2(0, 8)
+	_score_root.add_child(_score_lbl)
+	_bar_bg = ColorRect.new()
+	_bar_bg.color = Color(0.15, 0.02, 0.03, 0.9)
+	_bar_bg.position = Vector2(4, 44)
+	_bar_bg.size = Vector2(118, 3)
+	_score_root.add_child(_bar_bg)
+	_bar = ColorRect.new()
+	_bar.position = Vector2(4, 44)
+	_bar.size = Vector2(0, 3)
+	_score_root.add_child(_bar)
+	_tally_root = Control.new()
+	_tally_root.position = Vector2(4, 52)
+	_score_root.add_child(_tally_root)
+	_chips_box = ColorRect.new()
+	_mult_box = ColorRect.new()
+	_chips_lbl = _box(Color(0.12, 0.38, 0.95, 1.0), Vector2(0, 0), Vector2(52, 22), _tally_root, _chips_box)
+	var x := _mk(14, Color(1, 0.3, 0.25), "X")
+	x.position = Vector2(54, 2)
+	_tally_root.add_child(x)
+	_mult_lbl = _box(Color(0.95, 0.15, 0.1, 1.0), Vector2(66, 0), Vector2(52, 22), _tally_root, _mult_box)
+	_total_lbl = _mk(10, Color(1.0, 0.95, 0.6), "")
+	_total_lbl.position = Vector2(0, 24)
+	_total_lbl.size = Vector2(118, 12)
+	_total_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_total_lbl.pivot_offset = Vector2(59, 6)
+	_tally_root.add_child(_total_lbl)
+	_flames = Control.new()
+	_flames.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_tally_root.add_child(_flames)
+	_chips_lbl.text = "0"
+	_mult_lbl.text = "0"
+	_fast_lbl = _label(10, Color(1.0, 0.6, 0.3), Vector2(300, 188))
+	_fast_lbl.text = ">> x3"
+	_fast_lbl.visible = false
+
+
+var _goal_big: Label
+var _chips_box: ColorRect
+var _mult_box: ColorRect
+var _flames: Control
+var _chips_v := 0
+var _mult_v := 0.0
+var _heat := 0.0
+var _flame_t := 0.0
+
+
+func set_score(v: int, goal: int, instant := false) -> void:
+	_score = v
+	_goal = maxi(goal, 1)
+	if instant:
+		_shown = v
+	_goal_lbl.text = "BLODMÅNEN KRÄVER" if Lang.current == "sv" else "THE BLOOD MOON DEMANDS"
+	_goal_big.text = _fmt(_goal)
+	_pulse(_goal_big, 1.3)
+
+
+func _fmt(n: int) -> String:
+	var s := str(absi(n))
+	var out := ""
+	while s.length() > 3:
+		out = " " + s.substr(s.length() - 3) + out
+		s = s.substr(0, s.length() - 3)
+	return ("-" if n < 0 else "") + s + out
+
+
+func _pulse(l: Label, k := 1.4) -> void:
+	l.scale = Vector2.ONE * k
+	var tw := create_tween()
+	tw.tween_property(l, "scale", Vector2.ONE, 0.18).set_trans(Tween.TRANS_BACK)
+
+
+## Marker x multi under räkningen.
+func tally(chips: int, mult: float, reset := false) -> void:
+	if _tally_tw:
+		_tally_tw.kill()
+	if reset:
+		_total_lbl.text = ""
+	_chips_v = chips
+	_mult_v = mult
+	_heat = maxf(_heat, clampf(log(maxf(chips * mult, 1.0)) / log(10.0) - 1.0, 0.0, 4.0))
+	var ct := _fmt(chips)
+	var mt := str(snappedf(mult, 0.1)) if mult < 100.0 else _fmt(int(mult))
+	if _chips_lbl.text != ct:
+		_chips_lbl.text = ct
+		_pulse(_chips_lbl, 1.7)
+		_jolt(_chips_box)
+	if _mult_lbl.text != mt:
+		_mult_lbl.text = mt
+		_pulse(_mult_lbl, 1.7)
+		_jolt(_mult_box)
+
+
+func _jolt(r: ColorRect) -> void:
+	r.scale = Vector2(1.18, 1.25)
+	r.rotation = randf_range(-0.12, 0.12)
+	var tw := create_tween().set_parallel(true)
+	tw.tween_property(r, "scale", Vector2.ONE, 0.2).set_trans(Tween.TRANS_BACK)
+	tw.tween_property(r, "rotation", 0.0, 0.2)
+
+
+func tally_total(total: int) -> void:
+	_total_lbl.text = "= " + _fmt(total)
+	_pulse(_total_lbl, 2.0)
+	_heat = maxf(_heat, clampf(log(maxf(total, 1.0)) / log(10.0) - 1.0, 0.0, 4.0) + 0.5)
+	# efter en stund nollas rutorna igen, som i Balatro
+	_tally_tw = create_tween()
+	_tally_tw.tween_interval(1.8)
+	_tally_tw.tween_callback(func():
+		_chips_lbl.text = "0"
+		_mult_lbl.text = "0"
+		_total_lbl.text = "")
+
+
+## Flytande siffra i valfri färg.
+func popup_col(at: Vector2, text: String, col: Color, size := 10) -> void:
+	var l := _label(size, col, at - Vector2(text.length() * size * 0.25, 8))
+	l.text = text
+	l.pivot_offset = Vector2(text.length() * size * 0.25, 6)
+	l.scale = Vector2.ONE * 1.6
+	var tw := create_tween()
+	tw.set_parallel(true)
+	tw.tween_property(l, "scale", Vector2.ONE, 0.15).set_trans(Tween.TRANS_BACK)
+	tw.tween_property(l, "position:y", l.position.y - 20, 0.9)
+	tw.tween_property(l, "modulate:a", 0.0, 0.4).set_delay(0.55)
+	tw.chain().tween_callback(l.queue_free)
+
+
+## Stor text som skakar in mitt på skärmen.
+func big(text: String, col: Color) -> void:
+	var wait := 0.7 * _big_n
+	_big_n += 1
+	var l := _label(14, col, Vector2(0, 116), Vector2(384, 20))
+	l.modulate.a = 0.0
+	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	l.autowrap_mode = TextServer.AUTOWRAP_WORD
+	l.text = text
+	l.pivot_offset = Vector2(192, 10)
+	l.scale = Vector2.ONE * 2.5
+	l.rotation = randf_range(-0.15, 0.15)
+	var tw := create_tween()
+	tw.tween_interval(wait)
+	tw.tween_callback(func():
+		l.modulate.a = 1.0
+		Sfx.play("clack2", -6.0, 0.6))
+	tw.tween_property(l, "scale", Vector2.ONE, 0.25).set_trans(Tween.TRANS_BACK)
+	tw.parallel().tween_property(l, "rotation", 0.0, 0.25)
+	tw.tween_interval(0.5)
+	tw.tween_property(l, "modulate:a", 0.0, 0.5)
+	tw.tween_callback(func():
+		_big_n -= 1
+		l.queue_free())
+
+
+var _big_n := 0
+
+
+func fast(on: bool) -> void:
+	if _fast_lbl:
+		_fast_lbl.visible = on
+
+
+func _process(dt: float) -> void:
+	if _score_lbl == null:
+		return
+	if absf(_shown - _score) > 0.5:
+		var step := maxf(absf(_score - _shown) * dt * 5.0, 1.0)
+		_shown = move_toward(_shown, _score, step)
+		_tick_t -= dt
+		if _tick_t <= 0.0:
+			_tick_t = 0.045
+			Sfx.play("click", -14.0, 1.6 + randf() * 0.3)
+			_score_lbl.scale = Vector2.ONE * 1.15
+	else:
+		_shown = _score
+	_score_lbl.scale = _score_lbl.scale.lerp(Vector2.ONE, clampf(dt * 10.0, 0.0, 1.0))
+	_score_lbl.text = ("POÄNG " if Lang.current == "sv" else "SCORE ") + _fmt(int(_shown))
+	# eld ur rutorna när siffrorna är stora
+	_heat = move_toward(_heat, 0.0, dt * 0.6)
+	if _heat > 0.15 and _flames.is_visible_in_tree():
+		_flame_t -= dt
+		if _flame_t <= 0.0:
+			_flame_t = 0.03 / clampf(_heat, 0.3, 4.0)
+			for bi in 2:
+				var box := _chips_box if bi == 0 else _mult_box
+				var fr := ColorRect.new()
+				var sz := randf_range(2.0, 3.0 + _heat * 1.5)
+				fr.size = Vector2(sz, sz)
+				fr.mouse_filter = Control.MOUSE_FILTER_IGNORE
+				var hot := randf()
+				fr.color = (Color(0.4, 0.75, 1.0) if bi == 0 else Color(1.0, 0.55, 0.15)).lerp(Color(1, 1, 0.8), hot * 0.5)
+				fr.position = box.position + Vector2(randf_range(0, 52 - sz), randf_range(-2, 6))
+				_flames.add_child(fr)
+				var tw := fr.create_tween().set_parallel(true)
+				var life := randf_range(0.35, 0.6 + _heat * 0.12)
+				tw.tween_property(fr, "position:y", fr.position.y - randf_range(8, 14 + _heat * 6), life)
+				tw.tween_property(fr, "position:x", fr.position.x + randf_range(-3, 3), life)
+				tw.tween_property(fr, "size", Vector2.ONE, life)
+				tw.tween_property(fr, "modulate:a", 0.0, life)
+				tw.chain().tween_callback(fr.queue_free)
+	var f := clampf(_shown / float(_goal), 0.0, 1.0)
+	_bar.size.x = 110.0 * f
+	_bar.color = Color(0.85, 0.1, 0.08).lerp(Color(1.0, 0.8, 0.2), f)

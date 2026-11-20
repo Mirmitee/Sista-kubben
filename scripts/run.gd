@@ -19,6 +19,16 @@ var teeth := 0
 ## ett uppgraderingskort ("" = vanlig kubb). Samma kort får sitta på flera.
 var cards: Array[String] = ["", "", "", "", ""]
 var baton := "vanlig"
+## Runor på varje kubb (förstärkning, utgåva, sigill) och vad den vuxit till.
+var enh: Array[String] = ["", "", "", "", ""]
+var ed: Array[String] = ["", "", "", "", ""]
+var seal: Array[String] = ["", "", "", "", ""]
+var grow_chips: Array[int] = [0, 0, 0, 0, 0]
+var grow_mult: Array[int] = [0, 0, 0, 0, 0]
+## Pinnkort i handen: dina nästa pinnar (en per kast).
+var hand: Array[String] = []
+var override := ""
+var score_total := 0
 var stats := {"kubbs": 0, "wins": 0, "perfect": 0, "combos": 0, "teeth_total": 0}
 # karta: lager av noder, man väljer en nod per lager. Nod = {"type", "opp"}
 # typer: match, elite, shop, fate, grave, boss
@@ -41,7 +51,7 @@ const FATE_COST := 1      # ett ödeskort för varje fälld kubb
 # meta
 var unlocked_cards: Array[String] = []
 var unlocked_batons: Array[String] = ["vanlig"]
-var lifetime := {"runs": 0, "wins": 0, "kubbs": 0, "best_night": 0, "leffe_beaten": 0, "perfect": 0, "combos": 0, "teeth": 0}
+var lifetime := {"best_throw": 0, "best_score": 0, "runs": 0, "wins": 0, "kubbs": 0, "best_night": 0, "leffe_beaten": 0, "perfect": 0, "combos": 0, "teeth": 0}
 
 
 func _ready() -> void:
@@ -58,6 +68,8 @@ func start(baton_id: String) -> void:
 	gen_map()
 	cards.assign(["", "", "", "", ""])
 	baton = baton_id
+	score_total = 0
+	randomize_runes()
 	stats = {"kubbs": 0, "wins": 0, "perfect": 0, "combos": 0, "teeth_total": 0}
 	clear_temp()
 	cards_drawn = 0
@@ -180,8 +192,71 @@ func draw_fate_two() -> Array[String]:
 	return out
 
 
+## Ett ödeskort ur dragbunten.
+func draw_fate_one() -> String:
+	if fate_pile.is_empty():
+		fate_pile.assign(fate_deck)
+		fate_pile.shuffle()
+	if fate_pile.is_empty():
+		return ""
+	return fate_pile.pop_back()
+
+
 func cur_baton() -> String:
+	if override != "":
+		return override
 	return borrowed if borrowed != "" else baton
+
+
+## Ny run: kubbarna får slumpade runor. Ingen run är den andra lik.
+func randomize_runes() -> void:
+	var e := Cards.runes_of("enh")
+	var d := Cards.runes_of("ed")
+	var sl := Cards.runes_of("seal")
+	for i in 5:
+		enh[i] = e[randi() % e.size()] if randf() < 0.6 else ""
+		ed[i] = d[randi() % d.size()] if randf() < 0.15 else ""
+		seal[i] = sl[randi() % sl.size()] if randf() < 0.15 else ""
+		grow_chips[i] = 0
+		grow_mult[i] = 0
+
+
+func rune_on(slot: int, kind: String) -> String:
+	if slot < 0 or slot > 4:
+		return ""
+	match kind:
+		"enh": return enh[slot]
+		"ed": return ed[slot]
+		_: return seal[slot]
+
+
+func set_rune(slot: int, id: String) -> void:
+	match Cards.RUNES[id].kind:
+		"enh": enh[slot] = id
+		"ed": ed[slot] = id
+		_: seal[slot] = id
+
+
+func rune_price(id: String) -> int:
+	return maxi(1, int(Cards.RUNES[id].price) - int(mod("shop_discount")))
+
+
+func buy_rune(id: String, slot: int) -> bool:
+	var p := rune_price(id)
+	if teeth < p:
+		return false
+	teeth -= p
+	set_rune(slot, id)
+	return true
+
+
+## Text om runorna på en kubb, t.ex. "Glas, Folie".
+func runes_text(slot: int) -> String:
+	var parts: Array[String] = []
+	for r in [enh[slot], ed[slot], seal[slot]]:
+		if r != "":
+			parts.append(Cards.rune_title(r))
+	return ", ".join(parts)
 
 
 ## Ny match: ödeskortens tillfälliga effekter försvinner.
@@ -189,6 +264,8 @@ func clear_temp() -> void:
 	temp_mods = {}
 	temp_names.clear()
 	borrowed = ""
+	hand.clear()
+	override = ""
 
 
 func add_temp(key: String, v: float, name: String) -> void:
@@ -196,7 +273,8 @@ func add_temp(key: String, v: float, name: String) -> void:
 		temp_mods[key] = temp_mods.get(key, 1.0) * v
 	else:
 		temp_mods[key] = temp_mods.get(key, 0.0) + v
-	temp_names.append(name)
+	if name != "":
+		temp_names.append(name)
 
 
 func add_teeth(n: int) -> void:
@@ -284,12 +362,14 @@ func buy(id: String, slot := -1) -> bool:
 	if slot < 0 or teeth < p:
 		return false
 	teeth -= p
-	cards[slot] = id
+	put(id, slot)
 	return true
 
 
 func put(id: String, slot: int) -> void:
 	cards[slot] = id
+	grow_chips[slot] = 0
+	grow_mult[slot] = 0
 
 
 func free_slot() -> int:

@@ -77,6 +77,17 @@ var _opp_left := 0
 var _opp_total := 0
 var _match_teeth := 0
 var _cam_z := 0.0
+# poäng (Balatro-stil): marker x multi per kast, mot blodmånens krav
+var score := 0
+var _charge := 0           # +multi som väntar på nästa kast som fäller
+var _throw_xmult := 1.0    # från träffeffekter under kastet
+var _batons_bonus_next := 0
+var _match_felled := 0
+var _throw_no := 0         # vilket kast i turen
+var _tier := 0             # hur många av månens krav som nåtts
+var _extra_draws := 0
+var _fast := false
+var _slowmo_on := false
 
 
 func _ready() -> void:
@@ -349,6 +360,12 @@ func _begin_match() -> void:
 	Run.clear_temp()
 	_double_next = false
 	_streak = 0
+	score = 0
+	_charge = 0
+	_batons_bonus_next = 0
+	_match_felled = 0
+	_tier = 0
+	hud.set_score(0, _target(), true)
 	_match_teeth = Run.teeth
 	Run.king_shield_left = int(Run.mod("king_shield"))
 	_place_deck()
@@ -374,11 +391,16 @@ func _place_deck() -> void:
 	var mm := Run.mod("theirs_mass_mult", 1.0)
 	for k in kubbs:
 		k.set_kind("")
+		k.slot = -1
+		k.set_runes("", "", "")
 	var row := side_kubbs("theirs")
 	row.sort_custom(func(a, b): return a.home.origin.x < b.home.origin.x)
 	for i in row.size():
 		var id: String = Run.cards[i] if Run.active and i < Run.cards.size() else ""
 		row[i].set_kind(id, mm)
+		if Run.active and i < 5:
+			row[i].slot = i
+			row[i].set_runes(Run.enh[i], Run.ed[i], Run.seal[i], mm)
 	# motståndarens egna specialkubbar: slump, fler senare nätter och hos bossen
 	if not Run.active:
 		return
@@ -403,6 +425,8 @@ func _place_deck() -> void:
 			break
 		var id: String = ids[randi() % ids.size()]
 		k.set_kind(id, mm)
+		k.slot = -1
+		k.set_runes("", "", "")
 		names.append(Cards.title(id))
 	if not names.is_empty():
 		hud.toast(_tl("HAN HAR SMUGIT IN: ", "HE SNUCK IN: ") + ", ".join(names))
@@ -422,8 +446,12 @@ func _start_player_turn() -> void:
 		Fx.ring(self, Vector3(0, 0, thrower.throw_z), Color(1.0, 0.35, 0.2), 1.5)
 		Sfx.play("sparkle", -6.0, 0.8)
 	var base := 8 if Settings.rules == "simple" else 6
-	batons_per_turn = maxi(1, base + int(Run.mod("batons_add")) + opponent.player_batons_add)
+	batons_per_turn = maxi(1, base + int(Run.mod("batons_add")) + opponent.player_batons_add + _batons_bonus_next)
+	if _batons_bonus_next > 0:
+		hud.flash(_tl("+%d PINNE (FJÄDER)", "+%d BATON (FEATHER)") % _batons_bonus_next)
+	_batons_bonus_next = 0
 	batons_left = batons_per_turn
+	_throw_no = 0
 	if opponent.player_batons_add < 0 and turn > 0:
 		opponent.say("eat")
 	# kyrkklockan: var tredje tur välter en slumpad motståndarkubb
@@ -441,6 +469,10 @@ func _start_player_turn() -> void:
 func _next_baton() -> void:
 	if mode == Mode.MATCH and batons_left <= 0:
 		return
+	if Run.active and mode == Mode.MATCH:
+		Run.override = Run.hand.pop_front() if not Run.hand.is_empty() else ""
+		if Run.override != "":
+			hud.flash(_tl("PINNKORT: ", "BATON CARD: ") + Cards.title(Run.override).to_upper())
 	var b := Baton.new()
 	b.setup(Run.cur_baton() if Run.active else "vanlig")
 	add_child(b)
@@ -481,6 +513,8 @@ func _on_thrown(b: RigidBody3D, info: Dictionary) -> void:
 			_extras.append(e)
 	if mode == Mode.MATCH:
 		batons_left -= 1
+		_throw_no += 1
+		_throw_xmult = 1.0
 		var cost := int(Run.baton_stat("tooth_cost")) if Run.active and Cards.BATONS[Run.cur_baton()].has("tooth_cost") else 0
 		if cost > 0:
 			Run.add_teeth(-cost)
@@ -607,7 +641,7 @@ func _do_hit(k: Kubb, b: Baton, h: Dictionary, label: String, col: Color) -> voi
 	var side := k.side
 	if h.has("boom"):
 		var f: float = h.boom
-		Fx.boom(self, k.global_position, f)
+		Fx.big_boom(self, k.global_position, f)
 		_slowmo()
 		if randf() < 0.7:
 			opponent.say("effect")
@@ -651,6 +685,11 @@ func _do_hit(k: Kubb, b: Baton, h: Dictionary, label: String, col: Color) -> voi
 			Fx.dust(self, Vector3(o.global_position.x, 0.0, o.global_position.z), 0.8)
 	if h.has("teleport"):
 		call_deferred("_teleport_kubb", k, col)
+	if h.has("xmult"):
+		_throw_xmult *= float(h.xmult)
+		Fx.confetti(self, k.global_position)
+		Sfx.play("sparkle", 0.0, 1.4)
+		hud.popup_col(camera.unproject_position(k.global_position + Vector3(0, 0.5, 0)), "X%s MULTI" % str(snappedf(float(h.xmult), 0.1)), Color(1.0, 0.3, 0.9), 14)
 	if h.has("stick"):
 		call_deferred("_stick", b)
 		Fx.burst(self, b.global_position, Color(0.9, 0.6, 0.2), 10, 0.8, 0.8, 0.03, 3.0, 0.5, 0.4)
@@ -692,7 +731,7 @@ func _zap_random(side: String, n: int, except: Kubb = null) -> void:
 
 ## Granatpinnen: explosion var som helst.
 func _explode_at(p: Vector3, f: float) -> void:
-	Fx.boom(self, p, f)
+	Fx.big_boom(self, p, f)
 	Sfx.play("boom", 0.0, 1.1)
 	_shake = 0.8
 	_slowmo()
@@ -830,22 +869,26 @@ func _run_summary() -> String:
 func _fate_after_throw(newly: int) -> void:
 	if not Run.active or _match_over or newly <= 0:
 		return
-	Run.fate_points += newly
-	while Run.fate_points >= Run.FATE_COST and not _match_over:
-		Run.fate_points -= Run.FATE_COST
-		var two := Run.draw_fate_two()
-		if two.is_empty():
+	# ett dragval per kast som fäller, plus ett per blått sigill
+	var draws := 1 + _extra_draws
+	_extra_draws = 0
+	Run.fate_points = 0
+	for di in draws:
+		if _match_over:
+			return
+		var opts := _draw_options()
+		if opts.is_empty():
 			return
 		var pick := 0
-		if two.size() > 1:
-			thrower.input_enabled = false
-			Sfx.play("sparkle", -4.0, 0.9)
-			if _autotest:
-				pick = 0
-			else:
-				pick = await hud.choose_fate(_fate_view(two[0]), _fate_view(two[1]))
-			thrower.input_enabled = true
-		_apply_fate(two[pick])
+		thrower.input_enabled = false
+		Sfx.play("sparkle", -4.0, 0.9)
+		if not _autotest:
+			var views: Array = []
+			for o in opts:
+				views.append(_choice_view(o))
+			pick = await hud.choose_cards(views, _tl("DRA ETT KORT", "DRAW A CARD") + ("  (%d/%d)" % [di + 1, draws] if draws > 1 else ""))
+		thrower.input_enabled = true
+		_apply_choice(opts[pick])
 
 
 func _fate_view(id: String) -> Array:
@@ -897,7 +940,6 @@ func _apply_fate(id: String) -> void:
 		"lugn":
 			Run.add_temp("meter_time_mult", 1.25, title)
 			Run.add_temp("acc_time_mult", 1.25, "")
-			Run.temp_names.pop_back()
 		"dubbel":
 			_double_next = true
 			col = Color(1, 0.9, 0.4)
@@ -931,6 +973,393 @@ func _apply_fate(id: String) -> void:
 	_refresh_ui()
 
 
+# ---------------------------------------------------------------- poäng
+
+const CHIP_COL := Color(0.35, 0.65, 1.0)
+const MULT_COL := Color(1.0, 0.3, 0.25)
+const XMULT_COL := Color(1.0, 0.35, 1.0)
+const TEETH_COL := Color(1.0, 0.9, 0.4)
+const TIERS := [1, 2, 4, 8, 16]
+const TIER_TEETH := [3, 3, 5, 8, 12]
+
+
+## Blodmånens krav för matchen (första nivån).
+func _target() -> int:
+	var n := Run.night if Run.active else 1
+	var t := 120.0 * pow(2.4, n - 1)
+	if Run.is_boss():
+		t *= 1.4
+	if Run.is_elite():
+		t *= 1.2
+	return int(snappedf(t, 10.0))
+
+
+func _goal() -> int:
+	return _target() * TIERS[mini(_tier, TIERS.size() - 1)]
+
+
+func _slot_kubb(i: int) -> Kubb:
+	for k in kubbs:
+		if k.slot == i and k.visible:
+			return k
+	return null
+
+
+func _tick(at: Node3D, text: String, col: Color, step: int, size := 10) -> void:
+	var p := camera.unproject_position(at.global_position + Vector3(0, 0.3, 0)) + Vector2(randf_range(-8, 8), -6.0 * (step % 3))
+	hud.popup_col(p, text, col, size)
+	Sfx.play("click", -7.0, 0.9 + 0.07 * mini(step, 14))
+	_shake = maxf(_shake, 0.12)
+	if not _autotest:
+		await get_tree().create_timer(0.085, true, false, true).timeout
+
+
+## Vad en fälld kubb ger: lista av [typ, värde, text, färg]. Typer:
+## c (marker), m (+multi), x (x multi), t (tänder), s (bara text).
+func _kubb_steps(k: Kubb, n: int, first_rep: bool) -> Array:
+	var out: Array = []
+	var sv := Lang.current == "sv"
+	var sl := k.slot
+	var d: Dictionary = Cards.kdef(k.kind)
+	var sc: Dictionary = d.get("score", {})
+	if not sc.is_empty():
+		if sc.has("chips"):
+			out.append(["c", int(sc.chips), "", CHIP_COL])
+		if sc.has("mult"):
+			out.append(["m", float(sc.mult), "", MULT_COL])
+		if sc.has("per_felled_mult"):
+			out.append(["m", float(_match_felled * int(sc.per_felled_mult)), "", MULT_COL])
+		if sc.has("per_cursed_mult"):
+			var nc := 0
+			for c in Run.cards:
+				if c != "" and Cards.DEFS[c].get("cursed", false):
+					nc += 1
+			if nc > 0:
+				out.append(["m", float(nc * int(sc.per_cursed_mult)), "", MULT_COL])
+		if sc.has("teeth_mult") and Run.teeth >= 5:
+			out.append(["m", float(int(Run.teeth / 5) * int(sc.teeth_mult)), "", MULT_COL])
+		if sc.has("teeth_chips") and Run.teeth > 0:
+			out.append(["c", Run.teeth, "", CHIP_COL])
+		if sc.has("combo_mult") and n >= 2:
+			out.append(["m", float(n * int(sc.combo_mult)), "", MULT_COL])
+		if sc.has("all_enh_mult") and Run.enh.all(func(e): return e != ""):
+			out.append(["m", float(sc.all_enh_mult), "", MULT_COL])
+		if sc.has("last_xmult") and batons_left == 0:
+			out.append(["x", float(sc.last_xmult), "MIDNATT!" if sv else "MIDNIGHT!", XMULT_COL])
+		if sc.has("first_xmult") and _throw_no == 1:
+			out.append(["x", float(sc.first_xmult), "GRYNING!" if sv else "DAWN!", XMULT_COL])
+		if sc.has("perfect_xmult") and _last_info.get("grade", "") == "perfect":
+			out.append(["x", float(sc.perfect_xmult), "PERFEKT!" if sv else "PERFECT!", XMULT_COL])
+	if sl >= 0:
+		if Run.grow_chips[sl] > 0:
+			out.append(["c", Run.grow_chips[sl], "", CHIP_COL])
+		if Run.grow_mult[sl] > 0:
+			out.append(["m", float(Run.grow_mult[sl]), "", MULT_COL])
+		if first_rep:
+			if sc.has("grow_chips"):
+				Run.grow_chips[sl] += int(sc.grow_chips)
+				out.append(["s", 0, ("VÄXER +%d" if sv else "GROWS +%d") % int(sc.grow_chips), CHIP_COL])
+			if sc.has("miss_grow"):
+				Run.grow_mult[sl] = 0
+		for r in [Run.enh[sl], Run.ed[sl], Run.seal[sl]]:
+			if r == "":
+				continue
+			var rd: Dictionary = Cards.RUNES[r]
+			var col: Color = (rd.col as Color).clamp(Color(0.3, 0.3, 0.3), Color(1, 1, 1))
+			if rd.has("chips"):
+				out.append(["c", int(rd.chips), "", CHIP_COL])
+			if rd.has("mult"):
+				out.append(["m", float(rd.mult), "", MULT_COL])
+			if rd.has("xmult"):
+				out.append(["x", float(rd.xmult), Cards.rune_title(r).to_upper(), XMULT_COL])
+			if rd.has("blood") and _match_felled > 0:
+				out.append(["m", float(_match_felled), "", MULT_COL])
+			if rd.has("lucky"):
+				if randf() < 0.25:
+					out.append(["m", 15.0, "TUR! +15 MULTI" if sv else "LUCKY! +15 MULT", Color(0.4, 1.0, 0.4)])
+				if randf() < 1.0 / 12.0:
+					out.append(["t", 10, "", TEETH_COL])
+			if rd.has("teeth"):
+				out.append(["t", int(rd.teeth), "", TEETH_COL])
+			if rd.has("draw") and first_rep:
+				_extra_draws += 1
+				out.append(["s", 0, "+1 KORT" if sv else "+1 CARD", col])
+			if rd.has("frost") and first_rep:
+				Run.add_temp("opp_error_mult", float(rd.frost), "")
+				out.append(["s", 0, "FROST!", col])
+			if rd.has("risk") and randf() < 1.0 / 6.0:
+				out.append(["t", -int(rd.risk), "BETT!" if sv else "BITE!", Color(0.6, 0.6, 0.7)])
+			if rd.has("shatter") and first_rep and randf() < float(rd.shatter):
+				Run.enh[sl] = ""
+				k.shatter()
+				Fx.burst(self, k.global_position + Vector3(0, 0.08, 0), Color(0.7, 0.9, 1.0), 22, 2.2, 0.8, 0.02, 7.0, 1.2, 1.0)
+				Sfx.play("clack2", 0.0, 1.8)
+				out.append(["s", 0, "KROSSAD!" if sv else "SHATTERED!", col])
+	return out
+
+
+## Balatro-räkning: varje fälld kubb ger marker och multi, en i taget med
+## stigande ton. Sen marker x multi = poäng som tickar in i räknaren.
+func _score_throw() -> void:
+	if not Run.active or _felled_valid.is_empty():
+		return
+	var sv := Lang.current == "sv"
+	var n := _felled_valid.size()
+	_match_felled += n
+	var chips := 0
+	var mult := 1.0
+	var step := 0
+	var any: Node3D = _felled_valid[0]
+	hud.tally(0, mult, true)
+	if _charge > 0:
+		mult += _charge
+		await _tick(any, ("+%d MULTI (LADDAT)" if sv else "+%d MULT (CHARGED)") % _charge, MULT_COL, step)
+		step += 1
+		_charge = 0
+	for k in _felled_valid:
+		var base := 15 if k.field else 10
+		chips += base
+		Fx.fire(self, k.global_position, 0.6, 1.4)
+		hud.tally(chips, mult)
+		await _tick(k, "+%d" % base, CHIP_COL, step)
+		step += 1
+		var reps := 2 if k.slot >= 0 and Run.seal[k.slot] == "rott" else 1
+		for r in reps:
+			if r == 1:
+				await _tick(k, "IGEN!" if sv else "AGAIN!", Color(1, 0.2, 0.2), step, 12)
+				step += 1
+			for st in _kubb_steps(k, n, r == 0):
+				var label: String = st[2]
+				match st[0]:
+					"c":
+						chips += int(st[1])
+						if label == "":
+							label = "+%d" % int(st[1])
+					"m":
+						mult += float(st[1])
+						if label == "":
+							label = ("+%d MULTI" if sv else "+%d MULT") % int(st[1])
+					"x":
+						mult *= float(st[1])
+						Fx.boom(self, k.global_position, 0.35)
+						Sfx.play("boom", -10.0, 1.6)
+						label = ("X%s " % str(snappedf(float(st[1]), 0.1))) + label
+					"t":
+						Run.add_teeth(int(st[1]))
+						if label == "":
+							label = ("%+d TÄNDER" if sv else "%+d TEETH") % int(st[1])
+				hud.tally(chips, mult)
+				await _tick(k, label, st[3], step, 12 if st[0] == "x" else 10)
+				step += 1
+	if n >= 2:
+		mult += (n - 1) * 2
+		hud.tally(chips, mult)
+		await _tick(any, ("KOMBO +%d MULTI" if sv else "COMBO +%d MULT") % ((n - 1) * 2), MULT_COL, step, 12)
+		step += 1
+	if _last_info.get("grade", "") == "perfect":
+		mult += 2
+		hud.tally(chips, mult)
+		await _tick(any, ("PERFEKT +2 MULTI" if sv else "PERFECT +2 MULT"), MULT_COL, step)
+		step += 1
+	for k in kubbs:
+		if k.slot >= 0 and k.visible and not k.is_fallen() and Run.enh[k.slot] == "stal":
+			mult *= 1.5
+			hud.tally(chips, mult)
+			await _tick(k, ("X1.5 STÅL" if sv else "X1.5 STEEL"), XMULT_COL, step, 12)
+			step += 1
+	if _throw_xmult > 1.0:
+		mult *= _throw_xmult
+		hud.tally(chips, mult)
+		await _tick(any, "X%s MULTI" % str(snappedf(_throw_xmult, 0.1)), XMULT_COL, step, 12)
+	var total := int(chips * mult)
+	hud.tally_total(total)
+	score += total
+	Run.score_total += total
+	Run.lifetime.best_throw = maxi(Run.lifetime.get("best_throw", 0), total)
+	Run.lifetime.best_score = maxi(Run.lifetime.get("best_score", 0), Run.score_total)
+	_shake = clampf(0.2 + total / 400.0, 0.2, 1.2)
+	Sfx.play("coin", -2.0, clampf(1.6 - total / 2000.0, 0.7, 1.6))
+	if total >= 100:
+		for k in _felled_valid:
+			Fx.fire(self, k.global_position, clampf(total / 300.0, 0.8, 2.2), 2.2)
+	if total >= 200:
+		Fx.big_boom(self, any.global_position, clampf(total / 600.0, 0.6, 1.6))
+		Sfx.play("boom", -3.0, 0.9)
+	if total >= 1000:
+		hud.big(_tl("SÅ MÅNGA POÄNG ATT MÅNEN BLEV RÄDD", "SO MANY POINTS THE MOON GOT SCARED"), Color(1.0, 0.4, 0.2))
+		Fx.confetti(self, any.global_position)
+	hud.set_score(score, _goal())
+	_check_tier()
+
+
+func _check_tier() -> void:
+	while _tier < TIERS.size() and score >= _target() * TIERS[_tier]:
+		var bonus: int = TIER_TEETH[_tier]
+		_tier += 1
+		Run.add_teeth(bonus)
+		var msgs := [_tl("BLODMÅNEN ÄR MÄTT", "THE BLOOD MOON IS FED"), _tl("MÅNEN VILL HA MER", "THE MOON WANTS MORE"),
+			_tl("MÅNEN DREGLAR", "THE MOON DROOLS"), _tl("MÅNEN SKRIKER", "THE MOON SCREAMS"), _tl("MÅNEN ÄR DIN", "THE MOON IS YOURS")]
+		hud.big(msgs[mini(_tier - 1, msgs.size() - 1)] + "!  +%d %s" % [bonus, Lang.t("teeth")], Color(1.0, 0.25, 0.2))
+		Fx.confetti(self, king.global_position + Vector3(0, 0.4, 0))
+		Fx.flash_light(self, Vector3(0, 2.0, -8.0), Color(1.0, 0.1, 0.05), 6.0, 14.0, 0.9)
+		for bi in 3:
+			Fx.big_boom(self, Vector3(randf_range(-2.5, 2.5), 0, randf_range(-8.5, -5.0)), 0.9)
+		Sfx.play("boom", 0.0, 0.7)
+		Sfx.play("sparkle", 0.0, 0.8)
+		Sfx.play("caw", -4.0)
+		hud.set_score(score, _goal())
+	_refresh_ui()
+
+
+## Guld: tänder för kubbar som står kvar när din tur slutar.
+func _stand_effects() -> void:
+	if not Run.active or mode != Mode.MATCH:
+		return
+	for k in kubbs:
+		if k.slot >= 0 and k.visible and not k.is_fallen():
+			var r: String = Run.enh[k.slot]
+			if r != "" and Cards.RUNES[r].has("stand_teeth"):
+				var t: int = Cards.RUNES[r].stand_teeth
+				Run.add_teeth(t)
+				Fx.sparks(self, k.global_position + Vector3(0, 0.1, 0), Color(1.0, 0.85, 0.3), 12)
+				await _tick(k, ("+%d TÄNDER (GULD)" if Lang.current == "sv" else "+%d TEETH (GOLD)") % t, TEETH_COL, 4)
+	_refresh_ui()
+
+
+## När en kubb kastas in och landar.
+func _toss_effects(k: Kubb) -> void:
+	if not Run.active or mode != Mode.MATCH:
+		return
+	var sv := Lang.current == "sv"
+	var effects: Array = []
+	var cd: Dictionary = Cards.kdef(k.kind).get("toss", {})
+	if not cd.is_empty():
+		effects.append([cd, Cards.color(k.kind)])
+	if k.slot >= 0:
+		for r in [Run.enh[k.slot], Run.seal[k.slot]]:
+			if r != "" and Cards.RUNES[r].has("toss"):
+				effects.append([Cards.RUNES[r].toss, Cards.RUNES[r].col])
+	if effects.is_empty():
+		return
+	Fx.ring(self, k.global_position, Color(1.0, 0.8, 0.3), 0.6)
+	Sfx.play("sparkle", -5.0, 1.3)
+	var step := 0
+	for e in effects:
+		var t: Dictionary = e[0]
+		var col: Color = (e[1] as Color).clamp(Color(0.3, 0.3, 0.3), Color(1, 1, 1))
+		if t.has("teeth"):
+			Run.add_teeth(int(t.teeth))
+			await _tick(k, ("+%d TÄNDER" if sv else "+%d TEETH") % int(t.teeth), TEETH_COL, step)
+		if t.has("grow_chips") and k.slot >= 0:
+			Run.grow_chips[k.slot] += int(t.grow_chips)
+			await _tick(k, ("+%d MARKER FÖR ALLTID" if sv else "+%d CHIPS FOREVER") % int(t.grow_chips), CHIP_COL, step)
+		if t.has("grow_mult") and k.slot >= 0:
+			Run.grow_mult[k.slot] += int(t.grow_mult)
+			await _tick(k, ("+%d MULTI FÖR ALLTID" if sv else "+%d MULT FOREVER") % int(t.grow_mult), MULT_COL, step)
+		if t.has("charge"):
+			_charge += int(t.charge)
+			await _tick(k, ("+%d MULTI LADDAT" if sv else "+%d MULT CHARGED") % int(t.charge), MULT_COL, step)
+		if t.has("baton_next"):
+			_batons_bonus_next += int(t.baton_next)
+			await _tick(k, ("+%d PINNE NÄSTA TUR" if sv else "+%d BATON NEXT TURN") % int(t.baton_next), col, step)
+		if t.has("rune") and k.slot >= 0:
+			var es := Cards.runes_of("enh")
+			var nid: String = es[randi() % es.size()]
+			Run.enh[k.slot] = nid
+			k.set_runes(Run.enh[k.slot], Run.ed[k.slot], Run.seal[k.slot])
+			await _tick(k, Cards.rune_title(nid).to_upper() + "!", Cards.RUNES[nid].col, step, 12)
+		step += 1
+	_refresh_ui()
+
+
+# ---------------------------------------------------------------- dragning
+
+## Tre kort att välja mellan: ett ödeskort ur din lek, ett pinnkort och
+## en runa eller ny kubb.
+func _draw_options() -> Array[String]:
+	var out: Array[String] = []
+	var f := Run.draw_fate_one()
+	if f != "":
+		out.append("f:" + f)
+	var pk: Array = Cards.PINNKORT.keys()
+	out.append("p:" + str(pk[randi() % pk.size()]))
+	var pool := Run.shop_pool()
+	if randf() < 0.65 or pool.is_empty():
+		var r := randf()
+		var kind := "enh" if r < 0.7 else ("ed" if r < 0.85 else "seal")
+		var rs := Cards.runes_of(kind)
+		out.append("r:" + rs[randi() % rs.size()])
+	else:
+		out.append("k:" + pool[randi() % pool.size()])
+	return out
+
+
+func _choice_view(o: String) -> Array:
+	var id := o.substr(2)
+	var sv := Lang.current == "sv"
+	match o.substr(0, 2):
+		"f:":
+			var v := _fate_view(id)
+			v.append("ÖDESKORT" if sv else "FATE CARD")
+			return v
+		"p:":
+			return [Cards.pk_title(id), Cards.pk_desc(id), Cards.BATONS[Cards.PINNKORT[id][0]].get("trail", Color(1, 0.8, 0.5)), "PINNKORT" if sv else "BATON CARD"]
+		"r:":
+			var kinds := {"enh": ["RUNA", "RUNE"], "ed": ["UTGÅVA", "EDITION"], "seal": ["SIGILL", "SEAL"]}
+			var kn: Array = kinds[Cards.RUNES[id].kind]
+			return [Cards.rune_title(id), Cards.rune_desc(id) + (" Fastnar på en av dina kubbar." if sv else " Sticks to one of your kubbs."), (Cards.RUNES[id].col as Color).clamp(Color(0.3, 0.3, 0.3), Color(1, 1, 1)), kn[0] if sv else kn[1]]
+		_:
+			return [Cards.title(id), Cards.desc(id), (Cards.color(id) * 0.8).clamp(Color(0.3, 0.3, 0.3), Color(1, 1, 1)), "NY KUBB" if sv else "NEW KUBB"]
+
+
+func _apply_choice(o: String) -> void:
+	var id := o.substr(2)
+	var v := _choice_view(o)
+	match o.substr(0, 2):
+		"f:":
+			_apply_fate(id)
+			return
+		"p:":
+			var p: Array = Cards.PINNKORT[id]
+			for i in int(p[1]):
+				Run.hand.append(p[0])
+			Run.cards_drawn += 1
+			hud.fate_card(v[0], v[1], v[2])
+			Sfx.play("whoosh", -4.0, 1.5)
+		"r:":
+			var kind: String = Cards.RUNES[id].kind
+			var free: Array[int] = []
+			for i in 5:
+				if Run.rune_on(i, kind) == "":
+					free.append(i)
+			var sl: int = free[randi() % free.size()] if not free.is_empty() else randi() % 5
+			Run.set_rune(sl, id)
+			Run.cards_drawn += 1
+			var k := _slot_kubb(sl)
+			if k:
+				k.set_runes(Run.enh[sl], Run.ed[sl], Run.seal[sl])
+				Fx.ring(self, k.global_position, Cards.RUNES[id].col, 0.6)
+				Fx.sparks(self, k.global_position + Vector3(0, 0.1, 0), Cards.RUNES[id].col, 16)
+			hud.fate_card(v[0], _tl("Kubb %d: ", "Kubb %d: ") % (sl + 1) + Cards.rune_desc(id), v[2])
+			Sfx.play("sparkle", -3.0, 1.1)
+		"k:":
+			var sl := Run.free_slot()
+			if sl < 0:
+				sl = randi() % 5
+			var old: String = Run.cards[sl]
+			Run.put(id, sl)
+			Run.cards_drawn += 1
+			var k := _slot_kubb(sl)
+			if k:
+				k.set_kind(id)
+				k.set_runes(Run.enh[sl], Run.ed[sl], Run.seal[sl])
+				Fx.ring(self, k.global_position, Cards.color(id), 0.6)
+			var extra := (_tl(" (ersätter %s)", " (replaces %s)") % Cards.title(old)) if old != "" else ""
+			hud.fate_card(v[0], _tl("Kubb %d: ", "Kubb %d: ") % (sl + 1) + Cards.desc(id) + extra, v[2])
+			Sfx.play("clack", -3.0, 1.4)
+	_refresh_ui()
+
+
 func _tl(sv: String, en: String) -> String:
 	return sv if Lang.current == "sv" else en
 
@@ -958,10 +1387,12 @@ func _king_touched_early() -> void:
 func _slowmo() -> void:
 	if _autotest:
 		return
+	_slowmo_on = true
 	Engine.time_scale = 0.3
 	await get_tree().create_timer(0.35, true, false, true).timeout
 	var tw := create_tween()
 	tw.tween_property(Engine, "time_scale", 1.0, 0.08)
+	tw.tween_callback(func(): _slowmo_on = false)
 
 
 func _take_snapshot() -> void:
@@ -1120,6 +1551,17 @@ func _evaluate() -> void:
 		var dm := 2.0 if _double_next else 1.0
 		_double_next = false
 		_award(newly, false, fe[0], fe[1] * dm)
+		await _score_throw()
+		if _match_over:
+			return
+	elif Run.active:
+		# envisa kubben växer av dina missar
+		for i in 5:
+			if Run.cards[i] != "" and Cards.DEFS[Run.cards[i]].get("score", {}).has("miss_grow"):
+				Run.grow_mult[i] += int(Cards.DEFS[Run.cards[i]].score.miss_grow)
+				var ek := _slot_kubb(i)
+				if ek:
+					hud.popup_col(camera.unproject_position(ek.global_position + Vector3(0, 0.3, 0)), _tl("+1 MULTI (ENVIS)", "+1 MULT (STUBBORN)"), Color(1.0, 0.35, 0.3), 8)
 	if newly >= 2:
 		opponent.say("double")
 		opponent.flinch()
@@ -1241,12 +1683,16 @@ func _throw_away(list: Array[Kubb]) -> void:
 func _end_player_turn() -> void:
 	state = State.BUSY
 	thrower.input_enabled = false
-	await get_tree().create_timer(0.8).timeout
+	Run.override = ""
+	await get_tree().create_timer(0.35).timeout
+	await _stand_effects()
 	_ghost.visible = false
 	_line_mark.visible = false
 	# 2. motståndaren kastar in kubbarna du fällde på din planhalva
 	phase = Phase.OPP_TOSS
 	_refresh_ui()
+	if turn == 1:
+		hud.toast(_tl("HÅLL F FÖR ATT SNABBSPOLA HANS TUR", "HOLD F TO FAST-FORWARD HIS TURN"))
 	var fallen := fallen_kubbs("theirs")
 	if _simple():
 		# förenklat: fällda kubbar kastas bort, inget fram och tillbaka
@@ -1270,7 +1716,7 @@ func _end_player_turn() -> void:
 		_line_mark.global_position = Vector3(0, 0.01, adv)
 		Fx.ring(self, Vector3(0, 0, adv), Color(1.0, 0.35, 0.2), 1.5)
 		await opponent.walk_to_z(clampf(adv - 1.0, OPP_Z, -5.0), 0.9)
-	await get_tree().create_timer(1.0).timeout
+	await get_tree().create_timer(0.45).timeout
 	var opp_n := maxi(1, 6 + int(Run.mod("opp_batons_add")) + _opp_batons_next + opponent.extra_batons)
 	_opp_batons_next = 0
 	_opp_total = opp_n
@@ -1283,7 +1729,7 @@ func _end_player_turn() -> void:
 		await _opp_throw()
 		if _match_over:
 			return
-	await get_tree().create_timer(0.6).timeout
+	await get_tree().create_timer(0.3).timeout
 	opponent.walk_to_x(0.0)
 	opponent.walk_to_z(OPP_Z, 0.9)
 	_line_mark.visible = false
@@ -1417,11 +1863,13 @@ func _opp_toss(k: Kubb) -> void:
 		if _in_half(p, "mine"):
 			k.side = "mine"
 			k.raise_at(p)
+			_toss_effects(k)
 			return
 		hud.flash(Lang.t("toss_out"))
 	# två miss: du placerar den (långt från honom)
 	k.side = "mine"
 	k.raise_at(Vector3(randf_range(-2.0, 2.0), 0, -0.7))
+	_toss_effects(k)
 
 
 func _player_toss(k: Kubb) -> void:
@@ -1444,15 +1892,18 @@ func _player_toss(k: Kubb) -> void:
 		if _in_half(p, "theirs"):
 			k.side = "theirs"
 			k.raise_at(p)
+			_toss_effects(k)
 			return
 		if Run.mod("toss_forgive") > 0.0:
 			k.side = "theirs"
 			k.raise_at(Vector3(clampf(p.x, -2.2, 2.2), 0, clampf(p.z, -7.7, -4.3)))
+			_toss_effects(k)
 			return
 		hud.flash(Lang.t("toss_out"))
 	# två miss: motståndaren placerar den där den är svårast att träffa
 	k.side = "theirs"
 	k.raise_at(Vector3(randf_range(-2.2, 2.2), 0, -7.6))
+	_toss_effects(k)
 
 
 func _on_tossed(_k: RigidBody3D) -> void:
@@ -1528,6 +1979,17 @@ func _new_training() -> void:
 
 func _process(dt: float) -> void:
 	_update_magnet()
+	# hans tur går lite fortare, och håll F för att snabbspola
+	if not _slowmo_on and not _autotest:
+		var want := 1.0
+		if mode == Mode.MATCH and not _match_over and not menu.visible and (phase == Phase.OPP_TOSS or phase == Phase.OPP_THROW):
+			want = 3.0 if Input.is_key_pressed(KEY_F) or Input.is_joy_button_pressed(0, JOY_BUTTON_Y) else 1.3
+		if not get_tree().paused and absf(Engine.time_scale - want) > 0.01:
+			Engine.time_scale = want
+	var ff := Engine.time_scale > 2.0
+	if ff != _fast:
+		_fast = ff
+		hud.fast(ff)
 	var sx := thrower.stand_x
 	var cam_pos: Vector3
 	var want: Vector3
@@ -1768,6 +2230,31 @@ func _run_autotest() -> void:
 	while state == State.FLYING:
 		await get_tree().physics_frame
 	print("TEST krutkubb i mitten: fällda %d, tänder %d -> %d" % [fallen_kubbs("theirs").size(), teeth0, Run.teeth])
+	print("TEST poäng efter krutkubben: %d (krav %d, nivå %d), runor %s" % [score, _target(), _tier, str(Run.enh)])
+	# runor: glas+holo+rött sigill på en kubb, fäll den manuellt
+	var rk := _slot_kubb(3)
+	Run.enh[3] = "glas"
+	Run.ed[3] = "holo"
+	Run.seal[3] = "rott"
+	rk.set_runes("glas", "holo", "rott")
+	_felled_valid.clear()
+	_felled_valid.append(rk)
+	var s0 := score
+	await _score_throw()
+	print("TEST glas+holo+rött sigill: +%d poäng (väntat (10+0)*(1+10+10)*2*2 eller utan glas)" % (score - s0))
+	Run.cards[2] = "myrstack"
+	Run.enh[2] = "barnsten"
+	var tk2 := _slot_kubb(2)
+	tk2.set_kind("myrstack")
+	_toss_effects(tk2)
+	await get_tree().create_timer(0.5).timeout
+	print("TEST inkast myrstack+bärnsten: växt marker %d multi %d" % [Run.grow_chips[2], Run.grow_mult[2]])
+	for o in ["p:pk_granat", "r:folie", "k:snoboll"]:
+		_apply_choice(o)
+	print("TEST dragning: hand %s, utgåvor %s, kort %s, alternativ %s" % [str(Run.hand), str(Run.ed), str(Run.cards), str(_draw_options())])
+	_next_baton()
+	print("TEST pinnkort i handen ger pinne: %s" % Run.cur_baton())
+	print("TEST antal: runor %d, pinnkort %d" % [Cards.RUNES.size(), Cards.PINNKORT.size()])
 	for id in Cards.FATE:
 		_apply_fate(id)
 	Run.fate_points = 0
@@ -1894,7 +2381,7 @@ func _screenshots(prefix: String) -> void:
 	thrower.mouse_aim = false
 	for i in 40:
 		await get_tree().process_frame
-	hud.choose_fate(_fate_view("gront"), _fate_view("darr"))
+	hud.choose_cards([_choice_view("f:gront"), _choice_view("p:pk_granat"), _choice_view("r:glas")], _tl("DRA ETT KORT", "DRAW A CARD"))
 	for i in 20:
 		await get_tree().process_frame
 	vp.get_texture().get_image().save_png(prefix + "_birgit.png")
@@ -1930,4 +2417,31 @@ func _screenshots(prefix: String) -> void:
 	for i in 70:
 		await get_tree().process_frame
 	vp.get_texture().get_image().save_png(prefix + "_leffekast.png")
+	# poängräkning med eld
+	Run.node = {"type": "match", "opp": "vedgubben"}
+	Run.enh.assign(["glas", "multi", "stal", "bonus", "lycka"])
+	Run.ed.assign(["", "holo", "", "poly", ""])
+	Run.seal.assign(["rott", "", "", "", "blatt"])
+	_start(Mode.MATCH, true)
+	thrower.mouse_aim = false
+	for i in 40:
+		await get_tree().process_frame
+	_felled_valid.clear()
+	for si in [0, 1, 3]:
+		var sk := _slot_kubb(si)
+		sk.apply_impulse(Vector3(0, 0, -0.4), Vector3(0, 0.07, 0))
+		_felled_valid.append(sk)
+	for i in 30:
+		await get_tree().process_frame
+	_score_throw()
+	for i in 40:
+		await get_tree().process_frame
+	vp.get_texture().get_image().save_png(prefix + "_poang.png")
+	for i in 60:
+		await get_tree().process_frame
+	vp.get_texture().get_image().save_png(prefix + "_poang2.png")
+	Fx.big_boom(self, side_kubbs("theirs")[2].global_position, 1.3)
+	for i in 8:
+		await get_tree().process_frame
+	vp.get_texture().get_image().save_png(prefix + "_boom.png")
 	get_tree().quit()

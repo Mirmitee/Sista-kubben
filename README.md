@@ -2,7 +2,15 @@
 
 Läskig (men mest rolig) roguelike-kubb i PS1-stil. Haunted midsommar: en äng i skymningen under en blodröd måne, och Vedgubben väntar på andra sidan planen.
 
-Version **v0.10**: runs över tre nätter med riktiga kubbregler, en kubblek med 50 specialkubbar, 30 pinnar att låsa upp och ett träningsläge där du kastar på Gösta, en ful hund som ingen äger.
+Version **v0.11**: runs över tre nätter med riktiga kubbregler, en kubblek med 67 specialkubbar, 34 pinnar att låsa upp och ett träningsläge där du kastar på Gösta, en ful hund som ingen äger.
+
+Nytt i v0.11 (Balatro-poäng):
+- Varje kast som fäller räknas som MARKER x MULTI, en kubb i taget med stigande ton, eld ur rutorna och 3D-eld på kubbarna. Blodmånen kräver en poäng per match, och varje nivå (x1, x2, x4, x8, x16) ger tänder.
+- 21 runor på dina 5 kubbar: 13 förstärkningar (glas, stål, guld, fyrklöver, sten, bonus, multi, bärnsten, blod, fjäder, ekorre, frost, blodmåne), 4 utgåvor (folie, holo, polykrom, negativ) och 4 sigill (rött, blått, guld, lila). Slumpas vid start av varje run.
+- 17 poängkubbar som växer, triggar vid inkast eller ger x multi under villkor.
+- 12 pinnkort: dina nästa pinnar blir granat, bumerang, trepinne m.m.
+- Efter varje kast som fäller väljer du 1 av 3: ödeskort, pinnkort, runa eller ny kubb.
+- Hans tur går 30 % fortare, håll F för att snabbspola x3.
 
 ## Kör spelet
 

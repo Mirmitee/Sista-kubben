@@ -140,6 +140,47 @@ const DEFS := {
 		"price": 0, "cursed": true, "col": Color(0.45, 0.45, 0.5), "mass": 3.0, "fell": {"teeth": 8}},
 	"svaltkubb": {"sv": ["Svältkubben", "FÖRBANNAD. FÄLLD: kastets tänder x3, men han får en extra pinne nästa tur."], "en": ["Starving Kubb", "CURSED. FELLED: that throw's teeth x3, but he gets an extra baton next turn."],
 		"price": 0, "cursed": true, "col": Color(0.7, 0.5, 0.5), "fell": {"mult": 3.0, "opp_plus": 1}},
+	# ======================================================== poängkubbar (v0.11)
+	# score: poäng när kubben fälls (chips = marker, mult = +multi, xmult = x multi)
+	#   grow_chips / grow_mult: växer permanent varje gång den fälls
+	#   per_cursed_mult, teeth_mult (per 5 tänder), last_xmult, first_xmult,
+	#   all_enh_mult, perfect_xmult, per_felled_mult, miss_grow
+	# toss: när kubben kastas in och landar (av dig eller honom)
+	#   teeth, grow_chips, grow_mult, charge (+multi nästa kast), baton_next, rune
+	"snoboll": {"sv": ["Snöbollskubben", "FÄLLD: +4 marker, och växer med +4 varje gång den fälls. Snö i juni."], "en": ["Snowball Kubb", "FELLED: +4 chips, and grows by +4 every time it's felled. Snow in June."],
+		"price": 5, "col": Color(1.5, 1.6, 1.7), "score": {"chips": 4, "grow_chips": 4}},
+	"myrstack": {"sv": ["Myrstacken", "INKAST: +1 multi för alltid när den landar. Myrorna bygger."], "en": ["The Anthill", "TOSSED: +1 mult forever each time it lands. The ants build."],
+		"price": 5, "col": Color(1.0, 0.6, 0.4), "toss": {"grow_mult": 1}},
+	"skata": {"sv": ["Skatans kubb", "INKAST: snor 2 tänder från motståndaren. Den gillar blankt."], "en": ["Magpie Kubb", "TOSSED: steals 2 teeth from the opponent. It likes shiny things."],
+		"price": 4, "col": Color(0.3, 0.3, 0.45), "toss": {"teeth": 2}},
+	"raknekubb": {"sv": ["Räknekubben", "FÄLLD: +1 multi för varje kubb du fällt i matchen. Den räknar högt."], "en": ["Counting Kubb", "FELLED: +1 mult for every kubb you've felled this match. It counts out loud."],
+		"price": 6, "col": Color(1.2, 1.2, 0.7), "score": {"per_felled_mult": 1}},
+	"fyrverkeri": {"sv": ["Fyrverkerikubben", "TRÄFF: konfetti och x2 multi på hela kastet. Pang."], "en": ["Firework Kubb", "HIT: confetti and x2 mult on the whole throw. Bang."],
+		"price": 7, "col": Color(1.6, 0.6, 1.2), "hit": {"xmult": 2.0}},
+	"pantkubb": {"sv": ["Pantkubben", "FÄLLD: +25 marker och +1 tand. Två kronor styck."], "en": ["Deposit Kubb", "FELLED: +25 chips and +1 tooth. Recycled."],
+		"price": 4, "col": Color(0.7, 1.2, 0.9), "score": {"chips": 25}, "fell": {"teeth": 1}},
+	"kyrkogard": {"sv": ["Kyrkogårdskubben", "FÄLLD: +3 multi för varje förbannad kubb i din lek."], "en": ["Churchyard Kubb", "FELLED: +3 mult for every cursed kubb in your deck."],
+		"price": 5, "col": Color(0.55, 0.5, 0.6), "score": {"per_cursed_mult": 3, "mult": 1}},
+	"midnatt": {"sv": ["Midnattskubben", "FÄLLD med turens sista pinne: x3 multi. Klockan slår tolv."], "en": ["Midnight Kubb", "FELLED with the turn's last baton: x3 mult. The clock strikes twelve."],
+		"price": 6, "col": Color(0.3, 0.25, 0.6), "score": {"last_xmult": 3.0}},
+	"gryning": {"sv": ["Gryningskubben", "FÄLLD med turens första pinne: x2 multi. Tuppen är död."], "en": ["Dawn Kubb", "FELLED with the turn's first baton: x2 mult. The rooster is dead."],
+		"price": 5, "col": Color(1.6, 1.0, 0.6), "score": {"first_xmult": 2.0}},
+	"girig": {"sv": ["Giriga kubben", "FÄLLD: +1 multi per 5 tänder du har. Den vill ha mer."], "en": ["Greedy Kubb", "FELLED: +1 mult per 5 teeth you hold. It wants more."],
+		"price": 6, "col": Color(1.7, 1.5, 0.4), "score": {"teeth_mult": 1}},
+	"eko": {"sv": ["Ekokubben", "INKAST: nästa kast som fäller får +4 multi. ...multi ...multi."], "en": ["Echo Kubb", "TOSSED: your next scoring throw gets +4 mult. ...mult ...mult."],
+		"price": 5, "col": Color(0.9, 1.0, 1.5), "toss": {"charge": 4}},
+	"sparbossa": {"sv": ["Sparbössan", "INKAST: +1 tand. FÄLLD: +marker lika med dina tänder. Pling."], "en": ["Piggy Bank", "TOSSED: +1 tooth. FELLED: +chips equal to your teeth. Clink."],
+		"price": 6, "col": Color(1.6, 0.8, 0.9), "toss": {"teeth": 1}, "score": {"teeth_chips": 1}},
+	"haxring": {"sv": ["Häxringen", "FÄLLD: +8 multi om alla 5 kubbar bär en runa. Svamparna vet."], "en": ["Fairy Ring", "FELLED: +8 mult if all 5 kubbs carry a rune. The mushrooms know."],
+		"price": 5, "col": Color(0.9, 0.5, 1.4), "score": {"all_enh_mult": 8, "mult": 2}},
+	"perfektionist": {"sv": ["Perfektionisten", "FÄLLD med ett PERFEKT kast: x2,5 multi. Annars sur."], "en": ["The Perfectionist", "FELLED with a PERFECT throw: x2.5 mult. Otherwise sulks."],
+		"price": 6, "col": Color(1.4, 1.4, 1.4), "score": {"perfect_xmult": 2.5}},
+	"kedjekubb": {"sv": ["Kedjekubben", "FÄLLD: +2 multi för varje kubb som faller i samma kast."], "en": ["Chain Kubb", "FELLED: +2 mult for every kubb that falls on the same throw."],
+		"price": 6, "col": Color(0.8, 0.8, 0.9), "score": {"combo_mult": 2}},
+	"tornet": {"sv": ["Kyrktornet", "Väger dubbelt. FÄLLD: +100 marker. Dong."], "en": ["The Steeple", "Weighs double. FELLED: +100 chips. Dong."],
+		"price": 6, "col": Color(0.8, 0.75, 0.7), "mass": 2.0, "score": {"chips": 100}},
+	"envis": {"sv": ["Envisa kubben", "+1 multi för varje kast som inte fäller något. Allt släpps loss när den fälls."], "en": ["Stubborn Kubb", "+1 mult for every throw that fells nothing. All of it is released when it falls."],
+		"price": 5, "col": Color(1.1, 0.7, 0.6), "score": {"miss_grow": 1, "mult": 1}},
 	"vackarkubb": {"sv": ["Väckarkubben", "FÖRBANNAD. FÄLLD: +5 tänder, men en av hans fällda kubbar reser sig. RIIING."], "en": ["Alarm Kubb", "CURSED. FELLED: +5 teeth, but one of his felled kubbs stands back up. RIIING."],
 		"price": 0, "cursed": true, "col": Color(1.5, 0.6, 0.6), "fell": {"teeth": 5, "reraise": 1}},
 }
@@ -248,6 +289,101 @@ const BATONS := {
 	"sista_pinnen": {"sv": ["Den sista pinnen", "Bättre på allt. +1 pinne. Den viskar ditt namn."], "en": ["The Last Baton", "Better at everything. +1 baton. It whispers your name."],
 		"mass": 0.5, "power": 1.05, "push": 1.5, "batons_add": 1, "green_mult": 1.2, "glow": 1.0, "col": Color(0.4, 0.1, 0.12), "band": Color(1.0, 0.85, 0.3), "trail": Color(1.0, 0.1, 0.1), "unlock": ["best_night", 4]},
 }
+
+
+## RUNOR sitter på dina 5 kubbar ovanpå kubbens kort, som Balatros
+## förstärkningar, utgåvor och sigill. En av varje sort per kubb.
+## Följer med hela runnen. Börjar slumpat.
+##   kind: enh (förstärkning), ed (utgåva), seal (sigill)
+##   chips/mult/xmult: poäng när kubben fälls
+##   stand_xmult: så länge kubben står kvar (x multi på varje kast)
+##   stand_teeth: tänder när din tur slutar om den står kvar
+##   shatter: chans att krossas när den fälls (glas)
+##   lucky, blood, risk, retrigger, draw, teeth
+##   toss: när den kastas in (teeth, grow_chips, charge, baton_next, rune)
+##   frost: motståndaren kastar sämre resten av matchen
+const RUNES := {
+	# förstärkningar
+	"glas": {"kind": "enh", "price": 4, "col": Color(0.7, 1.1, 1.6), "xmult": 2.0, "shatter": 0.25,
+		"sv": ["Glas", "x2 multi när den fälls. 1 på 4 att den krossas."], "en": ["Glass", "x2 mult when felled. 1 in 4 to shatter."]},
+	"stal": {"kind": "enh", "price": 5, "col": Color(0.75, 0.8, 0.9), "stand_xmult": 1.5,
+		"sv": ["Stålbeslag", "Så länge den STÅR: x1,5 multi på varje kast."], "en": ["Steel Plated", "While it STANDS: x1.5 mult on every throw."]},
+	"guld": {"kind": "enh", "price": 4, "col": Color(1.8, 1.4, 0.3), "stand_teeth": 2,
+		"sv": ["Guld", "+2 tänder när din tur slutar om den står kvar."], "en": ["Gold", "+2 teeth at the end of your turn if it still stands."]},
+	"lycka": {"kind": "enh", "price": 4, "col": Color(0.5, 1.5, 0.6), "lucky": 1,
+		"sv": ["Fyrklöver", "FÄLLD: 1 på 4 för +15 multi, 1 på 12 för +10 tänder."], "en": ["Four-Leaf", "FELLED: 1 in 4 for +15 mult, 1 in 12 for +10 teeth."]},
+	"sten": {"kind": "enh", "price": 3, "col": Color(0.5, 0.5, 0.55), "chips": 50, "mass": 1.8,
+		"sv": ["Sten", "+50 marker. Tung som en gravsten."], "en": ["Stone", "+50 chips. Heavy as a gravestone."]},
+	"bonus": {"kind": "enh", "price": 2, "col": Color(0.5, 0.75, 1.6), "chips": 30,
+		"sv": ["Bonus", "+30 marker när den fälls."], "en": ["Bonus", "+30 chips when felled."]},
+	"multi": {"kind": "enh", "price": 3, "col": Color(1.6, 0.4, 0.35), "mult": 4,
+		"sv": ["Multi", "+4 multi när den fälls."], "en": ["Mult", "+4 mult when felled."]},
+	"barnsten": {"kind": "enh", "price": 4, "col": Color(1.6, 0.9, 0.3), "toss": {"grow_chips": 8},
+		"sv": ["Bärnsten", "INKAST: +8 marker för alltid varje gång den landar."], "en": ["Amber", "TOSSED: +8 chips forever each time it lands."]},
+	"blod": {"kind": "enh", "price": 4, "col": Color(1.2, 0.1, 0.12), "blood": 1,
+		"sv": ["Blod", "FÄLLD: +1 multi per kubb du fällt i matchen."], "en": ["Blood", "FELLED: +1 mult per kubb you've felled this match."]},
+	"fjader": {"kind": "enh", "price": 5, "col": Color(1.5, 1.5, 1.5), "toss": {"baton_next": 1},
+		"sv": ["Fjäder", "INKAST: +1 pinne nästa tur."], "en": ["Feather", "TOSSED: +1 baton next turn."]},
+	"ekorre": {"kind": "enh", "price": 3, "col": Color(1.3, 0.6, 0.3), "toss": {"teeth": 2},
+		"sv": ["Ekorre", "INKAST: +2 tänder. Den hade dem i kinderna."], "en": ["Squirrel", "TOSSED: +2 teeth. It kept them in its cheeks."]},
+	"frost": {"kind": "enh", "price": 4, "col": Color(0.8, 1.3, 1.8), "frost": 1.12, "chips": 10,
+		"sv": ["Frost", "FÄLLD: +10 marker, och han kastar 12 % sämre resten av matchen."], "en": ["Frost", "FELLED: +10 chips, and he throws 12% worse for the rest of the match."]},
+	"mane": {"kind": "enh", "price": 4, "col": Color(1.4, 0.3, 0.3), "toss": {"charge": 3},
+		"sv": ["Blodmåne", "INKAST: nästa kast som fäller får +3 multi."], "en": ["Blood Moon", "TOSSED: your next scoring throw gets +3 mult."]},
+	# utgåvor
+	"folie": {"kind": "ed", "price": 4, "col": Color(0.6, 0.8, 1.6), "chips": 50,
+		"sv": ["Folie", "UTGÅVA. +50 marker. Glittrar som en sjö."], "en": ["Foil", "EDITION. +50 chips. Glitters like a lake."]},
+	"holo": {"kind": "ed", "price": 5, "col": Color(1.4, 0.6, 1.6), "mult": 10,
+		"sv": ["Holografisk", "UTGÅVA. +10 multi. Den skiftar färg när du inte tittar."], "en": ["Holographic", "EDITION. +10 mult. It shifts colour when you look away."]},
+	"poly": {"kind": "ed", "price": 7, "col": Color(1.6, 1.6, 0.6), "xmult": 1.5,
+		"sv": ["Polykrom", "UTGÅVA. x1,5 multi. Alla färger samtidigt."], "en": ["Polychrome", "EDITION. x1.5 mult. Every colour at once."]},
+	"negativ": {"kind": "ed", "price": 5, "col": Color(0.3, 0.3, 0.35), "xmult": 2.0, "risk": 3,
+		"sv": ["Negativ", "UTGÅVA. x2 multi, men 1 på 6 att den biter dig för 3 tänder."], "en": ["Negative", "EDITION. x2 mult, but 1 in 6 it bites you for 3 teeth."]},
+	# sigill
+	"rott": {"kind": "seal", "price": 6, "col": Color(1.6, 0.2, 0.2), "retrigger": 1,
+		"sv": ["Rött sigill", "SIGILL. Allt kubben ger när den fälls triggar två gånger."], "en": ["Red Seal", "SEAL. Everything the kubb gives when felled triggers twice."]},
+	"blatt": {"kind": "seal", "price": 5, "col": Color(0.3, 0.5, 1.6), "draw": 1,
+		"sv": ["Blått sigill", "SIGILL. FÄLLD: du får dra ett extra kort."], "en": ["Blue Seal", "SEAL. FELLED: you draw an extra card."]},
+	"guldsigill": {"kind": "seal", "price": 4, "col": Color(1.7, 1.3, 0.2), "teeth": 3,
+		"sv": ["Guldsigill", "SIGILL. FÄLLD: +3 tänder."], "en": ["Gold Seal", "SEAL. FELLED: +3 teeth."]},
+	"lila": {"kind": "seal", "price": 5, "col": Color(1.0, 0.3, 1.5), "toss": {"rune": 1},
+		"sv": ["Lila sigill", "SIGILL. INKAST: kubben får en ny slumpad förstärkning."], "en": ["Purple Seal", "SEAL. TOSSED: the kubb gets a new random enhancement."]},
+}
+
+## PINNKORT: dras under matchen. Dina nästa pinnar blir specialpinnar.
+const PINNKORT := {
+	"pk_granat": ["granatpinne", 2], "pk_bumerang": ["bumerang", 2], "pk_tre": ["trepinnen", 1],
+	"pk_malsok": ["malsokare", 2], "pk_krut": ["krutpinne", 2], "pk_ask": ["askpinne", 2],
+	"pk_jarn": ["jarnpinne", 2], "pk_gummi": ["gummipinne", 3], "pk_istapp": ["istappen", 2],
+	"pk_domino": ["dominopinne", 2], "pk_krak": ["kraknabb", 2], "pk_sista": ["sista_pinnen", 1],
+}
+
+
+static func rune_title(id: String) -> String:
+	return RUNES[id][Lang.current][0]
+
+
+static func rune_desc(id: String) -> String:
+	return RUNES[id][Lang.current][1]
+
+
+static func runes_of(kind: String) -> Array[String]:
+	var out: Array[String] = []
+	for id in RUNES:
+		if RUNES[id].kind == kind:
+			out.append(id)
+	return out
+
+
+static func pk_title(id: String) -> String:
+	var p: Array = PINNKORT[id]
+	return "%dx %s" % [p[1], title(p[0])]
+
+
+static func pk_desc(id: String) -> String:
+	var p: Array = PINNKORT[id]
+	var sv := Lang.current == "sv"
+	return ("Dina nästa %d pinnar: " if sv else "Your next %d batons: ") % p[1] + desc(p[0])
 
 
 static func kdef(id: String) -> Dictionary:

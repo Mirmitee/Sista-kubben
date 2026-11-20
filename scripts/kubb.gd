@@ -16,6 +16,11 @@ var field := false        # fältkubb (inkastad) eller baslinjekubb
 var in_flight := false
 var touched := false
 var kind := ""            # specialkubb ur kubbleken ("" = vanlig)
+var slot := -1            # vilken av dina 5 kubbar (för runorna), -1 = ingen
+var _runes: Node3D
+var _ed_mat: ShaderMaterial
+var _ed_id := ""
+var _t := 0.0
 var _seed := 1
 var _mesh: MeshInstance3D
 var _rune: Node3D
@@ -160,6 +165,64 @@ func set_kind(id: String, mass_mult := 1.0) -> void:
 	_cap = cap
 
 
+## Runorna syns på kubben: förstärkningen färgar träet, utgåvan blir
+## skimrande hörnlister och sigillet ett litet märke på framsidan.
+func set_runes(e: String, d: String, sg: String, mass_mult := 1.0) -> void:
+	if _runes:
+		_runes.queue_free()
+		_runes = null
+	_ed_mat = null
+	_ed_id = d
+	if is_king:
+		return
+	var base: Dictionary = Cards.kdef(kind)
+	var tint: Color = base.get("col", Color(1.2, 1.15, 1.1))
+	if e != "":
+		var rc: Color = Cards.RUNES[e].col
+		tint = tint.lerp(rc, 0.65)
+		_mesh.material_override = PS1.mat(PS1.wood(_seed), tint, Vector2.ONE, 0.75 if e in ["glas", "guld", "mane", "frost"] else 0.55)
+		mass = 0.3 * float(base.get("mass", 1.0)) * float(Cards.RUNES[e].get("mass", 1.0)) * mass_mult
+	if e == "" and d == "" and sg == "":
+		return
+	_runes = Node3D.new()
+	add_child(_runes)
+	if e != "":
+		# förstärkningen: ett tjockt band nertill
+		var em := PS1.mat(null, (Cards.RUNES[e].col as Color).clamp(Color(0.2, 0.2, 0.2), Color(1.6, 1.6, 1.6)), Vector2.ONE, 0.9)
+		var b := PS1.box(Vector3(SIZE.x * 1.08, 0.02, SIZE.z * 1.08), em)
+		b.position.y = -0.045
+		_runes.add_child(b)
+	if d != "":
+		_ed_mat = PS1.mat(null, Cards.RUNES[d].col, Vector2.ONE, 1.0)
+		for c in [Vector2(-1, -1), Vector2(1, -1), Vector2(-1, 1), Vector2(1, 1)]:
+			var strip := PS1.box(Vector3(0.012, SIZE.y * 1.02, 0.012), _ed_mat)
+			strip.position = Vector3(c.x * SIZE.x * 0.5, 0, c.y * SIZE.z * 0.5)
+			_runes.add_child(strip)
+	if sg != "":
+		var sm := PS1.mat(null, Cards.RUNES[sg].col, Vector2.ONE, 1.0)
+		for z in [-1.0, 1.0]:
+			var mark := PS1.box(Vector3(0.026, 0.026, 0.006), sm)
+			mark.position = Vector3(0, 0.035, z * (SIZE.z * 0.5 + 0.003))
+			mark.rotation.z = PI * 0.25
+			_runes.add_child(mark)
+
+
+## Krossad glaskubb: runan försvinner.
+func shatter() -> void:
+	set_runes("", _ed_id, "")
+
+
 func _process(dt: float) -> void:
+	_t += dt
 	if _cap and visible:
 		_cap.rotate_y(dt * 2.2)  # specialkubbarnas märke snurrar sakta, de lever
+	if _ed_mat and visible:
+		# utgåvan skimrar
+		var c: Color = Cards.RUNES[_ed_id].col if _ed_id != "" else Color.WHITE
+		if _ed_id in ["poly", "holo"]:
+			c = Color.from_hsv(fmod(_t * 0.4 + _seed * 0.13, 1.0), 0.7, 1.6)
+		elif _ed_id == "negativ":
+			c = c * (0.6 + 0.4 * sin(_t * 5.0))
+		else:
+			c = c * (0.8 + 0.3 * sin(_t * 3.0))
+		_ed_mat.set_shader_parameter("tint", c)

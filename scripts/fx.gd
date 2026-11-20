@@ -104,6 +104,8 @@ static func boom(parent: Node, pos: Vector3, size := 1.0) -> void:
 	burst(parent, pos, Color(1.0, 0.75, 0.25), int(22 * size), 5.0 * size, 0.7, 0.025, 7.0, 1.4, 1.0)
 	burst(parent, pos, Color(0.15, 0.12, 0.12), int(10 * size), 1.2, 1.4, 0.09, -0.6, 1.0, 0.1, 2.0)
 	flash_light(parent, pos, Color(1.0, 0.55, 0.2), 5.0, 6.0 * size, 0.45)
+	# lågor som stiger ur smällen
+	burst(parent, pos, Color(1.0, 0.45, 0.1), int(14 * size), 1.4 * size, 0.8, 0.05, -3.0, 2.5, 1.0, -0.5)
 
 
 ## Taggig blixt från himlen ner till pos.
@@ -156,3 +158,55 @@ static func ring(parent: Node, pos: Vector3, col: Color, radius := 1.0) -> void:
 	var tw := holder.create_tween()
 	tw.tween_property(holder, "scale", Vector3(radius * 5.0, 1, radius * 5.0), 0.5)
 	tw.tween_callback(holder.queue_free)
+
+
+## 3D-eld: en låga som brinner en stund och spottar upp glödande lådor.
+class Fire extends Node3D:
+	var life := 1.5
+	var power := 1.0
+	var age := 0.0
+	var _acc := 0.0
+	var _light: OmniLight3D
+
+	func _ready() -> void:
+		_light = OmniLight3D.new()
+		_light.light_color = Color(1.0, 0.5, 0.15)
+		_light.omni_range = 1.5 + power
+		_light.position.y = 0.25
+		add_child(_light)
+
+	func _process(dt: float) -> void:
+		age += dt
+		var k := clampf(1.0 - age / life, 0.0, 1.0)
+		_light.light_energy = (1.5 + randf() * 1.5) * power * k
+		_acc += dt * 45.0 * power * k
+		while _acc >= 1.0:
+			_acc -= 1.0
+			var hot := randf()
+			var col := Color(1.0, 0.35, 0.05).lerp(Color(1.0, 0.95, 0.4), hot)
+			Fx.burst(get_parent(), global_position + Vector3(randf_range(-0.1, 0.1) * power, 0.02, randf_range(-0.1, 0.1) * power),
+				col, 1, 0.5 + hot * 0.6, 0.45 + randf() * 0.35, 0.06 + 0.07 * power * randf(), -2.5 - 2.0 * hot, 2.5, 1.0, -0.6)
+			if randf() < 0.12:
+				Fx.burst(get_parent(), global_position + Vector3(0, 0.25 * power, 0), Color(0.12, 0.08, 0.08), 1, 0.3, 1.4, 0.06 * power, -0.8, 1.0, 0.1, 1.5)
+		if age >= life:
+			queue_free()
+
+
+static func fire(parent: Node, pos: Vector3, power := 1.0, life := 1.5) -> void:
+	if parent == null or not parent.is_inside_tree():
+		return
+	var f := Fire.new()
+	f.power = power
+	f.life = life
+	parent.add_child(f)
+	f.global_position = Vector3(pos.x, 0.0, pos.z)
+
+
+## Stor explosion: eldklot, chockvåg, eld, rökpelare och flygande skräp.
+static func big_boom(parent: Node, pos: Vector3, size := 1.0) -> void:
+	boom(parent, pos, size)
+	ring(parent, pos, Color(1.0, 0.6, 0.2), 1.2 * size)
+	ring(parent, pos, Color(1.0, 0.95, 0.6), 0.7 * size)
+	fire(parent, pos, 0.8 * size, 1.6)
+	burst(parent, pos + Vector3(0, 0.1, 0), Color(0.3, 0.2, 0.15), int(14 * size), 5.5 * size, 1.3, 0.04, 9.8, 2.0, 0.2)
+	burst(parent, pos + Vector3(0, 0.3, 0), Color(0.1, 0.07, 0.07), int(8 * size), 0.6, 2.5, 0.14 * size, -0.5, 2.0, 0.05, 1.8)

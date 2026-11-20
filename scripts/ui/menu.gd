@@ -17,6 +17,7 @@ var _root: Control
 var _box: VBoxContainer
 var _theme: Theme
 var _offers: Array[String] = []
+var _rune_offers: Array[String] = []
 var _curse := ""
 var _fate_offers: Array[String] = []
 var _reroll := 2
@@ -92,6 +93,9 @@ func _gen_shop() -> void:
 	var pool := Run.shop_pool()
 	pool.shuffle()
 	_offers.assign(pool.slice(0, 3))
+	var rp: Array = Cards.RUNES.keys()
+	rp.shuffle()
+	_rune_offers.assign(rp.slice(0, 2))
 	var fp: Array[String] = []
 	for id in Cards.FATE:
 		if not Cards.FATE[id].get("cursed", false):
@@ -210,6 +214,7 @@ func _page_title() -> void:
 		_text(_t("Runs %d   Vinster %d   Bästa natt %d   Kubbar %d   Pinnar %d/%d", "Runs %d   Wins %d   Best night %d   Kubbs %d   Batons %d/%d") % [
 			Run.lifetime.runs, Run.lifetime.wins, mini(Run.lifetime.best_night, 3), Run.lifetime.kubbs,
 			Cards.BATONS.keys().filter(func(id): return Run.is_unlocked_baton(id)).size(), Cards.BATONS.size()], Color(0.6, 0.5, 0.45))
+		_text(_t("Bästa kast %d poäng   Bästa run %d poäng", "Best throw %d points   Best run %d points") % [int(Run.lifetime.get("best_throw", 0)), int(Run.lifetime.get("best_score", 0))], Color(1.0, 0.75, 0.4))
 	_box.add_child(HSeparator.new())
 	_button(_t("SPELA", "PLAY"), func(): show_page("rules"))
 	_button(_t("TRÄNA PÅ GÖSTA (HUNDEN)", "PRACTICE ON GÖSTA (THE DOG)"), func(): training_pressed.emit())
@@ -327,6 +332,12 @@ func _card_panel(id: String, parent: Container, price_text: String, action_text:
 		tag.text = _t("TRÄFF", "HIT")
 	elif d.has("fell"):
 		tag.text = _t("FÄLLD", "FELLED")
+	elif d.has("score") and d.has("toss"):
+		tag.text = _t("POÄNG+INKAST", "SCORE+TOSS")
+	elif d.has("score"):
+		tag.text = _t("POÄNG", "SCORE")
+	elif d.has("toss"):
+		tag.text = _t("INKAST", "TOSS")
 	elif Cards.DEFS.has(id):
 		tag.text = _t("PASSIV", "PASSIVE")
 	tag.add_theme_color_override("font_color", Color(0.7, 0.6, 0.5))
@@ -423,6 +434,24 @@ func _page_shop() -> void:
 		_card_panel(_curse, row, _t("GRATIS...", "FREE..."), _t("TA", "TAKE"), func():
 			_pending = _curse
 			show_page("slot"))
+	# runor: förstärkningar, utgåvor, sigill för en av dina kubbar
+	var rrow := HFlowContainer.new()
+	rrow.custom_minimum_size.x = 360
+	_box.add_child(rrow)
+	var rl := Label.new()
+	rl.text = _t("RUNOR:", "RUNES:")
+	rl.add_theme_color_override("font_color", Color(0.6, 0.8, 1.0))
+	rrow.add_child(rl)
+	for id in _rune_offers:
+		var rb := Button.new()
+		var rprice := Run.rune_price(id)
+		rb.text = _t("%s (%d)", "%s (%d)") % [Cards.rune_title(id), rprice]
+		rb.tooltip_text = Cards.rune_desc(id)
+		rb.disabled = Run.teeth < rprice
+		rb.pressed.connect(func():
+			_pending = "r:" + id
+			show_page("slot"))
+		rrow.add_child(rb)
 	# ödesleken: köp nya ödeskort, bränn dåliga
 	var frow := HFlowContainer.new()
 	frow.custom_minimum_size.x = 360
@@ -490,7 +519,6 @@ func _page_shop() -> void:
 		_t("\"Förbannade kubbar ger mest. Det är därför de är förbannade.\"", "\"Cursed kubbs pay the most. That's why they're cursed.\""),
 	]
 	_text(_t("Kråkmors spådom: ", "Crow Mother foretells: ") + tips[(Run.night * 7 + Run.match_index * 3 + Run.teeth) % tips.size()], Color(0.75, 0.6, 0.85))
-	_text(_t("Kråkmor: \"Förbannade kubbar är gratis. Det kostar senare.\"", "Crow Mother: \"Cursed kubbs are free. They cost later.\""), Color(0.7, 0.5, 0.8))
 	_button(_t("TILLBAKA TILL KARTAN", "BACK TO THE MAP"), func(): shop_done.emit())
 
 
@@ -539,7 +567,12 @@ func _page_fate_deck() -> void:
 ## Välj vilken av dina 5 kubbar kortet ska sitta på.
 func _page_slot() -> void:
 	_title(_t("VILKEN KUBB?", "WHICH KUBB?"), 14)
-	_text(Cards.title(_pending) + ": " + Cards.desc(_pending), Color(1.0, 0.85, 0.5))
+	var is_rune := _pending.begins_with("r:")
+	var rid := _pending.substr(2) if is_rune else ""
+	if is_rune:
+		_text(Cards.rune_title(rid) + ": " + Cards.rune_desc(rid), Color(0.6, 0.85, 1.0))
+	else:
+		_text(Cards.title(_pending) + ": " + Cards.desc(_pending), Color(1.0, 0.85, 0.5))
 	_text(_t("Dina kubbar på hans baslinje, vänster till höger. Ett gammalt kort på kubben försvinner.", "Your kubbs on his baseline, left to right. An old card on that kubb is lost."))
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 3)
@@ -547,12 +580,20 @@ func _page_slot() -> void:
 	for i in 5:
 		var cur: String = Run.cards[i]
 		var b := Button.new()
-		b.text = "%d\n%s" % [i + 1, Cards.title(cur) if cur != "" else _t("vanlig", "plain")]
+		var rt := Run.runes_text(i)
+		b.text = "%d\n%s%s" % [i + 1, Cards.title(cur) if cur != "" else _t("vanlig", "plain"), ("\n" + rt) if rt != "" else ""]
 		b.tooltip_text = Cards.desc(cur) if cur != "" else ""
 		b.custom_minimum_size = Vector2(66, 40)
 		var slot := i
 		b.pressed.connect(func():
 			var id := _pending
+			if id.begins_with("r:"):
+				if Run.buy_rune(id.substr(2), slot):
+					_rune_offers.erase(id.substr(2))
+					Sfx.play("sparkle", -4.0, 1.2)
+				_pending = ""
+				show_page("shop")
+				return
 			var cursed: bool = Cards.DEFS[id].get("cursed", false)
 			if Run.buy(id, slot):
 				if id == _curse:
