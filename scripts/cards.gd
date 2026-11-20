@@ -350,6 +350,77 @@ const RUNES := {
 		"sv": ["Lila sigill", "SIGILL. INKAST: kubben får en ny slumpad förstärkning."], "en": ["Purple Seal", "SEAL. TOSSED: the kubb gets a new random enhancement."]},
 }
 
+## FÖRSVARSKORT sitter på dina 5 kubbar på DIN baslinje (den han kastar på).
+## Triggar bara när HAN träffar eller fäller kubben.
+##   hit: taggar (han tappar en pinne), spegel (pinnen studsar tillbaka),
+##        mossa (pinnen fastnar), spoke (kubben flyttar sig)
+##   fell: skold (reser sig en gång per tur), hamnd (+multi laddat),
+##         falla (blixt fäller en av hans), blackfisk (han tappar en pinne)
+##   after: rotter (reser sig efter hans tur, 1 på 2)
+##   passiv: vakt (han kastar sämre medan den står), ek (tung),
+##           bastion (tänder om alla försvarskubbar står efter hans tur)
+const DEFENSE := {
+	"skold": {"price": 6, "col": Color(0.6, 0.75, 1.5), "sv": ["Sköld", "Första gången han fäller den varje tur reser den sig igen."], "en": ["Shield", "The first time he fells it each turn, it stands back up."]},
+	"ek": {"price": 4, "col": Color(0.7, 0.5, 0.3), "mass": 3.0, "sv": ["Ek", "Väger tre gånger så mycket. Han får svettas."], "en": ["Oak", "Weighs three times as much. Let him sweat."]},
+	"taggar": {"price": 5, "col": Color(0.4, 0.9, 0.35), "sv": ["Taggar", "När han träffar den tappar han en av sina pinnar."], "en": ["Thorns", "When he hits it he loses one of his batons."]},
+	"spegel": {"price": 6, "col": Color(1.4, 1.4, 1.6), "sv": ["Spegel", "Hans pinne studsar tillbaka mot honom. Han ser sig själv."], "en": ["Mirror", "His baton bounces back at him. He sees himself."]},
+	"rotter": {"price": 5, "col": Color(0.5, 0.35, 0.2), "sv": ["Rötter", "Ligger den efter hans tur reser den sig själv, 1 på 2."], "en": ["Roots", "If it's down after his turn, it stands up by itself, 1 in 2."]},
+	"hamnd": {"price": 4, "col": Color(1.4, 0.2, 0.2), "sv": ["Hämnd", "När han fäller den: ditt nästa kast som fäller får +6 multi."], "en": ["Revenge", "When he fells it: your next scoring throw gets +6 mult."]},
+	"vakt": {"price": 6, "col": Color(1.2, 1.0, 0.4), "sv": ["Vakt", "Så länge den står kastar han 15 % sämre. Den stirrar."], "en": ["Sentry", "While it stands he throws 15% worse. It stares."]},
+	"falla": {"price": 5, "col": Color(0.9, 0.6, 0.2), "sv": ["Fälla", "När han fäller den slår blixten ner på en av hans kubbar."], "en": ["Trap", "When he fells it, lightning strikes one of his kubbs."]},
+	"blackfisk": {"price": 5, "col": Color(0.3, 0.3, 0.6), "sv": ["Bläckfisk", "När han fäller den sprutar den bläck. Han tappar en pinne."], "en": ["Squid", "When he fells it, it squirts ink. He loses a baton."]},
+	"mossa": {"price": 4, "col": Color(0.45, 0.8, 0.4), "sv": ["Mossa", "Hans pinne fastnar i mossan och dör där."], "en": ["Moss", "His baton gets stuck in the moss and dies there."]},
+	"spoke": {"price": 6, "col": Color(0.85, 0.9, 1.3), "sv": ["Spökkubb", "När han träffar den försvinner den och dyker upp någon annanstans."], "en": ["Ghost Kubb", "When he hits it, it vanishes and reappears elsewhere."]},
+	"bastion": {"price": 5, "col": Color(0.8, 0.8, 0.85), "sv": ["Bastion", "+4 tänder om alla dina försvarskubbar står kvar efter hans tur."], "en": ["Bastion", "+4 teeth if all your defended kubbs still stand after his turn."]},
+}
+
+
+## Varje kubbkort har också ett försvar (när kortets kubb står på DIN
+## baslinje och han kastar på den). Ett eget "def" i kortet vinner,
+## annars väljs ett efter vad kortet gör.
+static func def_of(id: String) -> String:
+	if not DEFS.has(id):
+		return ""
+	var d: Dictionary = DEFS[id]
+	if d.has("def"):
+		return d.def
+	var h: Dictionary = d.get("hit", {})
+	var f: Dictionary = d.get("fell", {})
+	var m: Dictionary = d.get("mods", {})
+	if m.has("king_shield") or f.has("shield"):
+		return "skold"
+	if float(d.get("mass", 1.0)) > 1.0:
+		return "ek"
+	if m.has("opp_error_mult") or m.has("opp_batons_add"):
+		return "vakt"
+	if h.has("boom") or h.has("zap") or f.has("zap"):
+		return "falla"
+	if h.has("bounce") or h.has("chain"):
+		return "spegel"
+	if h.has("teleport") or h.has("wind"):
+		return "spoke"
+	if f.has("baton") or f.has("opp_skip"):
+		return "blackfisk"
+	if d.has("toss"):
+		return "rotter"
+	if d.has("score"):
+		return "hamnd"
+	if f.has("teeth") or f.has("steal") or f.has("gamble"):
+		return "bastion"
+	if d.get("cursed", false):
+		return "taggar"
+	var all := ["mossa", "taggar", "rotter", "skold", "vakt", "hamnd"]
+	return all[absi(id.hash()) % all.size()]
+
+
+static func def_title(id: String) -> String:
+	return DEFENSE[id][Lang.current][0]
+
+
+static func def_desc(id: String) -> String:
+	return DEFENSE[id][Lang.current][1]
+
+
 ## PINNKORT: dras under matchen. Dina nästa pinnar blir specialpinnar.
 const PINNKORT := {
 	"pk_granat": ["granatpinne", 2], "pk_bumerang": ["bumerang", 2], "pk_tre": ["trepinnen", 1],
@@ -400,6 +471,9 @@ static func desc(id: String) -> String:
 	var t: String = d.get(Lang.current, ["?", ""])[1]
 	if DEFS.has(id) and not d.has("score"):
 		t += score_text(score_of(id))
+	if DEFS.has(id):
+		var df := def_of(id)
+		t += (" FÖRSVAR: " if Lang.current == "sv" else " DEFENSE: ") + def_title(df) + "."
 	return t
 
 

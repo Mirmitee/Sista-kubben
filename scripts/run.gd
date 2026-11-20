@@ -25,6 +25,8 @@ var ed: Array[String] = ["", "", "", "", ""]
 var seal: Array[String] = ["", "", "", "", ""]
 var grow_chips: Array[int] = [0, 0, 0, 0, 0]
 var grow_mult: Array[int] = [0, 0, 0, 0, 0]
+## Försvarskort på dina 5 kubbar på DIN baslinje.
+var def_cards: Array[String] = ["", "", "", "", ""]
 ## Pinnkort i handen: dina nästa pinnar (en per kast).
 var hand: Array[String] = []
 var override := ""
@@ -70,6 +72,7 @@ func start(baton_id: String) -> void:
 	baton = baton_id
 	score_total = 0
 	randomize_runes()
+
 	stats = {"kubbs": 0, "wins": 0, "perfect": 0, "combos": 0, "teeth_total": 0}
 	clear_temp()
 	cards_drawn = 0
@@ -235,6 +238,23 @@ func set_rune(slot: int, id: String) -> void:
 		"enh": enh[slot] = id
 		"ed": ed[slot] = id
 		_: seal[slot] = id
+
+
+func def_price(id: String) -> int:
+	return maxi(1, int(Cards.DEFENSE[id].price) - int(mod("shop_discount")))
+
+
+func buy_def(id: String, slot: int) -> bool:
+	var p := def_price(id)
+	if teeth < p:
+		return false
+	teeth -= p
+	def_cards[slot] = id
+	return true
+
+
+func defs_used() -> int:
+	return def_cards.filter(func(c): return c != "").size()
 
 
 func rune_price(id: String) -> int:

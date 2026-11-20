@@ -207,6 +207,37 @@ func set_runes(e: String, d: String, sg: String, mass_mult := 1.0) -> void:
 			_runes.add_child(mark)
 
 
+var defense := ""         # försvarskort (bara på din baslinje)
+var def_slot := -1
+var _def_node: Node3D
+
+
+## Försvarskortet syns som en sköldplatta på fram- och baksidan.
+func set_def(id: String) -> void:
+	defense = id
+	if _def_node:
+		_def_node.queue_free()
+		_def_node = null
+	if id == "" or is_king:
+		return
+	var d: Dictionary = Cards.DEFENSE[id]
+	mass *= float(d.get("mass", 1.0))
+	_def_node = Node3D.new()
+	add_child(_def_node)
+	var m := PS1.mat(null, (d.col as Color).clamp(Color(0.25, 0.25, 0.25), Color(1.6, 1.6, 1.6)), Vector2.ONE, 0.95)
+	var dark := PS1.mat(null, Color(0.05, 0.05, 0.1), Vector2.ONE, 0.2)
+	for z in [-1.0, 1.0]:
+		var plate := PS1.box(Vector3(0.05, 0.065, 0.006), m)
+		plate.position = Vector3(0, 0.01, z * (SIZE.z * 0.5 + 0.004))
+		_def_node.add_child(plate)
+		var boss := PS1.box(Vector3(0.016, 0.016, 0.006), dark)
+		boss.position = Vector3(0, 0.012, z * (SIZE.z * 0.5 + 0.008))
+		_def_node.add_child(boss)
+	var top := PS1.box(Vector3(SIZE.x * 1.1, 0.01, SIZE.z * 1.1), m)
+	top.position.y = SIZE.y * 0.5 + 0.004
+	_def_node.add_child(top)
+
+
 ## Krossad glaskubb: runan försvinner.
 func shatter() -> void:
 	set_runes("", _ed_id, "")

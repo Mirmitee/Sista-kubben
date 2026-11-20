@@ -56,5 +56,8 @@ func _draw() -> void:
 			# dina numrerade kubbar pulserar lite
 			var a := 0.6 + 0.4 * sin(_t * 4.0 + it.slot)
 			draw_string(f, p + Vector2(-3, -7), str(it.slot + 1), HORIZONTAL_ALIGNMENT_LEFT, -1, 8, Color(1, 0.95, 0.6, a))
+		if it.get("def_slot", -1) >= 0:
+			draw_rect(r.grow(2), it.def_col, false, 1.0)
+			draw_string(f, p + Vector2(-3, 13), str(it.def_slot + 1), HORIZONTAL_ALIGNMENT_LEFT, -1, 8, Color(0.6, 0.85, 1.0))
 		if it.opp:
 			draw_rect(r.grow(3), Color(1, 0.1, 0.05, 0.8), false, 1.0)

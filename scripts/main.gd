@@ -89,6 +89,8 @@ var _extra_draws := 0
 var _fast := false
 var _slowmo_on := false
 var _force_tab := false
+var _opp_cut := 0          # pinnar han tappar den här turen (taggar, bläckfisk)
+var _shield_used := {}
 var _intro := false
 var _intro_pos := Vector3(0, 1.75, 2.1)
 var _intro_cam: Array = []
@@ -377,6 +379,8 @@ func _clear_batons() -> void:
 # ---------------------------------------------------------------- match
 
 func _begin_match() -> void:
+	for n in get_tree().get_nodes_in_group("finale"):
+		n.queue_free()
 	_clear_batons()
 	_reset_kubbs()
 	_set_opponent(Run.opponent_id() if Run.active else "vedgubben")
@@ -465,10 +469,18 @@ func _setup_intro() -> void:
 	for k in drop.duplicate():
 		if k == king:
 			continue
-		_drop_kubb(k, 0.2)
+		if k.defense != "":
+			await _drop_kubb(k, 0.2)
+			var dc: Color = (Cards.DEFENSE[k.defense].col as Color).clamp(Color(0.4, 0.4, 0.4), Color(1, 1, 1))
+			hud.popup_col(camera.unproject_position(k.global_position + Vector3(0, 0.3, 0)), "%d %s" % [k.def_slot + 1, Cards.def_title(k.defense).to_upper()], dc, 12)
+			Fx.ring(self, k.global_position, dc, 0.5)
+			Sfx.play("clack2", -2.0, 0.7)
+			await _intro_wait(0.5)
+		else:
+			_drop_kubb(k, 0.2)
+			Sfx.play("clack2", -8.0, randf_range(0.9, 1.2))
+			await _intro_wait(0.08)
 		drop.erase(k)
-		Sfx.play("clack2", -8.0, randf_range(0.9, 1.2))
-		await _intro_wait(0.08)
 	_intro_cam = [Vector3(0, 1.6, -1.8), Vector3(0, 0.15, -4.0)]
 	await _intro_wait(0.4)
 	await _drop_kubb(king, 0.3)
@@ -510,6 +522,17 @@ func _place_deck() -> void:
 		k.set_kind("")
 		k.slot = -1
 		k.set_runes("", "", "")
+		k.def_slot = -1
+		k.set_def("")
+	# försvarskorten på din egen baslinje
+	var mrow := side_kubbs("mine")
+	mrow.sort_custom(func(a, b): return a.home.origin.x < b.home.origin.x)
+	for i in mrow.size():
+		if Run.active and i < 5 and Run.cards[i] != "":
+			# samma kort på din sida: utseendet, och kortets försvar
+			mrow[i].def_slot = i
+			mrow[i].set_kind(Run.cards[i], 1.0)
+			mrow[i].set_def(Cards.def_of(Run.cards[i]))
 	var row := side_kubbs("theirs")
 	row.sort_custom(func(a, b): return a.home.origin.x < b.home.origin.x)
 	for i in row.size():
@@ -714,6 +737,9 @@ func _on_baton_hit(body: Node, b: Baton) -> void:
 			Fx.splinters(self, b.global_position, Cards.color(body.kind) * 0.7)
 			if mode == Mode.MATCH and not current_by_opp:
 				_trigger_hit(body, b)
+			elif mode == Mode.MATCH and current_by_opp and body.defense != "" and not _triggered.has(body):
+				_triggered[body] = true
+				_def_hit(body, b)
 		elif body.is_king:
 			Fx.sparks(self, b.global_position, Color(1.0, 0.3, 0.2), 10)
 		if not _hit_this_throw:
@@ -1390,6 +1416,100 @@ func _toss_effects(k: Kubb) -> void:
 	_refresh_ui()
 
 
+# ---------------------------------------------------------------- försvar
+
+func _def_pop(k: Kubb, text: String) -> void:
+	var col: Color = (Cards.DEFENSE[k.defense].col as Color).clamp(Color(0.4, 0.4, 0.4), Color(1, 1, 1)) if k.defense != "" else Color(0.7, 0.8, 1.0)
+	hud.popup_col(camera.unproject_position(k.global_position + Vector3(0, 0.35, 0)), text, col, 12)
+	Fx.sparks(self, k.global_position + Vector3(0, 0.1, 0), col, 16)
+	Fx.ring(self, k.global_position, col, 0.5)
+
+
+## Han träffar en av dina försvarskubbar.
+func _def_hit(k: Kubb, b: Baton) -> void:
+	var sv := Lang.current == "sv"
+	match k.defense:
+		"taggar":
+			_opp_cut += 1
+			_def_pop(k, "TAGGAR! HAN TAPPAR EN PINNE" if sv else "THORNS! HE LOSES A BATON")
+			Sfx.play("bad", -6.0, 1.6)
+			opponent.flinch()
+		"spegel":
+			call_deferred("_mirror", b)
+			_def_pop(k, "SPEGEL!" if sv else "MIRROR!")
+			Sfx.play("sparkle", -2.0, 1.5)
+		"mossa":
+			call_deferred("_stick", b)
+			_def_pop(k, "FAST I MOSSAN" if sv else "STUCK IN THE MOSS")
+		"spoke":
+			call_deferred("_teleport_kubb", k, Color(0.85, 0.9, 1.0))
+			_def_pop(k, "BU!" if sv else "BOO!")
+
+
+func _mirror(b: Baton) -> void:
+	if not is_instance_valid(b):
+		return
+	var v := b.linear_velocity
+	b.linear_velocity = Vector3(-v.x * 0.5, 3.5, -absf(v.z) * 0.9 - 2.0)
+	Sfx.play("whoosh", -2.0, 1.7)
+
+
+## Hans fällningar på dina försvarskubbar. Returnerar hur många som reste sig.
+func _def_fell() -> int:
+	var saved := 0
+	var sv := Lang.current == "sv"
+	for k in _felled_valid.duplicate():
+		match k.defense:
+			"skold":
+				if not _shield_used.has(k):
+					_shield_used[k] = true
+					k.teleport(_snapshot[k])
+					_felled_valid.erase(k)
+					saved += 1
+					_def_pop(k, "SKÖLDEN HÖLL!" if sv else "THE SHIELD HELD!")
+					Sfx.play("clack2", 0.0, 0.6)
+			"hamnd":
+				_charge += 6
+				_def_pop(k, "HÄMND: +6 MULTI LADDAT" if sv else "REVENGE: +6 MULT CHARGED")
+				Sfx.play("bad", -4.0, 0.7)
+			"falla":
+				_def_pop(k, "FÄLLAN SLÅR IGEN!" if sv else "THE TRAP SNAPS!")
+				_zap_random("theirs", 1)
+			"blackfisk":
+				_opp_cut += 1
+				_def_pop(k, "BLÄCK! HAN TAPPAR EN PINNE" if sv else "INK! HE LOSES A BATON")
+	return saved
+
+
+## Efter hans tur: rötter reser sig, bastion ger tänder.
+func _after_opp_defense() -> void:
+	if not Run.active or _match_over:
+		return
+	var sv := Lang.current == "sv"
+	for k in fallen_kubbs("mine"):
+		if k.defense == "rotter" and randf() < 0.5:
+			if k.field:
+				k.raise_at(k.global_position)
+			else:
+				k.go_home()
+			_def_pop(k, "RÖTTERNA DROG UPP DEN" if sv else "THE ROOTS PULLED IT UP")
+			Sfx.play("thud", -2.0, 0.6)
+			await get_tree().create_timer(0.3).timeout
+	var guarded := kubbs.filter(func(k): return k.defense != "" and k.side == "mine")
+	if not guarded.is_empty() and guarded.all(func(k): return not k.is_fallen()) and kubbs.any(func(k): return k.defense == "bastion" and k.side == "mine"):
+		Run.add_teeth(4)
+		hud.big("BASTIONEN STÅR! +4 TÄNDER" if sv else "THE BASTION STANDS! +4 TEETH", Color(0.8, 0.85, 1.0))
+		Sfx.play("coin", -2.0)
+	_refresh_ui()
+
+
+func _def_kubb(i: int) -> Kubb:
+	for k in kubbs:
+		if k.def_slot == i and k.visible:
+			return k
+	return null
+
+
 # ---------------------------------------------------------------- dragning
 
 ## Tre kort att välja mellan: ett ödeskort ur din lek, ett pinnkort och
@@ -1402,7 +1522,7 @@ func _draw_options() -> Array[String]:
 	var pk: Array = Cards.PINNKORT.keys()
 	out.append("p:" + str(pk[randi() % pk.size()]))
 	var pool := Run.shop_pool()
-	if randf() < 0.65 or pool.is_empty():
+	if randf() < 0.6 or pool.is_empty():
 		var r := randf()
 		var kind := "enh" if r < 0.7 else ("ed" if r < 0.85 else "seal")
 		var rs := Cards.runes_of(kind)
@@ -1423,6 +1543,8 @@ func _choice_view(o: String) -> Array:
 			return v
 		"p:":
 			return [Cards.pk_title(id), Cards.pk_desc(id), Cards.BATONS[Cards.PINNKORT[id][0]].get("trail", Color(1, 0.8, 0.5)), "PINNKORT" if sv else "BATON CARD", "pinnkort"]
+		"d:":
+			return [Cards.def_title(id), Cards.def_desc(id) + (" Sitter på en kubb på DIN sida." if sv else " Goes on a kubb on YOUR side."), (Cards.DEFENSE[id].col as Color).clamp(Color(0.3, 0.3, 0.3), Color(1, 1, 1)), "FÖRSVAR" if sv else "DEFENSE", "def"]
 		"r:":
 			var kinds := {"enh": ["RUNA", "RUNE"], "ed": ["UTGÅVA", "EDITION"], "seal": ["SIGILL", "SEAL"]}
 			var kn: Array = kinds[Cards.RUNES[id].kind]
@@ -1462,6 +1584,21 @@ func _apply_choice(o: String) -> void:
 			hud.fate_card(v[0], _tl("Kubb %d: ", "Kubb %d: ") % (sl + 1) + Cards.rune_desc(id), v[2])
 			hud.toast(_tl("HÅLL TAB FÖR ATT SE VAR KUBB %d STÅR", "HOLD TAB TO SEE WHERE KUBB %d STANDS") % (sl + 1))
 			Sfx.play("sparkle", -3.0, 1.1)
+		"d:":
+			var free: Array[int] = []
+			for i in 5:
+				if Run.def_cards[i] == "":
+					free.append(i)
+			var sl: int = free[randi() % free.size()] if not free.is_empty() else randi() % 5
+			Run.def_cards[sl] = id
+			Run.cards_drawn += 1
+			var k := _def_kubb(sl)
+			if k:
+				k.set_def(id)
+				Fx.ring(self, k.global_position, Cards.DEFENSE[id].col, 0.6)
+			hud.fate_card(v[0], _tl("Din kubb %d: ", "Your kubb %d: ") % (sl + 1) + Cards.def_desc(id), v[2])
+			hud.toast(_tl("HÅLL TAB FÖR ATT SE DIN SIDA", "HOLD TAB TO SEE YOUR SIDE"))
+			Sfx.play("clack2", -3.0, 0.8)
 		"k:":
 			var sl := Run.free_slot()
 			if sl < 0:
@@ -1474,6 +1611,11 @@ func _apply_choice(o: String) -> void:
 				k.set_kind(id)
 				k.set_runes(Run.enh[sl], Run.ed[sl], Run.seal[sl])
 				Fx.ring(self, k.global_position, Cards.color(id), 0.6)
+			for mk in side_kubbs("mine"):
+				if mk.home.origin.x == BASE_X[sl] and not mk.field and mk.slot < 0:
+					mk.def_slot = sl
+					mk.set_kind(id)
+					mk.set_def(Cards.def_of(id))
 			var extra := (_tl(" (ersätter %s)", " (replaces %s)") % Cards.title(old)) if old != "" else ""
 			hud.fate_card(v[0], _tl("Kubb %d: ", "Kubb %d: ") % (sl + 1) + Cards.desc(id) + extra, v[2])
 			hud.toast(_tl("HÅLL TAB FÖR ATT SE VAR KUBB %d STÅR", "HOLD TAB TO SEE WHERE KUBB %d STANDS") % (sl + 1))
@@ -1842,14 +1984,19 @@ func _end_player_turn() -> void:
 	_opp_batons_next = 0
 	_opp_total = opp_n
 	_opp_left = opp_n
-	for i in opp_n:
+	_opp_cut = 0
+	_shield_used.clear()
+	var oi := 0
+	while oi < opp_n - _opp_cut:
 		if _match_over:
 			return
-		_opp_left = opp_n - i
+		_opp_left = opp_n - _opp_cut - oi
 		_refresh_ui()
 		await _opp_throw()
+		oi += 1
 		if _match_over:
 			return
+	await _after_opp_defense()
 	await get_tree().create_timer(0.3).timeout
 	opponent.walk_to_x(0.0)
 	opponent.walk_to_z(OPP_Z, 0.9)
@@ -1917,7 +2064,11 @@ func _opp_throw() -> void:
 	var from := opponent.hand_pos()
 	var aim_pt := tp + (Vector3(from.x, 0, from.z) - Vector3(tp.x, 0, tp.z)).normalized() * 0.12
 	var v := _ballistic(from, aim_pt, 0.62)
-	var err := opponent.error_yaw * Run.mod("opp_error_mult", 1.0)
+	var vakt := 1.0
+	for k in side_kubbs("mine", true):
+		if k.defense == "vakt":
+			vakt *= 1.15
+	var err := opponent.error_yaw * Run.mod("opp_error_mult", 1.0) * vakt
 	v = v.rotated(Vector3.UP, randfn(0.0, err)) * (1.0 + randfn(0.0, opponent.error_speed * Run.mod("opp_error_mult", 1.0)))
 	var f := Vector3(v.x, 0, v.z).normalized()
 	var r := f.cross(Vector3.UP)
@@ -1937,6 +2088,7 @@ func _evaluate_opp() -> void:
 		return
 	var all_down_before := _standing_at_snapshot("mine") == 0
 	var newly := _apply_hits("mine")
+	newly -= await _def_fell()
 	if king.is_fallen():
 		if all_down_before:
 			opponent.say("lose")
@@ -2043,10 +2195,14 @@ func _win_match() -> void:
 	if Run.is_elite():
 		reward = int(reward * 1.5)
 	reward += mini(5, int(Run.teeth / 5)) * int(Run.mod("interest"))
-	Fx.confetti(self, king.global_position + Vector3(0, 0.3, 0))
-	Sfx.play("sparkle", 0.0, 1.0)
 	Run.add_teeth(reward)
 	var won_all := Run.advance()
+	if not _autotest:
+		await _king_finale()
+	if mode != Mode.MATCH:
+		return
+	Fx.confetti(self, king.global_position + Vector3(0, 0.3, 0))
+	Sfx.play("sparkle", 0.0, 1.0)
 	hud.center(Lang.t("win_title") % reward + "\n" + _summary() + "\n" + _tl("Tänder den här matchen: %d", "Teeth this match: %d") % maxi(Run.teeth - _match_teeth, 0))
 	await get_tree().create_timer(3.0).timeout
 	if mode != Mode.MATCH:
@@ -2055,6 +2211,59 @@ func _win_match() -> void:
 		menu.open("victory")
 	else:
 		menu.open("map")
+
+
+## Kungen faller: en enorm explosion, sen smälter motståndaren ner i
+## ängen till en röd pöl. Inga hoppskräck, bara obehag.
+func _king_finale() -> void:
+	var kp := king.global_position
+	_intro_cam = [Vector3(kp.x * 0.5, 1.4, kp.z + 3.2), kp + Vector3(0, 0.3, 0)]
+	await get_tree().create_timer(0.5).timeout
+	Engine.time_scale = 1.0
+	Fx.big_boom(self, kp, 2.2)
+	Sfx.play("boom", 4.0, 0.55)
+	_shake = 1.4
+	for bi in 6:
+		var off := Vector3(randf_range(-1.5, 1.5), 0, randf_range(-1.2, 1.2))
+		Fx.big_boom(self, kp + off, randf_range(0.8, 1.4))
+		Sfx.play("boom", -2.0, randf_range(0.6, 0.9))
+		_shake = 1.0
+		await get_tree().create_timer(0.12).timeout
+	hud.big(_tl("KUNGEN ÄR FALLEN", "THE KING HAS FALLEN"), Color(1.0, 0.3, 0.15))
+	# alla kubbar på planen flyger
+	for k in kubbs:
+		if k.visible:
+			k.sleeping = false
+			k.apply_impulse(Vector3(randf_range(-0.4, 0.4), 0.9, randf_range(-0.4, 0.4)), Vector3(0, 0.05, 0))
+	await get_tree().create_timer(0.6).timeout
+	# kameran vänder sig mot honom, och han smälter
+	var op := opponent.global_position
+	_intro_cam = [Vector3(op.x * 0.6, 1.7, op.z + 6.0), op + Vector3(0, 1.1, 0)]
+	await get_tree().create_timer(0.7).timeout
+	Sfx.play("bad", 0.0, 0.45)
+	var puddle := PS1.cylinder(0.1, 0.01, PS1.mat(null, Color(0.35, 0.0, 0.02), Vector2.ONE, 0.3), 10, 0.0)
+	add_child(puddle)
+	puddle.add_to_group("finale")
+	puddle.global_position = Vector3(op.x, 0.012, op.z)
+	var tw := create_tween().set_parallel(true)
+	tw.tween_property(opponent, "scale", Vector3(1.9, 0.04, 1.9), 2.6).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	tw.tween_property(opponent, "rotation:z", randf_range(-0.25, 0.25), 2.6)
+	tw.tween_property(puddle, "scale", Vector3(26, 1, 26), 2.8).set_trans(Tween.TRANS_SINE)
+	for i in 26:
+		var h := 2.4 * (1.0 - i / 26.0)
+		Fx.burst(self, op + Vector3(randf_range(-0.3, 0.3), h, randf_range(-0.3, 0.3)), Color(0.55, 0.02, 0.03), 6, 1.2, 0.9, 0.05, 9.8, 0.3, 0.4)
+		Fx.burst(self, op + Vector3(0, h * 0.6, 0), Color(0.15, 0.1, 0.1), 2, 0.4, 1.6, 0.12, -0.6, 1.0, 0.05, 1.5)
+		if i % 4 == 0:
+			Sfx.play("thud", -6.0, randf_range(0.4, 0.6))
+			Fx.fire(self, op + Vector3(randf_range(-0.6, 0.6), 0, randf_range(-0.6, 0.6)), 1.2, 1.4)
+		_shake = 0.25
+		await get_tree().create_timer(0.1).timeout
+	Fx.big_boom(self, op + Vector3(0, 0.1, 0), 1.6)
+	Sfx.play("boom", 0.0, 0.5)
+	Sfx.play("caw", 0.0)
+	opponent.visible = false
+	await get_tree().create_timer(1.0).timeout
+	_intro_cam = []
 
 
 func _after_shop() -> void:
@@ -2175,7 +2384,7 @@ func _board_items() -> Array:
 						rc = (Cards.RUNES[r].col as Color).clamp(Color(0.3, 0.3, 0.3), Color(1, 1, 1))
 						break
 			board.append({"pos": Vector2(k.global_position.x, k.global_position.z), "fallen": k.is_fallen(), "kind": k.kind,
-				"slot": k.slot, "king": k.is_king, "opp": Cards.OPP_DEFS.has(k.kind), "rune_col": rc,
+				"slot": k.slot, "def_slot": k.def_slot, "def_col": (Cards.DEFENSE[k.defense].col as Color).clamp(Color(0.3, 0.3, 0.3), Color(1, 1, 1)) if k.defense != "" else Color(0, 0, 0, 0), "king": k.is_king, "opp": Cards.OPP_DEFS.has(k.kind), "rune_col": rc,
 				"col": (Cards.color(k.kind) * 0.75).clamp(Color(0.25, 0.25, 0.25), Color(1, 1, 1)) if k.kind != "" else Color(0.75, 0.6, 0.4)})
 	return board
 
@@ -2606,4 +2815,13 @@ func _screenshots(prefix: String) -> void:
 	for i in 200:
 		await get_tree().process_frame
 	vp.get_texture().get_image().save_png(prefix + "_intro2.png")
+	while _intro:
+		await get_tree().process_frame
+	_king_finale()
+	await get_tree().create_timer(1.0).timeout
+	vp.get_texture().get_image().save_png(prefix + "_kungboom.png")
+	await get_tree().create_timer(2.6).timeout
+	vp.get_texture().get_image().save_png(prefix + "_smalter.png")
+	await get_tree().create_timer(1.2).timeout
+	vp.get_texture().get_image().save_png(prefix + "_smalter2.png")
 	get_tree().quit()

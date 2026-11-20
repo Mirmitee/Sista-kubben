@@ -74,7 +74,7 @@ func _ready() -> void:
 	_flash = _label(14, Color(1.0, 0.85, 0.2), Vector2(0, 96), Vector2(640, 20))
 	_flash.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	var ver := _label(8, Color(0.8, 0.15, 0.1), Vector2(546, 349))
-	ver.text = "SISTA KUBBEN v0.15"
+	ver.text = "SISTA KUBBEN v0.16"
 	_teeth = _label(8, Color(1.0, 0.95, 0.75), Vector2(422, 40), Vector2(210, 10))
 	_teeth.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	_cards = _label(8, Color(0.75, 0.7, 0.85), Vector2(422, 52), Vector2(210, 120))
@@ -477,13 +477,16 @@ func show_deck(on: bool, his: Array = [], board: Array = [], opp_name := "") -> 
 	var sv := Lang.current == "sv"
 	var lines: Array[String] = []
 	lines.append(("PINNE: " if sv else "BATON: ") + Cards.title(Run.cur_baton()) + " - " + Cards.desc(Run.cur_baton()))
-	lines.append("DINA KUBBAR (vänster till höger):" if sv else "YOUR KUBBS (left to right):")
+	lines.append("DINA KUBBAR (vänster till höger, på båda baslinjerna):" if sv else "YOUR KUBBS (left to right, on both baselines):")
 	for i in Run.cards.size():
 		var id: String = Run.cards[i]
 		lines.append("  %d " % (i + 1) + ((Cards.title(id) + ": " + Cards.desc(id)) if id != "" else ("vanlig kubb" if sv else "plain kubb")))
 		for r in [Run.enh[i], Run.ed[i], Run.seal[i]]:
 			if r != "":
 				lines.append("      * " + Cards.rune_title(r) + ": " + Cards.rune_desc(r))
+		if id != "":
+			var df := Cards.def_of(id)
+			lines.append(("      FÖRSVAR (din sida) " if sv else "      DEFENSE (your side) ") + Cards.def_title(df) + ": " + Cards.def_desc(df))
 		if Run.grow_chips[i] > 0 or Run.grow_mult[i] > 0:
 			lines.append(("      vuxit: +%d marker, +%d multi" if sv else "      grown: +%d chips, +%d mult") % [Run.grow_chips[i], Run.grow_mult[i]])
 	if not Run.temp_names.is_empty():
