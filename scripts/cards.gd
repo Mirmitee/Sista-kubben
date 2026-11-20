@@ -397,7 +397,41 @@ static func title(id: String) -> String:
 
 static func desc(id: String) -> String:
 	var d: Dictionary = DEFS.get(id, OPP_DEFS.get(id, BATONS.get(id, {})))
-	return d.get(Lang.current, ["?", ""])[1]
+	var t: String = d.get(Lang.current, ["?", ""])[1]
+	if DEFS.has(id) and not d.has("score"):
+		t += score_text(score_of(id))
+	return t
+
+
+## Vad kubben ger till poängräkningen när den fälls. De nya poängkubbarna
+## har egna värden, alla äldre kort får ett efter sin sort.
+static func score_of(id: String) -> Dictionary:
+	if not DEFS.has(id):
+		return {}
+	var d: Dictionary = DEFS[id]
+	if d.has("score"):
+		return d.score
+	if d.get("cursed", false):
+		return {"xmult": 2.0}
+	if d.has("hit"):
+		return {"chips": 20, "mult": 2}
+	if d.has("fell"):
+		return {"chips": 30}
+	return {"mult": 3}
+
+
+static func score_text(sc: Dictionary) -> String:
+	var sv := Lang.current == "sv"
+	var parts: Array[String] = []
+	if sc.has("chips"):
+		parts.append(("+%d marker" if sv else "+%d chips") % int(sc.chips))
+	if sc.has("mult"):
+		parts.append("+%d multi" % int(sc.mult) if sv else "+%d mult" % int(sc.mult))
+	if sc.has("xmult"):
+		parts.append("x%s multi" % str(sc.xmult) if sv else "x%s mult" % str(sc.xmult))
+	if parts.is_empty():
+		return ""
+	return (" POÄNG: " if sv else " SCORE: ") + ", ".join(parts) + "."
 
 
 static func color(id: String) -> Color:

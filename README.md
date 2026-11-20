@@ -2,7 +2,7 @@
 
 Läskig (men mest rolig) roguelike-kubb i PS1-stil. Haunted midsommar: en äng i skymningen under en blodröd måne, och Vedgubben väntar på andra sidan planen.
 
-Version **v0.14**: runs över tre nätter med riktiga kubbregler, en kubblek med 67 specialkubbar, 34 pinnar att låsa upp och ett träningsläge där du kastar på Gösta, en ful hund som ingen äger.
+Version **v0.15**: runs över tre nätter med riktiga kubbregler, en kubblek med 67 specialkubbar, 34 pinnar att låsa upp och ett träningsläge där du kastar på Gösta, en ful hund som ingen äger.
 
 Nytt i v0.12-0.13 (grafik): 16:9, 640x360 internt uppskalat exakt 3x till ett 1920x1080-fönster, procedurella pixelart-kort (ditherad bakgrund, ram med hörnprydnader, ikon per korttyp) i scripts/ui/art.gd, pixelramar på alla paneler och knappar, och ordnad 4x4-dithering över 3D-bilden (shaders/dither.gdshader).
 
@@ -13,6 +13,7 @@ Nytt i v0.11 (Balatro-poäng):
 - 12 pinnkort: dina nästa pinnar blir granat, bumerang, trepinne m.m.
 - Efter varje kast som fäller väljer du 1 av 3: ödeskort, pinnkort, runa eller ny kubb.
 - Hans tur går 30 % fortare, håll F för att snabbspola x3.
+- v0.15: uppställning vid matchstart (kubbarna släpps ner en i taget med kort och runor, klick snabbspolar), alla gamla kort ger marker/multi/x multi.
 - v0.14: håll Tab för spelplanen uppifrån: var varje kubb står, numrerade dina kubbar med runfärg, hans specialkubbar i rött, plus listan över allt kubbarna bär.
 
 ## Kör spelet

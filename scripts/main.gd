@@ -89,6 +89,10 @@ var _extra_draws := 0
 var _fast := false
 var _slowmo_on := false
 var _force_tab := false
+var _intro := false
+var _intro_pos := Vector3(0, 1.75, 2.1)
+var _intro_cam: Array = []
+var _shooting := false
 
 
 func _ready() -> void:
@@ -214,11 +218,20 @@ func _reset_kubbs() -> void:
 			k.collision_layer = 1 if show else 0
 			k.collision_mask = 1 if show else 0
 			k.freeze = not show
+		elif k.freeze and k.visible:
+			k.collision_layer = 1
+			k.collision_mask = 1
+			k.freeze = false
 		k.side = "theirs" if k.home.origin.z < -1.0 else "mine"
 		k.field = false
 		k.in_flight = false
 		k.go_home()
+	king.collision_layer = 1
+	king.collision_mask = 1
+	king.freeze = false
 	king.go_home()
+	_intro_cam = []
+	_intro = false
 
 
 func side_kubbs(side: String, standing_only := false) -> Array[Kubb]:
@@ -392,9 +405,101 @@ func _begin_match() -> void:
 	var intro: String = Lang.t("night") % [Run.night, Run.nights_text()] + "\n" + (_tl("ELIT: ", "ELITE: ") if Run.is_elite() else "") + opponent.display_name[Lang.current]
 	if opponent.rule_text[Lang.current] != "":
 		intro += "\n" + opponent.rule_text[Lang.current]
-	hud.banner(intro)
 	opponent.say("start")
+	await _setup_intro()
+	if _match_over or mode != Mode.MATCH:
+		return
+	hud.banner(intro)
 	_start_player_turn()
+
+
+## Uppställningen: kamera över planen, dina 5 kubbar släpps ner en i taget
+## med sitt kort och sina runor, sen hans fusk, sen resten och kungen.
+func _setup_intro() -> void:
+	if _autotest or not Run.active or _shooting:
+		return
+	_intro = true
+	state = State.BUSY
+	thrower.input_enabled = false
+	var drop: Array[Kubb] = []
+	for k in kubbs + [king]:
+		k.hold()
+		k.global_position = k.home.origin + Vector3(0, 4.0, 0)
+		drop.append(k)
+	_intro_cam = [Vector3(0, 2.6, -4.2), Vector3(0, 0.1, -8.0)]
+	await _intro_wait(0.5)
+	var row := side_kubbs("theirs")
+	row.sort_custom(func(a, b): return a.home.origin.x < b.home.origin.x)
+	var step := 0
+	for k in row:
+		thrower.input_enabled = false
+		_intro_cam = [Vector3(k.home.origin.x * 0.85, 0.55, -7.0), k.home.origin + Vector3(0, 0.06, 0)]
+		await _drop_kubb(k, 0.22)
+		drop.erase(k)
+		var title := ""
+		var col := Color(0.9, 0.85, 0.7)
+		if Cards.OPP_DEFS.has(k.kind):
+			title = _tl("HANS: ", "HIS: ") + Cards.title(k.kind)
+			col = Color(1.0, 0.25, 0.2)
+			Sfx.play("bad", -6.0, 1.2)
+		elif k.slot >= 0:
+			title = "%d  %s" % [k.slot + 1, Cards.title(k.kind) if k.kind != "" else _tl("vanlig kubb", "plain kubb")]
+			col = (Cards.color(k.kind) * 0.8).clamp(Color(0.5, 0.5, 0.5), Color(1, 1, 1)) if k.kind != "" else col
+		var p := camera.unproject_position(k.global_position + Vector3(0, 0.25, 0))
+		hud.popup_col(p - Vector2(0, 14), title.to_upper(), col, 12)
+		Sfx.play("clack", -2.0, 0.9 + step * 0.08)
+		if k.slot >= 0:
+			var rt := Run.runes_text(k.slot)
+			if rt != "":
+				hud.popup_col(p + Vector2(0, 2), rt, Color(0.6, 0.85, 1.0), 10)
+				for r in [Run.enh[k.slot], Run.ed[k.slot], Run.seal[k.slot]]:
+					if r != "":
+						Fx.ring(self, k.global_position, Cards.RUNES[r].col, 0.5)
+						Fx.sparks(self, k.global_position + Vector3(0, 0.1, 0), Cards.RUNES[r].col, 10)
+				Sfx.play("sparkle", -6.0, 1.0 + step * 0.1)
+		step += 1
+		await _intro_wait(0.55)
+	# hans kung och dina baslinjekubbar regnar ner
+	_intro_cam = [Vector3(0, 3.2, 1.6), Vector3(0, 0, -4.0)]
+	await _intro_wait(0.35)
+	for k in drop.duplicate():
+		if k == king:
+			continue
+		_drop_kubb(k, 0.2)
+		drop.erase(k)
+		Sfx.play("clack2", -8.0, randf_range(0.9, 1.2))
+		await _intro_wait(0.08)
+	_intro_cam = [Vector3(0, 1.6, -1.8), Vector3(0, 0.15, -4.0)]
+	await _intro_wait(0.4)
+	await _drop_kubb(king, 0.3)
+	Fx.big_boom(self, king.global_position, 0.6)
+	Sfx.play("boom", -4.0, 0.7)
+	_shake = 0.7
+	hud.big(_tl("KUNGEN ÄR PÅ PLATS. RÖR HONOM INTE.", "THE KING IS IN PLACE. DON'T TOUCH HIM."), Color(1.0, 0.75, 0.3))
+	await _intro_wait(0.9)
+	_intro_cam = []
+	_intro = false
+	thrower.input_enabled = true
+
+
+func _intro_wait(t: float) -> void:
+	# klick, mellanslag eller Esc snabbspolar uppställningen
+	var left := t
+	while left > 0.0:
+		await get_tree().process_frame
+		var fast := Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT) or Input.is_key_pressed(KEY_SPACE)
+		left -= get_process_delta_time() * (6.0 if fast else 1.0)
+
+
+func _drop_kubb(k: Kubb, t: float) -> void:
+	var tw := create_tween()
+	tw.tween_property(k, "global_position", k.home.origin, t).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	await tw.finished
+	k.collision_layer = 1
+	k.collision_mask = 1
+	k.freeze = false
+	k.go_home()
+	Fx.dust(self, Vector3(k.home.origin.x, 0, k.home.origin.z), 1.0)
 
 
 ## Kubbleken ställs upp på hans baslinje (blandad), resten är vanliga.
@@ -1032,13 +1137,14 @@ func _kubb_steps(k: Kubb, n: int, first_rep: bool) -> Array:
 	var out: Array = []
 	var sv := Lang.current == "sv"
 	var sl := k.slot
-	var d: Dictionary = Cards.kdef(k.kind)
-	var sc: Dictionary = d.get("score", {})
+	var sc: Dictionary = Cards.score_of(k.kind)
 	if not sc.is_empty():
 		if sc.has("chips"):
 			out.append(["c", int(sc.chips), "", CHIP_COL])
 		if sc.has("mult"):
 			out.append(["m", float(sc.mult), "", MULT_COL])
+		if sc.has("xmult"):
+			out.append(["x", float(sc.xmult), Cards.title(k.kind).to_upper(), XMULT_COL])
 		if sc.has("per_felled_mult"):
 			out.append(["m", float(_match_felled * int(sc.per_felled_mult)), "", MULT_COL])
 		if sc.has("per_cursed_mult"):
@@ -2023,6 +2129,12 @@ func _process(dt: float) -> void:
 			var p := current.global_position
 			want = Vector3(p.x, minf(p.y, 3.0) * 0.6, minf(p.z, -2.0))
 		_look = _look.lerp(want, clampf(dt * 3.0, 0.0, 1.0))
+	if _intro_cam.size() == 2 and mode == Mode.MATCH:
+		_intro_pos = _intro_pos.lerp(_intro_cam[0], clampf(dt * 4.0, 0.0, 1.0))
+		_look = _look.lerp(_intro_cam[1], clampf(dt * 5.0, 0.0, 1.0))
+		cam_pos = _intro_pos
+	else:
+		_intro_pos = cam_pos
 	_shake = move_toward(_shake, 0.0, dt)
 	var jitter := Vector3(randf_range(-1, 1), randf_range(-1, 1), 0) * _shake * 0.06
 	camera.look_at_from_position(cam_pos + jitter, _look)
@@ -2383,6 +2495,7 @@ func _run_autotest() -> void:
 # Kör: godot --rendering-driver opengl3 -- --shot=/sökväg/bild
 func _screenshots(prefix: String) -> void:
 	var vp := get_viewport()
+	_shooting = true
 	_to_menu()
 	for i in 90:
 		await get_tree().process_frame
@@ -2483,4 +2596,14 @@ func _screenshots(prefix: String) -> void:
 	for i in 4:
 		await get_tree().process_frame
 	vp.get_texture().get_image().save_png(prefix + "_tab.png")
+	_force_tab = false
+	_shooting = false
+	Run.cards.assign(["krutkubb", "fyrverkeri", "", "tummkubb", "midnatt"])
+	_start(Mode.MATCH, true)
+	for i in 150:
+		await get_tree().process_frame
+	vp.get_texture().get_image().save_png(prefix + "_intro.png")
+	for i in 200:
+		await get_tree().process_frame
+	vp.get_texture().get_image().save_png(prefix + "_intro2.png")
 	get_tree().quit()
