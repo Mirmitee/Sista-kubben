@@ -74,7 +74,7 @@ func _ready() -> void:
 	_flash = _label(14, Color(1.0, 0.85, 0.2), Vector2(0, 96), Vector2(640, 20))
 	_flash.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	var ver := _label(8, Color(0.8, 0.15, 0.1), Vector2(546, 349))
-	ver.text = "SISTA KUBBEN v0.18"
+	ver.text = "SISTA KUBBEN v0.19"
 	_teeth = _label(8, Color(1.0, 0.95, 0.75), Vector2(422, 40), Vector2(210, 10))
 	_teeth.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	_cards = _label(8, Color(0.75, 0.7, 0.85), Vector2(422, 52), Vector2(210, 120))

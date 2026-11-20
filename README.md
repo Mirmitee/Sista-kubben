@@ -2,7 +2,7 @@
 
 Läskig (men mest rolig) roguelike-kubb i PS1-stil. Haunted midsommar: en äng i skymningen under en blodröd måne, och Vedgubben väntar på andra sidan planen.
 
-Version **v0.18**: runs över tre nätter med riktiga kubbregler, en kubblek med 67 specialkubbar, 34 pinnar att låsa upp och ett träningsläge där du kastar på Gösta, en ful hund som ingen äger.
+Version **v0.19**: runs över tre nätter med riktiga kubbregler, en kubblek med 67 specialkubbar, 34 pinnar att låsa upp och ett träningsläge där du kastar på Gösta, en ful hund som ingen äger.
 
 Nytt i v0.12-0.13 (grafik): 16:9, 640x360 internt uppskalat exakt 3x till ett 1920x1080-fönster, procedurella pixelart-kort (ditherad bakgrund, ram med hörnprydnader, ikon per korttyp) i scripts/ui/art.gd, pixelramar på alla paneler och knappar, och ordnad 4x4-dithering över 3D-bilden (shaders/dither.gdshader).
 
@@ -17,6 +17,7 @@ Nytt i v0.11 (Balatro-poäng):
 - v0.16: samma kubblek står på båda baslinjerna, varje kubb har ett försvar (sköld, taggar, spegel, fälla m.fl.) som slår till när fienden kastar. Kungen faller med en jättexplosion och motståndaren smälter ner till en blodpöl.
 - v0.17: marker x multi syns bara under räkningen, fienden stjäl poäng när han fäller dina kubbar, poäng blir tänder efter matchen. Kråkmors bakficka: boosterpaket, nyckelring med 18 berlocker och uppgradering av försvar (I-III). Varje natt har ett väder (dimma, fullmåne, regn, korpnatt, blodregn, midsommar). Egna dödar: Vedgubben spricker i ved, Birgit blir kråkor, Leffe smäller i korvar. Tjock-Leffe har tre faser. Mer dialog och en tutorial med Gösta, som nu stönar, krymper och går upp en ton per träff.
 - v0.18: efter varje vunnen match öppnar du ett gratis boosterpaket (kubbar, runor eller berlocker) och väljer 1.
+- v0.19: precisionen spelar större roll i sidled (mer spridning utanför det gröna, svagare siktmagnet). Faller kungen innan alla kubbar på motståndarsidan ligger förlorar den som kastade, även om kungen bara knuffas omkull. Fäller du sista kubben måste kungen falla samma tur, annars förlorar du (gäller honom också). Kungen är lättare att välta.
 - v0.14: håll Tab för spelplanen uppifrån: var varje kubb står, numrerade dina kubbar med runfärg, hans specialkubbar i rött, plus listan över allt kubbarna bär.
 
 ## Kör spelet

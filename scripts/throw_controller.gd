@@ -45,8 +45,8 @@ const PAD_SCALE := 0.45    # gamepad-spakar är snabbare än en mus
 const METER_TIME := 1.45   # sekunder från tom till full kraft
 const ACC_TIME := 1.0      # sekunder för markören att svepa över
 const METER_ANGLE := 0.62  # kastvinkel i mätarläget (~35°)
-const ACC_AIM_ERR := 0.05  # rad sidofel vid markören längst ut
-const PERFECT := 0.24      # |markör| under detta = perfekt
+const ACC_AIM_ERR := 0.17  # rad sidofel vid markören längst ut
+const PERFECT := 0.18      # |markör| under detta = perfekt
 
 var stand_x := 0.0
 ## kastlinjens z: 0 = baslinjen, negativt = framflyttad till en stående fältkubb
@@ -320,9 +320,10 @@ func launch_meter(power01: float, cursor: float) -> void:
 	# från noll vid kanten av det gröna.
 	var p := perfect()
 	var err := signf(cursor) * maxf(absf(cursor) - p, 0.0) / (1.0 - p)
-	var th := METER_ANGLE + err * 0.08
+	var th := METER_ANGLE + err * 0.08 + randfn(0.0, 0.01 + absf(err) * 0.03)
 	var saved := aim
-	aim += err * ACC_AIM_ERR
+	# lite naturlig spridning även i det gröna, mer ju längre ut markören är
+	aim += err * ACC_AIM_ERR + randfn(0.0, 0.006 + absf(err) * 0.03)
 	theta = th
 	_update_pose()
 	var f := forward()
@@ -378,7 +379,7 @@ func _magnet(raw: float) -> float:
 			if d < MAGNET:
 				locked_target = t
 	if best < MAGNET:
-		return lerpf(raw, best_a, 0.85)
+		return lerpf(raw, best_a, 0.45)
 	return raw
 
 

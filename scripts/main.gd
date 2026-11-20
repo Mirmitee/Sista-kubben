@@ -2000,7 +2000,14 @@ func _evaluate() -> void:
 			_award(0, true)
 			_win_match()
 			return
-		king.teleport(_snapshot[king])  # (kungens nåd släppte igenom)
+		if Run.king_shield_left > 0:
+			Run.king_shield_left -= 1
+			hud.flash(Lang.t("king_mercy"))
+			king.teleport(_snapshot[king])
+		else:
+			current_by_opp = false
+			_king_touched_early()
+			return
 
 	if newly > 0:
 		var fe := _fell_effects()
@@ -2034,8 +2041,9 @@ func _evaluate() -> void:
 		opponent.say("close")
 	else:
 		opponent.say("miss")
-	if newly > 0 and side_kubbs("theirs", true).is_empty():
+	if newly > 0 and _side_cleared("theirs"):
 		opponent.say("all_down")
+		hud.big(_tl("ALLA NERE! FÄLL KUNGEN DEN HÄR TUREN, ANNARS DÖR DU", "ALL DOWN! FELL THE KING THIS TURN OR YOU DIE"), Color(1.0, 0.85, 0.3))
 	if newly > 0 and Run.active:
 		await _fate_after_throw(newly)
 	if newly == 0 and not _hit_this_throw and _bdef().has("boomerang"):
@@ -2136,11 +2144,35 @@ func _throw_away(list: Array[Kubb]) -> void:
 	_refresh_ui()
 
 
+## Alla kubbar på sidan nere (kungen räknas inte).
+func _side_cleared(side: String) -> bool:
+	return side_kubbs(side, true).filter(func(k): return k.visible).is_empty()
+
+
+## Fäller man sista kubben måste kungen falla samma tur, annars förlorar man.
+func _king_left_standing(by_opp: bool) -> void:
+	state = State.OVER
+	_shake = 0.8
+	Sfx.play("bad", 0.0, 0.4)
+	Fx.flash_light(self, king.global_position, Color(1, 0.1, 0.05), 8.0, 10.0, 1.2)
+	if by_opp:
+		opponent.say("opp_king_death")
+		hud.big(_tl("HAN LÄMNADE KUNGEN STÅENDE. HAN FÖRLORAR.", "HE LEFT THE KING STANDING. HE LOSES."), Color(1.0, 0.8, 0.3))
+		_win_match()
+	else:
+		opponent.say("king_death")
+		hud.death(_tl("KUNGEN STOD KVAR.", "THE KING STOOD."), _tl("Du fällde sista kubben men inte kungen samma tur. Kungen tar det personligt.", "You felled the last kubb but not the king in the same turn. The king takes it personally.") + "\n" + _run_summary() + "\n\n" + Lang.t("death_restart"))
+		_lose_run()
+
+
 func _end_player_turn() -> void:
 	state = State.BUSY
 	thrower.input_enabled = false
 	Run.override = ""
 	await get_tree().create_timer(0.35).timeout
+	if mode == Mode.MATCH and not _match_over and _side_cleared("theirs") and not king.is_fallen():
+		_king_left_standing(false)
+		return
 	await _stand_effects()
 	_ghost.visible = false
 	_line_mark.visible = false
@@ -2193,6 +2225,9 @@ func _end_player_turn() -> void:
 		if _match_over:
 			return
 	await _after_opp_defense()
+	if not _match_over and _side_cleared("mine") and not king.is_fallen():
+		_king_left_standing(true)
+		return
 	await get_tree().create_timer(0.3).timeout
 	opponent.walk_to_x(0.0)
 	opponent.walk_to_z(OPP_Z, 0.9)
@@ -2323,7 +2358,9 @@ func _evaluate_opp() -> void:
 			hud.death(Lang.t("lost_title"), Lang.t("lost_sub") + "\n" + _run_summary() + "\n\n" + Lang.t("death_restart"))
 			_lose_run()
 			return
-		king.teleport(_snapshot[king])
+		current_by_opp = true
+		_king_touched_early()
+		return
 	if newly > 0:
 		hud.popup(camera.unproject_position(Vector3(0, 0.2, -1.5)), "AJ!")
 		await _opp_score(newly)
@@ -2897,13 +2934,15 @@ func _run_autotest() -> void:
 	# kungen för tidigt
 	await _wait_ready()
 	batons_left = 3
+	thrower.mouse_aim = false
+	thrower.throw_z = 0.0
 	thrower.stand_x = -0.18
 	thrower.aim = 0.0
 	await get_tree().physics_frame
 	thrower.launch_with(0.6, 1250.0, 0.0)
 	while state == State.FLYING:
 		await get_tree().physics_frame
-	print("TEST på kungen: över=%s run aktiv=%s" % [_match_over, Run.active])
+	print("TEST på kungen: över=%s run aktiv=%s (kastlinje %.2f, kung %s, pinne %s)" % [_match_over, Run.active, thrower.throw_z, str(king.global_position.snapped(Vector3.ONE * 0.01)), str(batons[-1].global_position.snapped(Vector3.ONE * 0.01)) if not batons.is_empty() else "-"])
 	# förenklade regler: fällda kubbar kastas bort
 	var old_rules := Settings.rules
 	Settings.rules = "simple"

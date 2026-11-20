@@ -30,10 +30,10 @@ var _cap: MeshInstance3D
 func setup(king: bool, seed := 1) -> void:
 	is_king = king
 	var size := KING_SIZE if king else SIZE
-	mass = 1.7 if king else 0.3
+	mass = 0.75 if king else 0.3  # kungen ska välta när man väl får träffa den
 	# tyngdpunkten lite högt upp gör kubbarna lättare att välta
 	center_of_mass_mode = RigidBody3D.CENTER_OF_MASS_MODE_CUSTOM
-	center_of_mass = Vector3(0, size.y * 0.18, 0)
+	center_of_mass = Vector3(0, size.y * (0.3 if king else 0.18), 0)
 	var tint := Color(1.25, 1.15, 1.05) if king else Color(1.2, 1.15, 1.1)
 	# lite självlysande så de syns i skymningen (som att de fångar månljuset)
 	_seed = seed
