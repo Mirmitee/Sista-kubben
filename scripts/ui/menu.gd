@@ -665,6 +665,28 @@ func _page_shop2() -> void:
 	_button(_t("< TILLBAKA TILL BODEN", "< BACK TO THE SHOP"), func(): show_page("shop"))
 
 
+var _pack_after := "shop2"
+
+
+func _pack_done() -> void:
+	var p := _pack_after
+	_pack_after = "shop2"
+	show_page(p)
+
+
+## Belöning efter vunnen match: ett gratis boosterpaket, välj 1.
+func reward_pack() -> void:
+	visible = true
+	_pack_after = "map"
+	var r := randf()
+	var kind := "kubb" if r < 0.45 else ("rune" if r < 0.8 else "charm")
+	if kind == "charm" and Run.keyring.size() >= Cards.MAX_CHARMS:
+		kind = "rune"
+	if kind == "kubb" and Run.shop_pool().is_empty():
+		kind = "rune"
+	_open_pack(kind)
+
+
 func _open_pack(kind: String) -> void:
 	_pack_kind = kind
 	_pack_items.clear()
@@ -687,7 +709,8 @@ func _open_pack(kind: String) -> void:
 
 func _page_pack() -> void:
 	var d: Dictionary = PACKS[_pack_kind]
-	_title(d[Lang.current][0].to_upper() + _t(" ÖPPNAT!", " OPENED!"), 14, (d.col as Color).clamp(Color(0.3, 0.3, 0.3), Color(1, 1, 1)))
+	var reward := _pack_after == "map"
+	_title((_t("BELÖNING: ", "REWARD: ") if reward else "") + d[Lang.current][0].to_upper() + _t(" ÖPPNAT!", " OPENED!"), 14, (d.col as Color).clamp(Color(0.3, 0.3, 0.3), Color(1, 1, 1)))
 	_text(_t("Välj ett. Resten tar kråkorna.", "Pick one. The crows take the rest."))
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 3)
@@ -709,7 +732,7 @@ func _page_pack() -> void:
 					Run.add_charm(iid)
 					_charm_offers.erase(iid)
 					Sfx.play("coin", -4.0, 1.3)
-					show_page("shop2"), Run.keyring.size() < Cards.MAX_CHARMS, row)
+					_pack_done(), Run.keyring.size() < Cards.MAX_CHARMS, row)
 	# paketet poppar in
 	row.pivot_offset = Vector2(180, 75)
 	row.scale = Vector2(0.6, 0.6)
@@ -717,7 +740,7 @@ func _page_pack() -> void:
 	var tw := create_tween().set_parallel(true)
 	tw.tween_property(row, "scale", Vector2.ONE, 0.35).set_trans(Tween.TRANS_BACK)
 	tw.tween_property(row, "modulate:a", 1.0, 0.2)
-	_button(_t("HOPPA ÖVER", "SKIP"), func(): show_page("shop2"))
+	_button(_t("HOPPA ÖVER", "SKIP"), func(): _pack_done())
 
 
 func _page_victory() -> void:
@@ -790,13 +813,13 @@ func _page_slot() -> void:
 				Run.set_rune(slot, id.substr(3))
 				Sfx.play("sparkle", -4.0, 1.2)
 				_pending = ""
-				show_page("shop2")
+				_pack_done()
 				return
 			if id.begins_with("pk:"):
 				Run.put(id.substr(3), slot)
 				Sfx.play("clack", -6.0, 1.4)
 				_pending = ""
-				show_page("shop2")
+				_pack_done()
 				return
 			if id.begins_with("r:"):
 				if Run.buy_rune(id.substr(2), slot):
@@ -816,8 +839,12 @@ func _page_slot() -> void:
 			show_page("shop"))
 		row.add_child(b)
 	_button(_t("ÅNGRA", "CANCEL"), func():
+		var was_pack := _pending.begins_with("pk:") or _pending.begins_with("pr:")
 		_pending = ""
-		show_page("shop"))
+		if was_pack:
+			show_page("pack")
+		else:
+			show_page("shop"))
 
 
 func _node_name(n: Dictionary) -> String:

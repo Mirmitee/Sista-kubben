@@ -23,7 +23,7 @@ func _ready() -> void:
 	_streams["sparkle"] = _make(0.4, _sparkle)
 	_streams["coin"] = _make(0.25, _coin)
 	_streams["caw"] = _make(0.7, _caw)
-	_streams["groan"] = _make(0.95, _groan)
+	_streams["groan"] = _make(1.5, _groan)
 	for i in 12:
 		var p := AudioStreamPlayer.new()
 		add_child(p)
@@ -281,15 +281,24 @@ func _accordion(t: float, d: float, st: Dictionary) -> float:
 	return st.lp * 1.0 + st.rng.randf_range(-1, 1) * 0.01
 
 
-func _groan(t: float, d: float, _st: Dictionary) -> float:
-	# ett långt, plågat "uuoooh" från en hund som har fått nog
-	var f0 := 190.0 - t * 70.0 + sin(TAU * 6.0 * t) * 6.0 * t
-	var f1 := 420.0 + t * 260.0
-	var f2 := 820.0 + t * 200.0
+func _groan(t: float, d: float, st: Dictionary) -> float:
+	# ett utdraget, gurglande stön från något som inte borde kunna låta så.
+	# två röster lite ostämda mot varandra, raspigt och med ett rossel på slutet
+	var f0 := 120.0 - t * 35.0 + sin(TAU * 4.5 * t) * 5.0 * t + sin(TAU * 0.7 * t) * 8.0
+	var f1 := 380.0 + 180.0 * sin(PI * t / d)
+	var f2 := 760.0 + 260.0 * t / d
+	st.lp = lerpf(st.lp, st.rng.randf_range(-1, 1), 0.08)
+	st.lp2 = lerpf(st.lp2, st.rng.randf_range(-1, 1), 0.4)
+	var rasp: float = 0.55 + 0.45 * absf(st.lp) * 3.0  # gurgel: amplituden fladdrar
 	var v := 0.0
-	for k in range(1, 14):
+	for k in range(1, 16):
 		var fk := f0 * k
-		var a := exp(-pow((fk - f1) / 130.0, 2)) + 0.55 * exp(-pow((fk - f2) / 220.0, 2))
+		var a := exp(-pow((fk - f1) / 140.0, 2)) + 0.6 * exp(-pow((fk - f2) / 240.0, 2))
 		v += sin(TAU * f0 * k * t) * a
-	var env := minf(t * 12.0, 1.0) * clampf((d - t) * 3.0, 0.0, 1.0)
-	return v * 0.32 * env
+		v += sin(TAU * f0 * 1.031 * k * t + 1.3) * a * 0.55  # andra rösten, falsk
+	var breath: float = st.lp2 * 0.25 * (0.4 + t / d)
+	var rattle := 0.0
+	if t > d * 0.7:
+		rattle = (1.0 if fmod(t * 23.0, 1.0) < 0.35 else 0.0) * st.rng.randf_range(-1, 1) * 0.5
+	var env := minf(t * 6.0, 1.0) * clampf((d - t) * 2.0, 0.0, 1.0)
+	return clampf((v * rasp * 0.24 + breath + rattle) * env, -1.0, 1.0)

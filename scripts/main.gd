@@ -2442,7 +2442,7 @@ func _win_match() -> void:
 	if won_all:
 		menu.open("victory")
 	else:
-		menu.open("map")
+		menu.reward_pack()
 
 
 ## Kungen faller: en enorm explosion, sen smälter motståndaren ner i
@@ -3219,7 +3219,7 @@ func _screenshots(prefix: String) -> void:
 	for i in 5:
 		await get_tree().process_frame
 	vp.get_texture().get_image().save_png(prefix + "_bakficka.png")
-	menu._open_pack("charm")
+	menu.reward_pack()
 	for i in 30:
 		await get_tree().process_frame
 	vp.get_texture().get_image().save_png(prefix + "_paket.png")
