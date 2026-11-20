@@ -74,7 +74,7 @@ func _ready() -> void:
 	_flash = _label(14, Color(1.0, 0.85, 0.2), Vector2(0, 96), Vector2(640, 20))
 	_flash.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	var ver := _label(8, Color(0.8, 0.15, 0.1), Vector2(546, 349))
-	ver.text = "SISTA KUBBEN v0.13"
+	ver.text = "SISTA KUBBEN v0.14"
 	_teeth = _label(8, Color(1.0, 0.95, 0.75), Vector2(422, 40), Vector2(210, 10))
 	_teeth.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	_cards = _label(8, Color(0.75, 0.7, 0.85), Vector2(422, 52), Vector2(210, 120))
@@ -433,9 +433,31 @@ func _mk(size: int, color: Color, text: String) -> Label:
 
 
 ## Håll Tab (eller Back på handkontrollen) för att se din lek.
-func show_deck(on: bool, his: Array = []) -> void:
+var _board: Board
+var _board_bg: Panel
+
+
+func show_deck(on: bool, his: Array = [], board: Array = [], opp_name := "") -> void:
+	if _board == null:
+		_board_bg = Panel.new()
+		_board_bg.add_theme_stylebox_override("panel", Art.frame_style(Color(0.6, 0.15, 0.1), Color(0.03, 0.0, 0.02, 0.94), 16, 4))
+		_board_bg.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+		_board_bg.position = Vector2(14, 34)
+		_board_bg.size = Vector2(200, 322)
+		_board_bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_play_root.add_child(_board_bg)
+		_board = Board.new()
+		_board.position = Vector2(4, 8)
+		_board.size = Vector2(192, 308)
+		_board.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_board_bg.add_child(_board)
+	_board_bg.visible = on
+	if on:
+		_board.items = board
+		_board.opp_name = opp_name
+		_play_root.move_child(_board_bg, -1)
 	if _deck_box == null:
-		_deck_box = _label(8, Color(0.95, 0.9, 0.8), Vector2(24, 48), Vector2(592, 240))
+		_deck_box = _label(8, Color(0.95, 0.9, 0.8), Vector2(234, 44), Vector2(392, 300))
 		_deck_box.autowrap_mode = TextServer.AUTOWRAP_WORD
 		var bg := Panel.new()
 		bg.add_theme_stylebox_override("panel", Art.frame_style(Color(0.6, 0.15, 0.1), Color(0.03, 0.0, 0.02, 0.92), 16, 4))
@@ -451,6 +473,7 @@ func show_deck(on: bool, his: Array = []) -> void:
 	_deck_box.visible = on
 	if not on:
 		return
+	_play_root.move_child(_deck_box, -1)
 	var sv := Lang.current == "sv"
 	var lines: Array[String] = []
 	lines.append(("PINNE: " if sv else "BATON: ") + Cards.title(Run.cur_baton()) + " - " + Cards.desc(Run.cur_baton()))

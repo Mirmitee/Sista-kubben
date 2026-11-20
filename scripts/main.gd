@@ -88,6 +88,7 @@ var _tier := 0             # hur många av månens krav som nåtts
 var _extra_draws := 0
 var _fast := false
 var _slowmo_on := false
+var _force_tab := false
 
 
 func _ready() -> void:
@@ -1353,6 +1354,7 @@ func _apply_choice(o: String) -> void:
 				Fx.ring(self, k.global_position, Cards.RUNES[id].col, 0.6)
 				Fx.sparks(self, k.global_position + Vector3(0, 0.1, 0), Cards.RUNES[id].col, 16)
 			hud.fate_card(v[0], _tl("Kubb %d: ", "Kubb %d: ") % (sl + 1) + Cards.rune_desc(id), v[2])
+			hud.toast(_tl("HÅLL TAB FÖR ATT SE VAR KUBB %d STÅR", "HOLD TAB TO SEE WHERE KUBB %d STANDS") % (sl + 1))
 			Sfx.play("sparkle", -3.0, 1.1)
 		"k:":
 			var sl := Run.free_slot()
@@ -1368,6 +1370,7 @@ func _apply_choice(o: String) -> void:
 				Fx.ring(self, k.global_position, Cards.color(id), 0.6)
 			var extra := (_tl(" (ersätter %s)", " (replaces %s)") % Cards.title(old)) if old != "" else ""
 			hud.fate_card(v[0], _tl("Kubb %d: ", "Kubb %d: ") % (sl + 1) + Cards.desc(id) + extra, v[2])
+			hud.toast(_tl("HÅLL TAB FÖR ATT SE VAR KUBB %d STÅR", "HOLD TAB TO SEE WHERE KUBB %d STANDS") % (sl + 1))
 			Sfx.play("clack", -3.0, 1.4)
 	_refresh_ui()
 
@@ -2023,13 +2026,13 @@ func _process(dt: float) -> void:
 	_shake = move_toward(_shake, 0.0, dt)
 	var jitter := Vector3(randf_range(-1, 1), randf_range(-1, 1), 0) * _shake * 0.06
 	camera.look_at_from_position(cam_pos + jitter, _look)
-	var deck_on := mode == Mode.MATCH and Run.active and not menu.visible and (Input.is_key_pressed(KEY_TAB) or Input.is_joy_button_pressed(0, JOY_BUTTON_BACK))
+	var deck_on := mode == Mode.MATCH and Run.active and not menu.visible and (Input.is_key_pressed(KEY_TAB) or Input.is_joy_button_pressed(0, JOY_BUTTON_BACK) or _force_tab)
 	var his: Array = []
 	if deck_on:
 		for k in kubbs:
 			if Cards.OPP_DEFS.has(k.kind) and not his.has(k.kind):
 				his.append(k.kind)
-	hud.show_deck(deck_on, his)
+	hud.show_deck(deck_on, his, _board_items() if deck_on else [], opponent.display_name[Lang.current])
 	var zoom := mode != Mode.MENU and Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT)
 	camera.fov = lerpf(camera.fov, 20.0 if zoom else 40.0, clampf(dt * 8.0, 0.0, 1.0))
 	world.follow_camera(cam_pos)
@@ -2047,6 +2050,24 @@ func _process(dt: float) -> void:
 
 
 ## Siktmagneten: vilka kubbar spelaren får sikta på just nu.
+func _board_items() -> Array:
+	var board: Array = []
+	if true:
+		for k in kubbs + [king]:
+			if not k.visible:
+				continue
+			var rc := Color(0, 0, 0, 0)
+			if k.slot >= 0:
+				for r in [Run.ed[k.slot], Run.enh[k.slot], Run.seal[k.slot]]:
+					if r != "":
+						rc = (Cards.RUNES[r].col as Color).clamp(Color(0.3, 0.3, 0.3), Color(1, 1, 1))
+						break
+			board.append({"pos": Vector2(k.global_position.x, k.global_position.z), "fallen": k.is_fallen(), "kind": k.kind,
+				"slot": k.slot, "king": k.is_king, "opp": Cards.OPP_DEFS.has(k.kind), "rune_col": rc,
+				"col": (Cards.color(k.kind) * 0.75).clamp(Color(0.25, 0.25, 0.25), Color(1, 1, 1)) if k.kind != "" else Color(0.75, 0.6, 0.4)})
+	return board
+
+
 func _update_magnet() -> void:
 	thrower.magnet_targets.clear()
 	if mode == Mode.MENU or phase != Phase.PLAYER or thrower.payload_kubb:
@@ -2458,4 +2479,8 @@ func _screenshots(prefix: String) -> void:
 	for i in 8:
 		await get_tree().process_frame
 	vp.get_texture().get_image().save_png(prefix + "_boom.png")
+	_force_tab = true
+	for i in 4:
+		await get_tree().process_frame
+	vp.get_texture().get_image().save_png(prefix + "_tab.png")
 	get_tree().quit()
