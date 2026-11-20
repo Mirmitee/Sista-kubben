@@ -64,35 +64,42 @@ func _ready() -> void:
 	_play_root.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_play_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_play_root)
-	_speech = _label(8, Color(0.95, 0.85, 0.75), Vector2(8, 6), Vector2(368, 40))
+	_speech = _label(8, Color(0.95, 0.85, 0.75), Vector2(8, 6), Vector2(496, 40))
 	_speech.autowrap_mode = TextServer.AUTOWRAP_WORD
-	_info = _label(8, Color(0.9, 0.9, 0.8), Vector2(8, 228))
-	_icons = _label(8, Color(0.95, 0.75, 0.5), Vector2(8, 218))
-	_hint = _label(8, Color(0.75, 0.6, 0.6), Vector2(8, 256))
-	_center = _label(12, Color(1.0, 0.3, 0.2), Vector2(0, 90), Vector2(384, 100))
+	_info = _label(8, Color(0.9, 0.9, 0.8), Vector2(8, 312))
+	_icons = _label(8, Color(0.95, 0.75, 0.5), Vector2(8, 300))
+	_hint = _label(8, Color(0.75, 0.6, 0.6), Vector2(8, 350))
+	_center = _label(12, Color(1.0, 0.3, 0.2), Vector2(0, 125), Vector2(512, 130))
 	_center.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_flash = _label(14, Color(1.0, 0.85, 0.2), Vector2(0, 70), Vector2(384, 20))
+	_flash = _label(14, Color(1.0, 0.85, 0.2), Vector2(0, 100), Vector2(512, 20))
 	_flash.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	var ver := _label(8, Color(0.8, 0.15, 0.1), Vector2(300, 277))
-	ver.text = "SISTA KUBBEN v0.11"
-	_teeth = _label(8, Color(1.0, 0.95, 0.75), Vector2(166, 30), Vector2(210, 10))
+	var ver := _label(8, Color(0.8, 0.15, 0.1), Vector2(418, 372))
+	ver.text = "SISTA KUBBEN v0.12"
+	_teeth = _label(8, Color(1.0, 0.95, 0.75), Vector2(294, 44), Vector2(210, 10))
 	_teeth.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	_cards = _label(8, Color(0.75, 0.7, 0.85), Vector2(226, 40), Vector2(150, 60))
+	_cards = _label(8, Color(0.75, 0.7, 0.85), Vector2(314, 56), Vector2(190, 110))
 	_cards.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	_phase = _label(8, Color(1.0, 0.55, 0.3), Vector2(8, 204), Vector2(240, 10))
-	_banner = _label(12, Color(1.0, 0.8, 0.6), Vector2(0, 60), Vector2(384, 80))
+	_phase = _label(8, Color(1.0, 0.55, 0.3), Vector2(8, 286), Vector2(320, 10))
+	_banner = _label(12, Color(1.0, 0.8, 0.6), Vector2(0, 84), Vector2(512, 90))
 	_banner.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_banner.autowrap_mode = TextServer.AUTOWRAP_WORD
 	_banner.modulate.a = 0.0
 	_build_score()
-	_toast = _label(8, Color(0.6, 1.0, 0.6), Vector2(0, 150), Vector2(384, 12))
+	_toast = _label(8, Color(0.6, 1.0, 0.6), Vector2(0, 210), Vector2(512, 12))
 	_toast.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_toast.modulate.a = 0.0
 
 	# golf-kraftmätare: stapel med fyllning, söt punkt och toppmarkering
 	_meter_root = Control.new()
-	_meter_root.position = Vector2(254, 200)
+	_meter_root.position = Vector2(376, 282)
 	_play_root.add_child(_meter_root)
+	var mf := Panel.new()
+	mf.add_theme_stylebox_override("panel", Art.frame_style(Color(0.55, 0.15, 0.1), Color(0.05, 0.01, 0.02, 0.9), 16, 2))
+	mf.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	mf.position = Vector2(-3, -3)
+	mf.size = Vector2(128, 30)
+	mf.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_meter_root.add_child(mf)
 	var bg := ColorRect.new()
 	bg.color = Color(0.05, 0.01, 0.02, 0.85)
 	bg.size = Vector2(122, 12)
@@ -113,11 +120,11 @@ func _ready() -> void:
 	_meter_peak.position = Vector2(1, -1)
 	_meter_peak.color = Color(1, 0.95, 0.6)
 	_meter_root.add_child(_meter_peak)
-	_meter_label = _label(8, Color(0.9, 0.8, 0.7), Vector2(254, 188))
+	_meter_label = _label(8, Color(0.9, 0.8, 0.7), Vector2(376, 270))
 
 	# precisionsmätare för mätarläget: smal grön mitt, gula sidor, röda kanter
 	_acc_root = Control.new()
-	_acc_root.position = Vector2(254, 214)
+	_acc_root.position = Vector2(376, 296)
 	_play_root.add_child(_acc_root)
 	for seg in [[0.0, 1.0, Color(0.55, 0.08, 0.05)], [0.075, 0.925, Color(0.75, 0.55, 0.15)], [0.3, 0.7, Color(0.6, 0.65, 0.2)], [0.41, 0.59, Color(0.25, 0.8, 0.3)]]:
 		var r := ColorRect.new()
@@ -146,8 +153,8 @@ func _ready() -> void:
 	dls.shadow_offset = Vector2(2, 2)
 	_death.label_settings = dls
 	_death.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_death.position = Vector2(0, 80)
-	_death.size = Vector2(384, 130)
+	_death.position = Vector2(0, 110)
+	_death.size = Vector2(512, 170)
 	_death.modulate.a = 0.0
 	add_child(_death)
 	_fade = ColorRect.new()
@@ -264,11 +271,11 @@ func toast(text: String) -> void:
 
 
 func teeth_popup(text: String) -> void:
-	var l := _label(8, Color(1.0, 0.95, 0.6), Vector2(236, 22), Vector2(140, 10))
+	var l := _label(8, Color(1.0, 0.95, 0.6), Vector2(364, 34), Vector2(140, 10))
 	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	l.text = text
 	var tw := create_tween().set_parallel(true)
-	tw.tween_property(l, "position:y", 6.0, 1.6)
+	tw.tween_property(l, "position:y", 18.0, 1.6)
 	tw.tween_property(l, "modulate:a", 0.0, 1.6).set_delay(0.6)
 	tw.chain().tween_callback(l.queue_free)
 
@@ -382,15 +389,12 @@ func _show_cards() -> void:
 	while not _card_queue.is_empty():
 		var c: Array = _card_queue.pop_front()
 		var pc := PanelContainer.new()
-		var st := StyleBoxFlat.new()
-		st.bg_color = Color(0.06, 0.02, 0.04, 0.95)
-		st.border_color = c[2]
-		st.set_border_width_all(2)
-		st.set_content_margin_all(4)
+		var st := Art.frame_style((c[2] as Color).clamp(Color(0.25, 0.25, 0.25), Color(1, 1, 1)), Color(0.06, 0.02, 0.04, 0.96), 16, 6)
 		pc.add_theme_stylebox_override("panel", st)
-		pc.custom_minimum_size = Vector2(120, 0)
-		pc.size = Vector2(120, 60)
-		pc.position = Vector2(392, 108)
+		pc.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+		pc.custom_minimum_size = Vector2(140, 0)
+		pc.size = Vector2(140, 60)
+		pc.position = Vector2(520, 176)
 		pc.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		var v := VBoxContainer.new()
 		v.add_theme_constant_override("separation", 1)
@@ -399,17 +403,17 @@ func _show_cards() -> void:
 		v.add_child(_mk(8, (c[2] as Color).lightened(0.3), c[0]))
 		var d := _mk(7, Color(0.9, 0.85, 0.8), c[1])
 		d.autowrap_mode = TextServer.AUTOWRAP_WORD
-		d.custom_minimum_size = Vector2(112, 0)
+		d.custom_minimum_size = Vector2(132, 0)
 		v.add_child(d)
 		_play_root.add_child(pc)
-		pc.pivot_offset = Vector2(60, 30)
+		pc.pivot_offset = Vector2(70, 30)
 		pc.scale = Vector2(0.05, 1.0)
 		var tw := create_tween()
 		tw.set_parallel(true)
-		tw.tween_property(pc, "position:x", 258.0, 0.3).set_trans(Tween.TRANS_BACK)
+		tw.tween_property(pc, "position:x", 366.0, 0.3).set_trans(Tween.TRANS_BACK)
 		tw.tween_property(pc, "scale:x", 1.0, 0.35).set_delay(0.1)
 		tw.chain().tween_interval(2.6)
-		tw.chain().tween_property(pc, "position:x", 392.0, 0.3)
+		tw.chain().tween_property(pc, "position:x", 520.0, 0.3)
 		await tw.finished
 		pc.queue_free()
 	_card_busy = false
@@ -431,12 +435,17 @@ func _mk(size: int, color: Color, text: String) -> Label:
 ## Håll Tab (eller Back på handkontrollen) för att se din lek.
 func show_deck(on: bool, his: Array = []) -> void:
 	if _deck_box == null:
-		_deck_box = _label(8, Color(0.95, 0.9, 0.8), Vector2(20, 40), Vector2(344, 160))
+		_deck_box = _label(8, Color(0.95, 0.9, 0.8), Vector2(24, 52), Vector2(464, 240))
 		_deck_box.autowrap_mode = TextServer.AUTOWRAP_WORD
-		var bg := ColorRect.new()
-		bg.color = Color(0.02, 0.0, 0.02, 0.85)
+		var bg := Panel.new()
+		bg.add_theme_stylebox_override("panel", Art.frame_style(Color(0.6, 0.15, 0.1), Color(0.03, 0.0, 0.02, 0.92), 16, 4))
+		bg.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 		bg.show_behind_parent = true
 		bg.set_anchors_preset(Control.PRESET_FULL_RECT)
+		bg.offset_left = -6
+		bg.offset_top = -6
+		bg.offset_right = 6
+		bg.offset_bottom = 6
 		bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		_deck_box.add_child(bg)
 	_deck_box.visible = on
@@ -490,43 +499,49 @@ func choose_cards(opts: Array, header: String) -> int:
 	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_choice_root.add_child(dim)
 	var head := _mk(12, Color(1.0, 0.85, 0.5), header)
-	head.position = Vector2(0, 46)
-	head.size = Vector2(384, 16)
+	head.position = Vector2(0, 62)
+	head.size = Vector2(512, 16)
 	head.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_choice_root.add_child(head)
-	var w := 132.0 if opts.size() <= 2 else 112.0
-	var gap := 16.0 if opts.size() <= 2 else 8.0
-	var x0 := (384.0 - (w * opts.size() + gap * (opts.size() - 1))) * 0.5
+	var w := 170.0 if opts.size() <= 2 else 150.0
+	var gap := 20.0 if opts.size() <= 2 else 12.0
+	var x0 := (512.0 - (w * opts.size() + gap * (opts.size() - 1))) * 0.5
 	for i in opts.size():
 		var c: Array = opts[i]
 		var btn := Button.new()
-		btn.position = Vector2(x0 + i * (w + gap), 72)
-		btn.size = Vector2(w, 118)
+		btn.position = Vector2(x0 + i * (w + gap), 90)
+		btn.size = Vector2(w, 150)
 		btn.focus_mode = Control.FOCUS_ALL
-		var st := StyleBoxFlat.new()
-		st.bg_color = Color(0.08, 0.02, 0.05, 0.97)
-		st.border_color = c[2]
-		st.set_border_width_all(2)
-		var sth := st.duplicate()
-		sth.bg_color = Color(0.22, 0.05, 0.08, 0.97)
-		sth.border_color = (c[2] as Color).lightened(0.4)
+		var kind: String = c[4] if c.size() > 4 else "fate"
+		var cc := (c[2] as Color).clamp(Color(0.2, 0.2, 0.2), Color(1, 1, 1))
+		var st := Art.card_style(kind, cc, int(w), 150, i * 7 + 3)
+		var sth := Art.card_style(kind, cc.lightened(0.3), int(w), 150, i * 7 + 3)
 		btn.add_theme_stylebox_override("normal", st)
 		btn.add_theme_stylebox_override("hover", sth)
 		btn.add_theme_stylebox_override("focus", sth)
 		btn.add_theme_stylebox_override("pressed", sth)
+		btn.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+		btn.mouse_entered.connect(func(): btn.grab_focus())
+		btn.focus_entered.connect(func():
+			Sfx.play("click", -12.0, 1.8)
+			var tw2 := btn.create_tween()
+			tw2.tween_property(btn, "position:y", 84.0, 0.08))
+		btn.focus_exited.connect(func():
+			var tw2 := btn.create_tween()
+			tw2.tween_property(btn, "position:y", 90.0, 0.08))
 		var v := VBoxContainer.new()
-		v.position = Vector2(5, 5)
-		v.size = Vector2(w - 10, 106)
+		v.position = Vector2(7, 49)
+		v.size = Vector2(w - 14, 96)
 		v.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		btn.add_child(v)
 		v.add_child(_mk(7, (c[2] as Color).lightened(0.2), "%d  %s" % [i + 1, c[3] if c.size() > 3 else ""]))
 		var t := _mk(10, (c[2] as Color).lightened(0.3), c[0])
 		t.autowrap_mode = TextServer.AUTOWRAP_WORD
-		t.custom_minimum_size = Vector2(w - 10, 0)
+		t.custom_minimum_size = Vector2(w - 14, 0)
 		v.add_child(t)
 		var d := _mk(7 if opts.size() > 2 else 8, Color(0.9, 0.85, 0.8), c[1])
 		d.autowrap_mode = TextServer.AUTOWRAP_WORD
-		d.custom_minimum_size = Vector2(w - 10, 0)
+		d.custom_minimum_size = Vector2(w - 14, 0)
 		v.add_child(d)
 		var idx := i
 		btn.pressed.connect(func(): fate_chosen.emit(idx))
@@ -587,6 +602,13 @@ func _box(col: Color, pos: Vector2, sz: Vector2, parent: Control, r: ColorRect =
 	r.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	parent.add_child(r)
 	r.pivot_offset = sz * 0.5
+	var fr := Panel.new()
+	fr.add_theme_stylebox_override("panel", Art.frame_style(col.lightened(0.45), col, 16, 2))
+	fr.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	fr.size = sz
+	fr.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	r.color = Color(0, 0, 0, 0)
+	r.add_child(fr)
 	var l := _mk(14, Color(1, 1, 1), "0")
 	l.size = sz
 	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -599,19 +621,16 @@ func _box(col: Color, pos: Vector2, sz: Vector2, parent: Control, r: ColorRect =
 func _build_score() -> void:
 	# Balatro-panel till vänster: månens krav, poäng och stora marker x multi
 	_score_root = Control.new()
-	_score_root.position = Vector2(4, 44)
+	_score_root.position = Vector2(6, 52)
 	_score_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_play_root.add_child(_score_root)
-	var panel := ColorRect.new()
-	panel.color = Color(0.06, 0.01, 0.03, 0.82)
-	panel.size = Vector2(126, 92)
+	var panel := Panel.new()
+	panel.add_theme_stylebox_override("panel", Art.frame_style(Color(0.6, 0.12, 0.08), Color(0.06, 0.01, 0.03, 0.9), 16, 4))
+	panel.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	panel.position = Vector2(-3, -3)
+	panel.size = Vector2(132, 100)
 	panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_score_root.add_child(panel)
-	var edge := ColorRect.new()
-	edge.color = Color(0.5, 0.06, 0.05, 0.9)
-	edge.size = Vector2(126, 1)
-	edge.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_score_root.add_child(edge)
 	_goal_lbl = _mk(7, Color(0.85, 0.5, 0.45), "")
 	_goal_lbl.position = Vector2(4, 2)
 	_score_root.add_child(_goal_lbl)
@@ -652,7 +671,7 @@ func _build_score() -> void:
 	_tally_root.add_child(_flames)
 	_chips_lbl.text = "0"
 	_mult_lbl.text = "0"
-	_fast_lbl = _label(10, Color(1.0, 0.6, 0.3), Vector2(300, 188))
+	_fast_lbl = _label(10, Color(1.0, 0.6, 0.3), Vector2(440, 254))
 	_fast_lbl.text = ">> x3"
 	_fast_lbl.visible = false
 
@@ -752,13 +771,13 @@ func popup_col(at: Vector2, text: String, col: Color, size := 10) -> void:
 func big(text: String, col: Color) -> void:
 	var wait := 0.7 * _big_n
 	_big_n += 1
-	var l := _label(14, col, Vector2(0, 116), Vector2(384, 20))
+	var l := _label(14, col, Vector2(0, 160), Vector2(512, 20))
 	l.modulate.a = 0.0
 	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	l.autowrap_mode = TextServer.AUTOWRAP_WORD
 	l.text = text
-	l.pivot_offset = Vector2(192, 10)
-	l.scale = Vector2.ONE * 2.5
+	l.pivot_offset = Vector2(256, 10)
+	l.scale = Vector2.ONE * 1.8
 	l.rotation = randf_range(-0.15, 0.15)
 	var tw := create_tween()
 	tw.tween_interval(wait)

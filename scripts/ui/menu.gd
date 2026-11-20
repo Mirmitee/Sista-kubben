@@ -39,17 +39,18 @@ func _ready() -> void:
 func _make_theme() -> Theme:
 	var t := Theme.new()
 	t.default_font_size = 8
-	var normal := StyleBoxFlat.new()
-	normal.bg_color = Color(0.07, 0.02, 0.03, 0.85)
-	normal.border_color = Color(0.45, 0.08, 0.06)
-	normal.set_border_width_all(1)
-	normal.content_margin_left = 6
-	normal.content_margin_right = 6
-	normal.content_margin_top = 2
-	normal.content_margin_bottom = 2
-	var hover := normal.duplicate()
-	hover.bg_color = Color(0.30, 0.05, 0.04, 0.95)
-	hover.border_color = Color(0.95, 0.3, 0.2)
+	# pixelramar: ditherad fyllning, ljus innerkant, mörk ytterkant
+	var normal := Art.frame_style(Color(0.5, 0.1, 0.07), Color(0.1, 0.03, 0.04, 0.95), 16, 5)
+	normal.content_margin_top = 3
+	normal.content_margin_bottom = 3
+	var hover := Art.frame_style(Color(1.0, 0.45, 0.25), Color(0.35, 0.07, 0.05, 1.0), 16, 5)
+	hover.content_margin_top = 3
+	hover.content_margin_bottom = 3
+	var dis := Art.frame_style(Color(0.25, 0.1, 0.1), Color(0.05, 0.02, 0.03, 0.9), 16, 5)
+	dis.content_margin_top = 3
+	dis.content_margin_bottom = 3
+	t.set_stylebox("disabled", "Button", dis)
+	t.set_color("font_disabled_color", "Button", Color(0.45, 0.35, 0.32))
 	t.set_stylebox("normal", "Button", normal)
 	t.set_stylebox("hover", "Button", hover)
 	t.set_stylebox("focus", "Button", hover)
@@ -61,11 +62,7 @@ func _make_theme() -> Theme:
 	t.set_color("font_shadow_color", "Label", Color(0, 0, 0, 0.9))
 	t.set_constant("shadow_offset_x", "Label", 1)
 	t.set_constant("shadow_offset_y", "Label", 1)
-	var panel := StyleBoxFlat.new()
-	panel.bg_color = Color(0.03, 0.01, 0.02, 0.78)
-	panel.border_color = Color(0.35, 0.06, 0.05)
-	panel.set_border_width_all(1)
-	panel.set_content_margin_all(8)
+	var panel := Art.frame_style(Color(0.55, 0.1, 0.07), Color(0.04, 0.01, 0.02, 0.88), 24, 10)
 	t.set_stylebox("panel", "PanelContainer", panel)
 	var grab := StyleBoxFlat.new()
 	grab.bg_color = Color(0.2, 0.04, 0.04)
@@ -307,23 +304,16 @@ func _card_panel(id: String, parent: Container, price_text: String, action_text:
 	var d: Dictionary = Cards.DEFS.get(id, Cards.BATONS.get(id, {}))
 	var cursed: bool = d.get("cursed", false)
 	var pc := PanelContainer.new()
-	var st := StyleBoxFlat.new()
-	st.bg_color = Color(0.12, 0.02, 0.10, 0.95) if cursed else Color(0.10, 0.06, 0.03, 0.95)
-	st.border_color = Color(0.7, 0.1, 0.6) if cursed else Color(0.8, 0.6, 0.3)
-	st.set_border_width_all(1)
-	st.set_content_margin_all(3)
+	var kind := "cursed" if cursed else ("baton" if Cards.BATONS.has(id) else "kubb")
+	var st := Art.card_style(kind, (Cards.color(id) * 0.75).clamp(Color(0.2, 0.2, 0.2), Color(1, 1, 1)), 112, 150, id.hash() % 97)
 	pc.add_theme_stylebox_override("panel", st)
-	pc.custom_minimum_size = Vector2(86, 92)
+	pc.custom_minimum_size = Vector2(112, 150)
 	var v := VBoxContainer.new()
 	v.add_theme_constant_override("separation", 1)
 	pc.add_child(v)
 	# färgprov: kubbens/pinnens ved och typ av effekt
 	var sw := HBoxContainer.new()
 	sw.add_theme_constant_override("separation", 2)
-	var cr := ColorRect.new()
-	cr.color = (Cards.color(id) * 0.6).clamp(Color(0.05, 0.05, 0.05), Color(1, 1, 1))
-	cr.custom_minimum_size = Vector2(10, 8)
-	sw.add_child(cr)
 	var tag := Label.new()
 	tag.add_theme_font_size_override("font_size", 6)
 	if d.has("hit") and d.has("fell"):
@@ -350,7 +340,7 @@ func _card_panel(id: String, parent: Container, price_text: String, action_text:
 	var dl := Label.new()
 	dl.text = Cards.desc(id)
 	dl.autowrap_mode = TextServer.AUTOWRAP_WORD
-	dl.custom_minimum_size = Vector2(80, 46)
+	dl.custom_minimum_size = Vector2(100, 50)
 	dl.add_theme_color_override("font_color", Color(0.85, 0.78, 0.7))
 	v.add_child(dl)
 	if price_text != "":
@@ -436,7 +426,7 @@ func _page_shop() -> void:
 			show_page("slot"))
 	# runor: förstärkningar, utgåvor, sigill för en av dina kubbar
 	var rrow := HFlowContainer.new()
-	rrow.custom_minimum_size.x = 360
+	rrow.custom_minimum_size.x = 480
 	_box.add_child(rrow)
 	var rl := Label.new()
 	rl.text = _t("RUNOR:", "RUNES:")
@@ -454,7 +444,7 @@ func _page_shop() -> void:
 		rrow.add_child(rb)
 	# ödesleken: köp nya ödeskort, bränn dåliga
 	var frow := HFlowContainer.new()
-	frow.custom_minimum_size.x = 360
+	frow.custom_minimum_size.x = 480
 	_box.add_child(frow)
 	var fl := Label.new()
 	fl.text = _t("ÖDESLEK %d kort:", "FATE DECK %d cards:") % Run.fate_deck.size()
@@ -492,7 +482,7 @@ func _page_shop() -> void:
 		show_page("shop"))
 	row2.add_child(rr)
 	var row3 := HFlowContainer.new()
-	row3.custom_minimum_size.x = 360
+	row3.custom_minimum_size.x = 480
 	_box.add_child(row3)
 	for i in Run.cards.size():
 		var id: String = Run.cards[i]
@@ -542,7 +532,7 @@ func _page_fate_deck() -> void:
 	_title(_t("DIN ÖDESLEK", "YOUR FATE DECK"), 14)
 	_text(_t("Tänder %d. Bränn ett kort för 2 tänder (minst 2 kort kvar).", "Teeth %d. Burn a card for 2 teeth (at least 2 cards remain).") % Run.teeth, Color(1.0, 0.9, 0.6))
 	var row := HFlowContainer.new()
-	row.custom_minimum_size.x = 340
+	row.custom_minimum_size.x = 460
 	_box.add_child(row)
 	var burned := {}
 	for id in Run.fate_deck:
@@ -583,7 +573,7 @@ func _page_slot() -> void:
 		var rt := Run.runes_text(i)
 		b.text = "%d\n%s%s" % [i + 1, Cards.title(cur) if cur != "" else _t("vanlig", "plain"), ("\n" + rt) if rt != "" else ""]
 		b.tooltip_text = Cards.desc(cur) if cur != "" else ""
-		b.custom_minimum_size = Vector2(66, 40)
+		b.custom_minimum_size = Vector2(88, 48)
 		var slot := i
 		b.pressed.connect(func():
 			var id := _pending
@@ -693,7 +683,7 @@ func _page_fate_node() -> void:
 		var b := Button.new()
 		b.text = Cards.fate_title(id) + ": " + Cards.fate_desc(id)
 		b.autowrap_mode = TextServer.AUTOWRAP_WORD
-		b.custom_minimum_size = Vector2(340, 0)
+		b.custom_minimum_size = Vector2(440, 0)
 		b.pressed.connect(func():
 			Run.fate_deck.append(id)
 			Run.fate_pile.append(id)
@@ -739,7 +729,7 @@ func _page_grave() -> void:
 	if Run.slots_used() > 0:
 		_text(_t("Begrav ett kort från en kubb (förbannade ger 3 tänder):", "Bury a card from a kubb (cursed ones give 3 teeth):"))
 		var row := HFlowContainer.new()
-		row.custom_minimum_size.x = 340
+		row.custom_minimum_size.x = 460
 		_box.add_child(row)
 		for i in Run.cards.size():
 			var id: String = Run.cards[i]

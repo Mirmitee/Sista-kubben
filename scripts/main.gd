@@ -132,6 +132,17 @@ func _ready() -> void:
 	_line_mark.visible = false
 	add_child(_line_mark)
 
+	# dithering över 3D-bilden (under UI:t)
+	var dl := CanvasLayer.new()
+	dl.layer = 1
+	add_child(dl)
+	var dr := ColorRect.new()
+	dr.set_anchors_preset(Control.PRESET_FULL_RECT)
+	dr.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var dm := ShaderMaterial.new()
+	dm.shader = load("res://shaders/dither.gdshader")
+	dr.material = dm
+	dl.add_child(dr)
 	hud = Hud.new()
 	add_child(hud)
 	menu = Menu.new()
@@ -1301,15 +1312,16 @@ func _choice_view(o: String) -> Array:
 		"f:":
 			var v := _fate_view(id)
 			v.append("ÖDESKORT" if sv else "FATE CARD")
+			v.append("fate_bad" if Cards.FATE[id].get("cursed", false) else "fate")
 			return v
 		"p:":
-			return [Cards.pk_title(id), Cards.pk_desc(id), Cards.BATONS[Cards.PINNKORT[id][0]].get("trail", Color(1, 0.8, 0.5)), "PINNKORT" if sv else "BATON CARD"]
+			return [Cards.pk_title(id), Cards.pk_desc(id), Cards.BATONS[Cards.PINNKORT[id][0]].get("trail", Color(1, 0.8, 0.5)), "PINNKORT" if sv else "BATON CARD", "pinnkort"]
 		"r:":
 			var kinds := {"enh": ["RUNA", "RUNE"], "ed": ["UTGÅVA", "EDITION"], "seal": ["SIGILL", "SEAL"]}
 			var kn: Array = kinds[Cards.RUNES[id].kind]
-			return [Cards.rune_title(id), Cards.rune_desc(id) + (" Fastnar på en av dina kubbar." if sv else " Sticks to one of your kubbs."), (Cards.RUNES[id].col as Color).clamp(Color(0.3, 0.3, 0.3), Color(1, 1, 1)), kn[0] if sv else kn[1]]
+			return [Cards.rune_title(id), Cards.rune_desc(id) + (" Fastnar på en av dina kubbar." if sv else " Sticks to one of your kubbs."), (Cards.RUNES[id].col as Color).clamp(Color(0.3, 0.3, 0.3), Color(1, 1, 1)), kn[0] if sv else kn[1], Cards.RUNES[id].kind]
 		_:
-			return [Cards.title(id), Cards.desc(id), (Cards.color(id) * 0.8).clamp(Color(0.3, 0.3, 0.3), Color(1, 1, 1)), "NY KUBB" if sv else "NEW KUBB"]
+			return [Cards.title(id), Cards.desc(id), (Cards.color(id) * 0.8).clamp(Color(0.3, 0.3, 0.3), Color(1, 1, 1)), "NY KUBB" if sv else "NEW KUBB", "cursed" if Cards.DEFS[id].get("cursed", false) else "kubb"]
 
 
 func _apply_choice(o: String) -> void:
@@ -2429,6 +2441,8 @@ func _screenshots(prefix: String) -> void:
 	_felled_valid.clear()
 	for si in [0, 1, 3]:
 		var sk := _slot_kubb(si)
+		if sk == null:
+			continue
 		sk.apply_impulse(Vector3(0, 0, -0.4), Vector3(0, 0.07, 0))
 		_felled_valid.append(sk)
 	for i in 30:
