@@ -113,6 +113,7 @@ func _gen_shop() -> void:
 	var cp := Run.cursed_pool()
 	_curse = cp[randi() % cp.size()] if not cp.is_empty() and randf() < 0.85 else ""
 	_charm_offers.assign(_charm_pool().slice(0, 2))
+	Run.sale_id = _offers[randi() % _offers.size()] if not _offers.is_empty() else ""
 
 
 func _charm_pool() -> Array[String]:
@@ -149,6 +150,8 @@ func show_page(p: String) -> void:
 		"baton": _page_baton()
 		"shop": _page_shop()
 		"shop2": _page_shop2()
+		"difficulty": _page_difficulty()
+		"bragder": _page_bragder()
 		"pack": _page_pack()
 		"victory": _page_victory()
 		"slot": _page_slot()
@@ -235,8 +238,30 @@ func _page_title() -> void:
 			Run.lifetime.runs, Run.lifetime.wins, mini(Run.lifetime.best_night, 3), Run.lifetime.kubbs,
 			Cards.BATONS.keys().filter(func(id): return Run.is_unlocked_baton(id)).size(), Cards.BATONS.size()], Color(0.6, 0.5, 0.45))
 		_text(_t("Bästa kast %d poäng   Bästa run %d poäng", "Best throw %d points   Best run %d points") % [int(Run.lifetime.get("best_throw", 0)), int(Run.lifetime.get("best_score", 0))], Color(1.0, 0.75, 0.4))
+	var lr: String = Run.lifetime.get("last_run", "")
+	if lr != "":
+		_text(_t("Senaste run: ", "Last run: ") + lr, Color(0.55, 0.45, 0.42))
+	var tips := [
+		_t("Tips: håll Tab i matchen för att se planen och dina försvar.", "Tip: hold Tab in a match to see the field and your defenses."),
+		_t("Tips: håll F för att snabbspola hans tur.", "Tip: hold F to fast-forward his turn."),
+		_t("Tips: fäll fältkubbarna först, annars kliver han fram.", "Tip: fell the field kubbs first, or he steps up."),
+		_t("Tips: fäller du sista kubben måste kungen falla samma tur.", "Tip: fell the last kubb and the king must fall the same turn."),
+		_t("Tips: Kråkmors bakficka har paket, berlocker och försvar.", "Tip: Crow Mother's back pocket has packs, charms and defenses."),
+		_t("Tips: det gröna fältet är exakt. Utanför sprider pinnen sig.", "Tip: the green zone is exact. Outside it the baton scatters."),
+	]
+	_text(tips[(Time.get_ticks_msec() / 1000) % tips.size()], Color(0.75, 0.6, 0.85))
+	if Run.lifetime.runs == 0:
+		_text(_t("Ny här? Börja med LÄR DIG SPELA. Gösta väntar.", "New here? Start with LEARN TO PLAY. Gösta is waiting."), Color(1.0, 0.85, 0.4))
 	_box.add_child(HSeparator.new())
-	_button(_t("SPELA", "PLAY"), func(): show_page("rules"))
+	_button(_t("SPELA", "PLAY"), func():
+		daily_pending = false
+		show_page("rules"))
+	var dd := Time.get_date_dict_from_system()
+	_button(_t("DAGENS NATT (%02d/%02d, SAMMA FÖR ALLA)", "TONIGHT'S NIGHT (%02d/%02d, SAME FOR EVERYONE)") % [dd.day, dd.month], func():
+		daily_pending = true
+		Settings.set_value("rules", "real")
+		show_page("baton"))
+	_button(_t("BRAGDER", "FEATS") + " (%d/%d)" % [Run.lifetime.get("bragder", []).size(), Cards.BRAGDER.size()], func(): show_page("bragder"))
 	_button(_t("LÄR DIG SPELA (GÖSTA FÖRKLARAR)", "LEARN TO PLAY (GÖSTA EXPLAINS)"), func(): tutorial_pressed.emit())
 	_button(_t("TRÄNA PÅ GÖSTA (HUNDEN)", "PRACTICE ON GÖSTA (THE DOG)"), func(): training_pressed.emit())
 	_button(_t("INSTÄLLNINGAR", "SETTINGS"), func(): show_page("settings"))
@@ -251,11 +276,11 @@ func _page_rules() -> void:
 	_title(_t("VÄLJ REGLER", "CHOOSE RULES"), 12)
 	_button(_t("RIKTIG KUBB", "REAL KUBB"), func():
 		Settings.set_value("rules", "real")
-		show_page("baton"))
+		show_page("difficulty"))
 	_text(_t("  6 pinnar per tur. Rör du kungen för tidigt dör du.", "  6 batons per turn. Touch the king too early and you die."))
 	_button(_t("FÖRENKLAD", "SIMPLIFIED"), func():
 		Settings.set_value("rules", "simple")
-		show_page("baton"))
+		show_page("difficulty"))
 	_text(_t("  8 pinnar per tur. Fällda kubbar kastas bort, inget inkast. Samma död.", "  8 batons per turn. Felled kubbs are thrown away, no tossing back. Same death."))
 	_button(_t("TILLBAKA", "BACK"), func(): show_page("pause" if paused_menu else "title"))
 
@@ -274,10 +299,12 @@ func _page_settings() -> void:
 	_slider(_t("VOLYM", "VOLUME"), "volume", 0.0, 1.0, 0.05)
 	_slider(_t("MUSIK", "MUSIC"), "music", 0.0, 1.0, 0.05)
 	_slider(_t("PS1-DARR", "PS1 WOBBLE"), "wobble", 0.0, 1.0, 0.1)
+	_slider(_t("SKAKNING", "SCREEN SHAKE"), "shake", 0.0, 1.5, 0.1)
 	_toggle(_t("HELSKÄRM", "FULLSCREEN"), "fullscreen")
 	_toggle(_t("SIKTHJÄLP", "AIM ASSIST"), "aim_assist")
 	_toggle(_t("KRAFTMÄTARE", "POWER METER"), "power_meter")
 	_toggle(_t("TIPS PÅ SKÄRMEN", "ON-SCREEN TIPS"), "show_hints")
+	_toggle(_t("VISA TID FÖR RUNNEN", "SHOW RUN TIMER"), "show_timer")
 	_button(_t("TILLBAKA", "BACK"), func(): show_page("pause" if paused_menu else "title"))
 
 
@@ -306,6 +333,13 @@ func _page_pause() -> void:
 		_text(_t("Pinne: %s   Kubbar: %s", "Baton: %s   Kubbs: %s") % [Cards.title(Run.cur_baton()), ", ".join(names) if not names.is_empty() else "-"], Color(1.0, 0.9, 0.6))
 		if not Run.temp_names.is_empty():
 			_text(_t("Denna match: ", "This match: ") + ", ".join(Run.temp_names), Color(0.7, 1.0, 0.7))
+		var kn: Array[String] = []
+		for c in Run.keyring:
+			kn.append(Cards.charm_title(c))
+		_text(_t("Natt %d (%s)   Svårighet: %s   Tänder %d", "Night %d (%s)   Difficulty: %s   Teeth %d") % [Run.night, Cards.night_title(Run.night_mod),
+			Cards.pick_title(Cards.DIFFICULTY, Run.difficulty), Run.teeth], Color(0.8, 0.8, 1.0))
+		if not kn.is_empty():
+			_text(_t("Nyckelring: ", "Key ring: ") + ", ".join(kn), Color(0.95, 0.85, 0.45))
 	_button(_t("FORTSÄTT", "RESUME"), func(): resume_pressed.emit())
 	_button(_t("BÖRJA OM RUNDAN", "RESTART ROUND"), func(): restart_pressed.emit())
 	_button(_t("INSTÄLLNINGAR", "SETTINGS"), func(): show_page("settings"))
@@ -428,20 +462,23 @@ func _page_baton() -> void:
 		Sfx.play("click", -6.0)
 		show_page("baton"))
 	nav.add_child(nxt)
-	_button(_t("TILLBAKA", "BACK"), func(): show_page("rules"))
+	_button(_t("TILLBAKA", "BACK"), func(): show_page("title" if daily_pending else "difficulty"))
 
 
 func _page_shop() -> void:
 	_title(_t("KRÅKMORS BOD", "CROW MOTHER'S SHOP"), 12)
-	_text(_t("Tänder %d   Uppgraderade kubbar %d/5   Natt %d", "Teeth %d   Upgraded kubbs %d/5   Night %d") % [
-		Run.teeth, Run.slots_used(), Run.night], Color(1.0, 0.9, 0.6))
+	var slots := ""
+	for i in Cards.MAX_CHARMS:
+		slots += "●" if i < Run.keyring.size() else "○"
+	_text(_t("Tänder %d   Uppgraderade kubbar %d/5   Natt %d   Nyckelring %s", "Teeth %d   Upgraded kubbs %d/5   Night %d   Key ring %s") % [
+		Run.teeth, Run.slots_used(), Run.night, slots], Color(1.0, 0.9, 0.6))
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 3)
 	_box.add_child(row)
 	for id in _offers:
 		var price := Run.price(id)
 		var ok := Run.teeth >= price
-		_card_panel(id, row, _t("%d tänder", "%d teeth") % price, _t("KÖP", "BUY"), func():
+		_card_panel(id, row, (_t("REA! ", "SALE! ") if id == Run.sale_id else "") + _t("%d tänder", "%d teeth") % price, _t("KÖP", "BUY"), func():
 			_pending = id
 			show_page("slot"), ok)
 	if _curse != "":
@@ -582,7 +619,7 @@ func _page_shop2() -> void:
 		var d: Dictionary = PACKS[pk]
 		var pr := maxi(1, int(d.price) - int(Run.mod("shop_discount")))
 		var done: bool = pk in _packs_bought
-		var full: bool = pk == "charm" and Run.keyring.size() >= Cards.MAX_CHARMS
+		var full: bool = (pk == "charm" and (Run.keyring.size() >= Cards.MAX_CHARMS or _charm_pool().is_empty())) or (pk == "kubb" and Run.shop_pool().is_empty())
 		var kind: String = pk
 		_mini_card("pack", d.col, d[Lang.current][0], d[Lang.current][1], _t("%d tänder", "%d teeth") % pr,
 			_t("ÖPPNAT", "OPENED") if done else _t("ÖPPNA", "OPEN"), func():
@@ -591,6 +628,7 @@ func _page_shop2() -> void:
 				Run.teeth -= pr
 				_packs_bought.append(kind)
 				_open_pack(kind), not done and not full and Run.teeth >= pr, row)
+	_charm_offers.assign(_charm_offers.filter(func(c): return not c in Run.keyring))
 	for id in _charm_offers:
 		var cpr := Run.charm_price(id)
 		var cid: String = id
@@ -600,6 +638,15 @@ func _page_shop2() -> void:
 				_charm_offers.erase(cid)
 				Sfx.play("coin", -4.0, 1.3)
 			show_page("shop2"), Run.teeth >= cpr and Run.keyring.size() < Cards.MAX_CHARMS, row)
+	var crr := Button.new()
+	crr.text = _t("NYA BERLOCKER (3 tänder)", "NEW CHARMS (3 teeth)")
+	crr.disabled = Run.teeth < 3
+	crr.pressed.connect(func():
+		Run.teeth -= 3
+		_charm_offers.assign(_charm_pool().slice(0, 2))
+		Sfx.play("click", -6.0)
+		show_page("shop2"))
+	_box.add_child(crr)
 	# nyckelringen
 	var kr := HFlowContainer.new()
 	kr.custom_minimum_size.x = 600
@@ -666,6 +713,8 @@ func _page_shop2() -> void:
 
 
 var _pack_after := "shop2"
+var _pack_extra := 0
+var daily_pending := false
 
 
 func _pack_done() -> void:
@@ -675,9 +724,10 @@ func _pack_done() -> void:
 
 
 ## Belöning efter vunnen match: ett gratis boosterpaket, välj 1.
-func reward_pack() -> void:
+func reward_pack(big := false) -> void:
 	visible = true
 	_pack_after = "map"
+	_pack_extra = 1 if big else 0
 	var r := randf()
 	var kind := "kubb" if r < 0.45 else ("rune" if r < 0.8 else "charm")
 	if kind == "charm" and Run.keyring.size() >= Cards.MAX_CHARMS:
@@ -690,7 +740,8 @@ func reward_pack() -> void:
 func _open_pack(kind: String) -> void:
 	_pack_kind = kind
 	_pack_items.clear()
-	var n: int = PACKS[kind].n
+	var n: int = PACKS[kind].n + _pack_extra
+	_pack_extra = 0
 	match kind:
 		"kubb":
 			var pool := Run.shop_pool()
@@ -724,7 +775,8 @@ func _page_pack() -> void:
 					show_page("slot"))
 			"rune":
 				var rk: String = Cards.RUNES[id].get("kind", "enh")
-				_mini_card(rk if rk in ["enh", "ed", "seal"] else "enh", Cards.RUNES[id].col, Cards.rune_title(id), Cards.rune_desc(id), _t("GRATIS", "FREE"), _t("TA", "TAKE"), func():
+				var rtag: String = {"enh": _t("FÖRSTÄRKNING", "ENHANCEMENT"), "ed": _t("UTGÅVA", "EDITION"), "seal": _t("SIGILL", "SEAL")}.get(rk, "")
+				_mini_card(rk if rk in ["enh", "ed", "seal"] else "enh", Cards.RUNES[id].col, Cards.rune_title(id), Cards.rune_desc(id), rtag + "  " + _t("GRATIS", "FREE"), _t("TA", "TAKE"), func():
 					_pending = "pr:" + iid
 					show_page("slot"), true, row)
 			"charm":
@@ -733,14 +785,57 @@ func _page_pack() -> void:
 					_charm_offers.erase(iid)
 					Sfx.play("coin", -4.0, 1.3)
 					_pack_done(), Run.keyring.size() < Cards.MAX_CHARMS, row)
-	# paketet poppar in
-	row.pivot_offset = Vector2(180, 75)
-	row.scale = Vector2(0.6, 0.6)
-	row.modulate.a = 0.0
-	var tw := create_tween().set_parallel(true)
-	tw.tween_property(row, "scale", Vector2.ONE, 0.35).set_trans(Tween.TRANS_BACK)
-	tw.tween_property(row, "modulate:a", 1.0, 0.2)
+	# korten vänds upp ett i taget
+	var ci := 0
+	for c in row.get_children():
+		var cc: Control = c
+		cc.modulate.a = 0.0
+		var tw := create_tween()
+		tw.tween_interval(0.12 + ci * 0.22)
+		tw.tween_callback(func():
+			cc.pivot_offset = cc.size * 0.5
+			cc.scale = Vector2(0.1, 1.15)
+			cc.modulate.a = 1.0
+			Sfx.play("clack", -8.0, 1.2 + ci * 0.15))
+		tw.tween_property(cc, "scale", Vector2.ONE, 0.22).set_trans(Tween.TRANS_BACK)
+		ci += 1
 	_button(_t("HOPPA ÖVER", "SKIP"), func(): _pack_done())
+
+
+func _page_difficulty() -> void:
+	_title(_t("VÄLJ SVÅRIGHET", "CHOOSE DIFFICULTY"), 12)
+	for id in Cards.DIFFICULTY:
+		var did: String = id
+		var b := _button(Cards.pick_title(Cards.DIFFICULTY, id).to_upper() + ("  <" if Settings.difficulty == id else ""), func():
+			Settings.set_value("difficulty", did)
+			show_page("baton"))
+		b.tooltip_text = Cards.pick_desc(Cards.DIFFICULTY, id)
+		_text("  " + Cards.pick_desc(Cards.DIFFICULTY, id))
+	_button(_t("TILLBAKA", "BACK"), func(): show_page("rules"))
+
+
+func _page_bragder() -> void:
+	var got: Array = Run.lifetime.get("bragder", [])
+	_title(_t("BRAGDER %d/%d", "FEATS %d/%d") % [got.size(), Cards.BRAGDER.size()], 12)
+	var grid := GridContainer.new()
+	grid.columns = 2
+	grid.add_theme_constant_override("h_separation", 12)
+	_box.add_child(grid)
+	for id in Cards.BRAGDER:
+		var l := Label.new()
+		var ok: bool = id in got
+		l.text = ("✓ " if ok else "· ") + Cards.pick_title(Cards.BRAGDER, id) + ": " + Cards.pick_desc(Cards.BRAGDER, id)
+		l.add_theme_color_override("font_color", Color(1.0, 0.85, 0.4) if ok else Color(0.5, 0.42, 0.4))
+		l.custom_minimum_size.x = 290
+		l.autowrap_mode = TextServer.AUTOWRAP_WORD
+		grid.add_child(l)
+	var rec: Dictionary = Run.lifetime.get("opp", {})
+	if not rec.is_empty():
+		var parts: Array[String] = []
+		for o in rec:
+			parts.append("%s %d-%d" % [_node_name({"type": "match", "opp": o}).trim_prefix("MATCH: "), rec[o][0], rec[o][1]])
+		_text(_t("Mot motståndarna (vinst-förlust): ", "Against opponents (win-loss): ") + "   ".join(parts), Color(0.8, 0.7, 0.6))
+	_button(_t("TILLBAKA", "BACK"), func(): show_page("title"))
 
 
 func _page_victory() -> void:
@@ -848,7 +943,8 @@ func _page_slot() -> void:
 
 
 func _node_name(n: Dictionary) -> String:
-	var opp_name := {"vedgubben": _t("VEDGUBBEN", "THE WOODMAN"), "birgit": "BIRGIT", "tjock_leffe": _t("TJOCK-LEFFE", "FAT LEFFE")}
+	var opp_name := {"vedgubben": _t("VEDGUBBEN", "THE WOODMAN"), "birgit": "BIRGIT", "tjock_leffe": _t("TJOCK-LEFFE", "FAT LEFFE"),
+		"mummlan": _t("MUMMLAN", "THE MUMBLER"), "leif": "LEIF"}
 	match n.type:
 		"match": return _t("MATCH: ", "MATCH: ") + opp_name.get(n.opp, "?")
 		"elite": return _t("ELIT: ", "ELITE: ") + opp_name.get(n.opp, "?")
@@ -859,10 +955,19 @@ func _node_name(n: Dictionary) -> String:
 	return "?"
 
 
+func _opp_rule(id: String) -> String:
+	match id:
+		"vedgubben": return _t("Stirrar: precisionen går fortare natt 2+.", "Stares: accuracy runs faster on night 2+.")
+		"birgit": return _t("Nynnar: kraftmätaren går fortare.", "Hums: the power meter runs faster.")
+		"mummlan": return _t("Mumlar: precisionen går fortare, stjäl mer.", "Mumbles: faster accuracy, steals more.")
+		"leif": return _t("Regler: hans kubbar är tyngre.", "Rules: his kubbs are heavier.")
+	return ""
+
+
 func _node_desc(n: Dictionary) -> String:
 	match n.type:
-		"match": return _t("Vanlig match.", "Regular match.")
-		"elite": return _t("Svårare. 50 % fler tänder.", "Harder. 50% more teeth.")
+		"match": return _t("Vanlig match. ", "Regular match. ") + _opp_rule(n.get("opp", ""))
+		"elite": return _t("Svårare. 50 % fler tänder. ", "Harder. 50% more teeth. ") + _opp_rule(n.get("opp", ""))
 		"boss": return _t("Han äter dina pinnar.", "He eats your batons.")
 		"shop": return _t("Köp kubbar och ödeskort.", "Buy kubbs and fate cards.")
 		"fate": return _t("Välj ett gratis ödeskort.", "Pick a free fate card.")
@@ -1008,7 +1113,24 @@ var _last_grave := ""
 func back() -> bool:
 	## Esc i menyn. Returnerar true om den hanterades.
 	if page == "baton":
+		show_page("difficulty" if not daily_pending else "title")
+		return true
+	if page == "difficulty":
 		show_page("rules")
+		return true
+	if page in ["bragder"]:
+		show_page("title")
+		return true
+	if page == "shop2":
+		show_page("shop")
+		return true
+	if page == "pack":
+		_pack_done()
+		return true
+	if page == "slot":
+		var was_pack := _pending.begins_with("pk:") or _pending.begins_with("pr:")
+		_pending = ""
+		show_page("pack" if was_pack else "shop")
 		return true
 	if page in ["settings", "controls", "rules"]:
 		show_page("pause" if paused_menu else "title")

@@ -2,7 +2,7 @@
 
 Läskig (men mest rolig) roguelike-kubb i PS1-stil. Haunted midsommar: en äng i skymningen under en blodröd måne, och Vedgubben väntar på andra sidan planen.
 
-Version **v0.19**: runs över tre nätter med riktiga kubbregler, en kubblek med 67 specialkubbar, 34 pinnar att låsa upp och ett träningsläge där du kastar på Gösta, en ful hund som ingen äger.
+Version **v0.20**: runs över tre nätter med riktiga kubbregler, en kubblek med 67 specialkubbar, 34 pinnar att låsa upp och ett träningsläge där du kastar på Gösta, en ful hund som ingen äger.
 
 Nytt i v0.12-0.13 (grafik): 16:9, 640x360 internt uppskalat exakt 3x till ett 1920x1080-fönster, procedurella pixelart-kort (ditherad bakgrund, ram med hörnprydnader, ikon per korttyp) i scripts/ui/art.gd, pixelramar på alla paneler och knappar, och ordnad 4x4-dithering över 3D-bilden (shaders/dither.gdshader).
 
@@ -18,6 +18,7 @@ Nytt i v0.11 (Balatro-poäng):
 - v0.17: marker x multi syns bara under räkningen, fienden stjäl poäng när han fäller dina kubbar, poäng blir tänder efter matchen. Kråkmors bakficka: boosterpaket, nyckelring med 18 berlocker och uppgradering av försvar (I-III). Varje natt har ett väder (dimma, fullmåne, regn, korpnatt, blodregn, midsommar). Egna dödar: Vedgubben spricker i ved, Birgit blir kråkor, Leffe smäller i korvar. Tjock-Leffe har tre faser. Mer dialog och en tutorial med Gösta, som nu stönar, krymper och går upp en ton per träff.
 - v0.18: efter varje vunnen match öppnar du ett gratis boosterpaket (kubbar, runor eller berlocker) och väljer 1.
 - v0.19: precisionen spelar större roll i sidled (mer spridning utanför det gröna, svagare siktmagnet). Faller kungen innan alla kubbar på motståndarsidan ligger förlorar den som kastade, även om kungen bara knuffas omkull. Fäller du sista kubben måste kungen falla samma tur, annars förlorar du (gäller honom också). Kungen är lättare att välta.
+- v0.20: två nya motståndare (Mummlan och Leif), svårighetsval (Ängen, Natten, Blodmånen), Dagens natt med samma frö för alla, 16 bragder och rekord mot varje motståndare, 6 nya berlocker, 2 nya nätter (stjärnfall, vargtimme), Gösta springer över planen mitt i matcher, kråkans guldtand, guldkubbar (x2), REA i boden, omslumpning av berlocker, klocka, 4 ödeskort, 4 kubbar och 2 pinnkort. Kungspinnar ger nu +2 pinnar. Vädereffekter, hitstop och zoom på stora kast, röd blink när han stjäl, dödstext som skrivs fram. 10 buggfixar och en balansbot (--balance=N).
 - v0.14: håll Tab för spelplanen uppifrån: var varje kubb står, numrerade dina kubbar med runfärg, hans specialkubbar i rött, plus listan över allt kubbarna bär.
 
 ## Kör spelet
@@ -28,7 +29,7 @@ Nytt i v0.11 (Balatro-poäng):
 
 ## En run
 
-- **Karta:** varje natt väljer du väg genom fem steg: match (Vedgubben eller Birgit), Kråkmors bod, Ödesstenen (gratis ödeskort), Gravgården (gräv efter tänder eller begrav en kubb), en elitmatch (svårare, 50 % fler tänder) och sist bossen Tjock-Leffe, som äter upp en av dina pinnar varje tur. Natten gör motståndarna bättre, och de är svåra. Förlorar du är hela runnen slut.
+- **Karta:** varje natt väljer du väg genom fem steg: match (Vedgubben, Birgit, Mummlan eller Leif), Kråkmors bod, Ödesstenen (gratis ödeskort), Gravgården (gräv efter tänder eller begrav en kubb), en elitmatch (svårare, 50 % fler tänder) och sist bossen Tjock-Leffe, som äter upp en av dina pinnar varje tur. Natten gör motståndarna bättre, och de är svåra. Förlorar du är hela runnen slut.
 - **Den oändliga natten:** klarar du tre nätter kan du fortsätta in i natt 4, 5, 6 ... så länge du överlever.
 - **Birgit:** tant i midsommarklänning som stickar och nynnar (kraftmätaren går fortare) och stickar en extra pinne åt sig natt 2 och 3.
 - **Hans specialkubbar:** motståndaren smyger in egna kubbar på sin baslinje (slump, fler senare nätter). De straffar dig: Taggkubben tar tänder, Kådakubben stoppar pinnen, Spegelvända fäller en av dina egna, Slukaren äter en pinne.

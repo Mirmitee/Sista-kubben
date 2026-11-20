@@ -9,7 +9,7 @@ const META_PATH := "user://meta.cfg"
 const MAX_CARDS := 5
 const NIGHTS := 3
 const OPPONENTS := ["vedgubben", "tjock_leffe"]  # gammal ordning (används om ingen karta)
-const NORMAL_OPPS := ["vedgubben", "birgit"]
+const NORMAL_OPPS := ["vedgubben", "birgit", "mummlan", "leif"]
 
 var active := false
 var night := 1
@@ -32,6 +32,10 @@ var hand: Array[String] = []
 var keyring: Array[String] = []        # berlocker (jokrar) hela runnen
 var def_lvl: Array[int] = [0, 0, 0, 0, 0]  # försvarsnivå per plats
 var night_mod := "stilla"
+var difficulty := "natten"
+var daily := false
+var sale_id := ""          # Kråkmors REA: ett kort till halva priset
+var run_time := 0.0        # sekunder i den här runnen
 var tutorial := false
 var override := ""
 var score_total := 0
@@ -64,7 +68,15 @@ func _ready() -> void:
 	load_meta()
 
 
-func start(baton_id: String) -> void:
+func start(baton_id: String, is_daily := false) -> void:
+	daily = is_daily
+	if daily:
+		# samma natt för alla: fröet är dagens datum
+		var d := Time.get_date_dict_from_system()
+		seed(hash("%04d-%02d-%02d" % [d.year, d.month, d.day]))
+	else:
+		randomize()
+	run_time = 0.0
 	active = true
 	night = 1
 	match_index = 0
@@ -176,6 +188,9 @@ func mod(key: String, default := 0.0) -> float:
 		var cm: Dictionary = Cards.CHARMS[c].mods
 		if cm.has(key):
 			v = v * cm[key] if mult else v + cm[key]
+	var dm: Dictionary = Cards.DIFFICULTY.get(difficulty, {}).get("mods", {})
+	if dm.has(key):
+		v = v * dm[key] if mult else v + dm[key]
 	var nm: Dictionary = Cards.NIGHT_MODS.get(night_mod, {}).get("mods", {})
 	if nm.has(key):
 		v = v * nm[key] if mult else v + nm[key]
@@ -263,14 +278,36 @@ func roll_night() -> void:
 
 
 func charm_price(id: String) -> int:
-	return maxi(1, int(Cards.CHARMS[id].price) - int(mod("shop_discount")))
+	return maxi(1, int(Cards.CHARMS[id].price) + (night - 1) - int(mod("shop_discount")))
 
 
 func add_charm(id: String) -> bool:
 	if keyring.size() >= Cards.MAX_CHARMS or id in keyring:
 		return false
 	keyring.append(id)
+	if keyring.size() >= Cards.MAX_CHARMS:
+		grant("full_ring")
 	return true
+
+
+## En bragd låses upp (en gång, sparas mellan runs).
+func grant(id: String) -> void:
+	if not lifetime.has("bragder"):
+		lifetime["bragder"] = []
+	if id in lifetime.bragder or not Cards.BRAGDER.has(id):
+		return
+	lifetime.bragder.append(id)
+	save_meta()
+	unlocked.emit(("BRAGD: " if Lang.current == "sv" else "FEAT: ") + Cards.pick_title(Cards.BRAGDER, id))
+
+
+## Vinster och förluster mot varje motståndare.
+func note_opp(id: String, won: bool) -> void:
+	if not lifetime.has("opp"):
+		lifetime["opp"] = {}
+	var r: Array = lifetime.opp.get(id, [0, 0])
+	r[0 if won else 1] += 1
+	lifetime.opp[id] = r
 
 
 func def_up_price(slot: int) -> int:
@@ -364,7 +401,8 @@ func price(id: String) -> int:
 	var d: Dictionary = Cards.DEFS[id]
 	if d.get("cursed", false):
 		return 0
-	return maxi(1, int(d.price) - int(mod("shop_discount")))
+	var p := maxi(1, int(d.price) + (night - 1) - int(mod("shop_discount")))
+	return maxi(1, p / 2) if id == sale_id else p
 
 
 func is_unlocked_baton(id: String) -> bool:
@@ -452,6 +490,7 @@ func sell(slot: int) -> void:
 	if id == "":
 		return
 	cards[slot] = ""
+	def_lvl[slot] = 0
 	var d: Dictionary = Cards.DEFS[id]
 	if not d.get("cursed", false):
 		teeth += int(d.price / 2)

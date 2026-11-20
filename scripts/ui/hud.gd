@@ -74,7 +74,7 @@ func _ready() -> void:
 	_flash = _label(14, Color(1.0, 0.85, 0.2), Vector2(0, 96), Vector2(640, 20))
 	_flash.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	var ver := _label(8, Color(0.8, 0.15, 0.1), Vector2(546, 349))
-	ver.text = "SISTA KUBBEN v0.19"
+	ver.text = "SISTA KUBBEN v0.20"
 	_teeth = _label(8, Color(1.0, 0.95, 0.75), Vector2(422, 40), Vector2(210, 10))
 	_teeth.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	_cards = _label(8, Color(0.75, 0.7, 0.85), Vector2(422, 52), Vector2(210, 120))
@@ -404,12 +404,16 @@ func popup(at: Vector2, text: String) -> void:
 ## Du träffade kungen. Skärmen blöder långsamt rött, inga hoppskräck.
 func death(title: String, sub: String) -> void:
 	_death.text = title + "\n\n" + sub
+	_death.visible_ratio = 0.0
 	var tw := create_tween().set_parallel(true)
 	tw.tween_property(_blood, "color:a", 0.65, 1.6)
 	tw.tween_property(_death, "modulate:a", 1.0, 1.2).set_delay(0.8)
+	# texten skrivs fram bokstav för bokstav, som en dödsruna
+	tw.tween_property(_death, "visible_ratio", 1.0, 2.4).set_delay(0.9)
 
 
 func clear_death() -> void:
+	_death.visible_ratio = 1.0
 	_blood.color.a = 0.0
 	_death.modulate.a = 0.0
 
@@ -956,3 +960,67 @@ func _process(dt: float) -> void:
 	var f := clampf(_shown / float(_goal), 0.0, 1.0)
 	_bar.size.x = 110.0 * f
 	_bar.color = Color(0.85, 0.1, 0.08).lerp(Color(1.0, 0.8, 0.2), f)
+
+
+## Nollställ räkningsrutorna helt (match slut mitt i en räkning).
+func tally_reset() -> void:
+	if _tally_tw:
+		_tally_tw.kill()
+	if _show_tw:
+		_show_tw.kill()
+	_chips_lbl.text = "0"
+	_mult_lbl.text = "0"
+	_total_lbl.text = ""
+	_tally_root.visible = false
+	_tally_root.modulate.a = 0.0
+	_score_panel.size.y = 54.0
+	_tally_on = false
+	_heat = 0.0
+	tally_steal(false)
+
+
+var _red: ColorRect
+
+
+## Kort röd blink när han stjäl.
+func red_flash() -> void:
+	if _red == null:
+		_red = ColorRect.new()
+		_red.set_anchors_preset(Control.PRESET_FULL_RECT)
+		_red.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_red.color = Color(0.7, 0.0, 0.02, 0.0)
+		add_child(_red)
+	_red.color.a = 0.35
+	var tw := create_tween()
+	tw.tween_property(_red, "color:a", 0.0, 0.5)
+
+
+## Nyckelringen skramlar när en berlock slår till.
+func jingle() -> void:
+	_icons.pivot_offset = Vector2(0, 5)
+	var tw := create_tween()
+	for k in 4:
+		tw.tween_property(_icons, "rotation", (0.06 if k % 2 == 0 else -0.06), 0.05)
+	tw.tween_property(_icons, "rotation", 0.0, 0.05)
+	_pulse(_teeth, 1.25)
+
+
+var _extra: Label
+
+
+## Liten rad under poängen: hur mycket han stulit, ungefär hur många tänder du får, klocka.
+func set_extra(stolen: int, teeth: int, clock: String) -> void:
+	if _extra == null:
+		_extra = _mk(7, Color(0.85, 0.6, 0.5), "")
+		_extra.position = Vector2(4, 54)
+		_extra.size = Vector2(124, 10)
+		_score_root.add_child(_extra)
+	if stolen < 0:
+		_extra.text = ""
+		return
+	var sv := Lang.current == "sv"
+	var t := ("STULET %d  ≈%d TÄNDER" if sv else "STOLEN %d  ≈%d TEETH") % [stolen, teeth]
+	if clock != "":
+		t += "  " + clock
+	_extra.text = t
+	_extra.visible = not _tally_on

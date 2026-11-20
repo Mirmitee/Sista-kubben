@@ -5,6 +5,10 @@ class_name Dog
 extends AnimatableBody3D
 
 signal spoke(who: String, text: String)
+signal popped
+signal ran_off
+
+var in_match := false  # Gösta springer över planen mitt i en match
 
 const AREA := Rect2(-2.2, -8.5, 4.4, 5.0)  # x, z, bredd, djup
 
@@ -123,10 +127,22 @@ func bonk() -> void:
 	Sfx.play("groan", 2.0, 0.75 * pow(1.122, streak))
 	if streak == 8:
 		_size = 1.0
+		popped.emit()
 		spoke.emit("GÖSTA", "*POFF* " + ("Gösta är tillbaka i full storlek. Han har inte förlåtit dig." if Lang.current == "sv" else "Gösta is back to full size. He has not forgiven you."))
 	else:
 		_size = maxf(_size * 0.84, 0.3)
 		say("hit")
+
+
+## Spring tvärs över planen från ena sidan till den andra.
+func run_across(z: float) -> void:
+	in_match = true
+	var left := randf() < 0.5
+	global_position = Vector3(-3.6 if left else 3.6, 0, z)
+	_target = Vector3(3.8 if not left else -3.8, 0, z + randf_range(-0.8, 0.8))
+	_speed = randf_range(1.1, 1.6)
+	_state = "run"
+	rotation.y = atan2(-(_target.x - global_position.x), -(_target.z - global_position.z))
 
 
 func _pick_target() -> void:
@@ -157,10 +173,25 @@ func _physics_process(dt: float) -> void:
 				_state = "walk"
 		"down":
 			if _timer <= 0:
+				if in_match:
+					_state = "run"
+					_speed = 2.6  # han har fått nog, han springer
+				else:
+					_state = "walk"
+					_pick_target()
+		"run":
+			var to2 := _target - pos
+			to2.y = 0
+			if to2.length() < 0.15:
+				in_match = false
 				_state = "walk"
-				_pick_target()
+				ran_off.emit()
+			else:
+				var dir2 := to2.normalized()
+				rotation.y = lerp_angle(rotation.y, atan2(-dir2.x, -dir2.z), dt * 6.0)
+				global_position = pos + dir2 * _speed * dt
 	# animation
-	var walking := _state == "walk"
+	var walking := _state == "walk" or _state == "run"
 	for i in _legs.size():
 		var ph := 0.0 if i in [0, 3] else PI
 		_legs[i].rotation.x = sin(_t * 9.0 + ph) * 0.6 if walking else 0.0

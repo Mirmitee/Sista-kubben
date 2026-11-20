@@ -24,6 +24,8 @@ func _ready() -> void:
 	_streams["coin"] = _make(0.25, _coin)
 	_streams["caw"] = _make(0.7, _caw)
 	_streams["groan"] = _make(1.5, _groan)
+	_streams["heart"] = _make(0.7, _heart)
+	_streams["howl"] = _make(2.2, _howl)
 	for i in 12:
 		var p := AudioStreamPlayer.new()
 		add_child(p)
@@ -302,3 +304,21 @@ func _groan(t: float, d: float, st: Dictionary) -> float:
 		rattle = (1.0 if fmod(t * 23.0, 1.0) < 0.35 else 0.0) * st.rng.randf_range(-1, 1) * 0.5
 	var env := minf(t * 6.0, 1.0) * clampf((d - t) * 2.0, 0.0, 1.0)
 	return clampf((v * rasp * 0.24 + breath + rattle) * env, -1.0, 1.0)
+
+
+func _heart(t: float, _d: float, _st: Dictionary) -> float:
+	# dunk-dunk: ett hjärta som slår för fort
+	var v := 0.0
+	for o in [0.0, 0.22]:
+		var tt: float = t - o
+		if tt > 0.0:
+			v += sin(TAU * (55.0 - tt * 40.0) * tt) * exp(-tt * 22.0) * (1.0 if o == 0.0 else 0.7)
+	return v * 0.9
+
+
+func _howl(t: float, d: float, st: Dictionary) -> float:
+	# ett ylande långt borta i skogen
+	var f := 330.0 + 140.0 * sin(PI * t / d) + sin(TAU * 5.0 * t) * 6.0
+	st.lp = lerpf(st.lp, st.rng.randf_range(-1, 1), 0.05)
+	var env := sin(PI * t / d)
+	return (sin(TAU * f * t) * 0.5 + sin(TAU * f * 2.0 * t) * 0.15 + st.lp * 0.3) * env * 0.4

@@ -232,11 +232,45 @@ static func icon(img: Image, kind: String, c: Color, o: Vector2i, seed := 1) -> 
 				_px(img, o.x + int(cos(ang) * 7), o.y - 4 + int(sin(ang) * 7), metal.darkened(0.3 * sin(ang + 1.0)))
 				_px(img, o.x + int(cos(ang) * 6), o.y - 4 + int(sin(ang) * 6), dark)
 			_line(img, Vector2i(o.x + 2, o.y + 3), Vector2i(o.x + 5, o.y + 9), dark, 2)
-			for y in range(-3, 4):
-				for x in range(-3, 4):
-					if x * x + y * y <= 9:
-						_px(img, o.x + 6 + x, o.y + 11 + y, _dq(c.lightened(0.15 - y * 0.05), x, y, 5.0))
-			_px(img, o.x + 5, o.y + 10, Color(1, 1, 1))
+			# varje berlock får en egen dingeltingest: kula, tand, ben, fjäder eller öga
+			var cx := o.x + 6
+			var cy := o.y + 11
+			match absi(seed) % 5:
+				0:
+					for y in range(-3, 4):
+						for x in range(-3, 4):
+							if x * x + y * y <= 9:
+								_px(img, cx + x, cy + y, _dq(c.lightened(0.15 - y * 0.05), x, y, 5.0))
+					_px(img, cx - 1, cy - 1, Color(1, 1, 1))
+				1:
+					# tand
+					var tc := Color(0.95, 0.92, 0.8)
+					_rect(img, cx - 3, cy - 3, 7, 4, tc)
+					_rect(img, cx - 3, cy + 1, 2, 3, tc)
+					_rect(img, cx + 2, cy + 1, 2, 3, tc)
+					_px(img, cx - 2, cy - 2, Color(1, 1, 1))
+					_px(img, cx + 3, cy + 3, Color(0.6, 0.1, 0.05))
+				2:
+					# ben
+					var bc := Color(0.9, 0.86, 0.75)
+					_line(img, Vector2i(cx - 3, cy - 3), Vector2i(cx + 3, cy + 3), bc, 2)
+					for p in [Vector2i(-4, -3), Vector2i(-3, -4), Vector2i(4, 3), Vector2i(3, 4)]:
+						_rect(img, cx + p.x - 1, cy + p.y - 1, 2, 2, bc)
+				3:
+					# kråkfjäder
+					_line(img, Vector2i(cx, cy - 4), Vector2i(cx + 1, cy + 5), dark, 1)
+					for y in range(-3, 5):
+						var hw := 2 - absi(y - 1) / 2
+						for x in range(-hw, hw + 1):
+							_px(img, cx + x, cy + y, _dq(c.darkened(0.5).lerp(Color(0.1, 0.1, 0.2), 0.5), x, y, 4.0))
+				_:
+					# glasöga
+					for y in range(-3, 4):
+						for x in range(-3, 4):
+							if x * x + y * y <= 9:
+								_px(img, cx + x, cy + y, Color(0.92, 0.9, 0.85))
+					_rect(img, cx - 1, cy - 1, 2, 2, c.darkened(0.2))
+					_px(img, cx, cy, dark)
 			_line(img, Vector2i(o.x - 3, o.y + 3), Vector2i(o.x - 6, o.y + 11), c.darkened(0.3), 2)
 			_rect(img, o.x - 8, o.y + 10, 3, 2, c.darkened(0.3))
 		"def":

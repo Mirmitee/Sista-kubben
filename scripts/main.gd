@@ -109,6 +109,8 @@ func _ready() -> void:
 	dog.setup()
 	add_child(dog)
 	dog.spoke.connect(_on_spoke)
+	dog.ran_off.connect(_on_dog_ran_off)
+	dog.popped.connect(func(): Run.grant("gosta9"))
 	_set_dog_active(false)
 
 	camera = Camera3D.new()
@@ -178,6 +180,11 @@ func _ready() -> void:
 	Settings.changed.connect(_refresh_ui)
 	Sfx.start_ambience()
 
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("--balance="):
+			_autotest = true
+			_run_balance(int(a.substr(10)))
+			return
 	if _autotest:
 		_run_autotest()
 		return
@@ -280,6 +287,14 @@ func _to_menu() -> void:
 	_line_mark.visible = false
 	hud.clear_death()
 	hud.center("")
+	hud.tally_reset()
+	hud.tutorial("")
+	_tut = 0
+	_clear_events()
+	_apply_night_look()
+	_set_weather("")
+	for n in get_tree().get_nodes_in_group("finale"):
+		n.queue_free()
 	menu.paused_menu = false
 	menu.open("title")
 	hud.set_playing(false)
@@ -290,7 +305,9 @@ func _start_run(baton_id: String) -> void:
 	if mode == Mode.MATCH:
 		await hud.fade_out()
 		_to_menu()
-	Run.start(baton_id)
+	Run.start(baton_id, menu.daily_pending)
+	Run.difficulty = "natten" if Run.daily else Settings.difficulty
+	menu.daily_pending = false
 	menu.open("map")
 
 
@@ -389,6 +406,8 @@ func _clear_batons() -> void:
 func _begin_match() -> void:
 	_tut = 0
 	hud.tutorial("")
+	hud.tally_reset()
+	_clear_events()
 	for n in get_tree().get_nodes_in_group("finale"):
 		n.queue_free()
 	_clear_batons()
@@ -410,6 +429,9 @@ func _begin_match() -> void:
 	_match_teeth = Run.teeth
 	Run.king_shield_left = int(Run.mod("king_shield"))
 	_place_deck()
+	_set_weather(Run.night_mod if Run.active else "")
+	if Run.active and randf() < 0.3:
+		call_deferred("_make_golden")
 	_opp_batons_next = 0
 	_line_mark.visible = false
 	turn = 0
@@ -619,6 +641,12 @@ func _start_player_turn() -> void:
 	_throw_no = 0
 	if turn > 1 and randf() < 0.45:
 		opponent.say("chatter")
+	if Run.active and mode == Mode.MATCH:
+		var dog_p := 0.08 + (0.15 if Run.mod("dog_teeth") > 0 else 0.0)
+		if turn > 1 and randf() < dog_p:
+			_dog_run()
+		if randf() < 0.15:
+			_spawn_tooth()
 	if opponent.player_batons_add < 0 and turn > 0:
 		opponent.say("eat")
 	# kyrkklockan: var tredje tur välter en slumpad motståndarkubb
@@ -636,6 +664,10 @@ func _start_player_turn() -> void:
 func _next_baton() -> void:
 	if mode == Mode.MATCH and batons_left <= 0:
 		return
+	if mode == Mode.MATCH and batons_left == 1 and Run.active:
+		# sista pinnen: hjärtat slår och han märker det
+		Sfx.play("heart", 0.0, 1.0)
+		opponent.say("last_baton")
 	if Run.active and mode == Mode.MATCH:
 		Run.override = Run.hand.pop_front() if not Run.hand.is_empty() else ""
 		if Run.override != "":
@@ -685,13 +717,19 @@ func _tut_show() -> void:
 	if _tut <= 0 or _tut >= TUT.size():
 		hud.tutorial("")
 		return
-	hud.tutorial("GÖSTA: " + TUT[_tut][0 if Lang.current == "sv" else 1])
+	hud.tutorial("GÖSTA (%d/%d): " % [_tut, TUT.size() - 1] + TUT[_tut][0 if Lang.current == "sv" else 1])
 	Sfx.play("groan", -10.0, 1.3)
 
 
 ## Nästa steg när spelaren gjort det Gösta bad om.
+var _tut_lock := 0
+
+
 func _tut_event(ev: String) -> void:
 	if mode != Mode.TRAINING or _tut <= 0:
+		return
+	# ett kast får bara flytta tutorialen ett steg
+	if Time.get_ticks_msec() < _tut_lock:
 		return
 	var ok := false
 	match _tut:
@@ -701,6 +739,7 @@ func _tut_event(ev: String) -> void:
 	if not ok:
 		return
 	_tut += 1
+	_tut_lock = Time.get_ticks_msec() + 1200
 	if _tut >= TUT.size():
 		_tut = 0
 		hud.tutorial("")
@@ -748,10 +787,12 @@ func _on_thrown(b: RigidBody3D, info: Dictionary) -> void:
 			Sfx.play("sparkle", -4.0)
 			Fx.sparks(self, b.global_position, Color(1.0, 0.9, 0.4), 18)
 			_streak += 1
+			if _streak >= 5:
+				Run.grant("perfekt5")
 			if _streak >= 2 and mode == Mode.MATCH and Run.active:
 				# perfekt-svit: en extra tand per kast i rad
-				Run.add_teeth(_streak - 1)
-				hud.teeth_popup("+%d %s  %s" % [_streak - 1, Lang.t("teeth"), _tl("SVIT x%d", "STREAK x%d") % _streak])
+				Run.add_teeth(mini(_streak - 1, 3))
+				hud.teeth_popup("+%d %s  %s" % [mini(_streak - 1, 3), Lang.t("teeth"), _tl("SVIT x%d", "STREAK x%d") % _streak])
 		else:
 			_streak = 0
 	_refresh_ui()
@@ -833,6 +874,12 @@ func _on_baton_hit(body: Node, b: Baton) -> void:
 			_tut_event("hit")
 			_slowmo()
 			_shake = 0.5
+			_fov_kick = 6.0
+			if mode == Mode.MATCH and Run.active:
+				var dt2 := 5 + int(Run.mod("dog_teeth"))
+				Run.add_teeth(dt2)
+				hud.big(_tl("DU TRÄFFADE GÖSTA! +%d TÄNDER", "YOU HIT GÖSTA! +%d TEETH") % dt2, Color(1.0, 0.85, 0.4))
+				Run.grant("gosta_match")
 			hud.popup(camera.unproject_position(b.global_position), "VOFF!")
 	else:
 		Sfx.play("thud", linear_to_db(clampf(b.linear_velocity.length() / 8.0, 0.1, 1.0)))
@@ -1084,8 +1131,8 @@ func _fell_effects() -> Array:
 func _run_summary() -> String:
 	if not Run.active and Run.stats.kubbs == 0:
 		return ""
-	return _tl("Natt %d. %d kubbar fällda, %d tänder, %d ödeskort.", "Night %d. %d kubbs felled, %d teeth, %d fate cards.") % [
-		Run.night, Run.stats.kubbs, Run.stats.teeth_total, Run.cards_drawn]
+	return _tl("Natt %d. %d kubbar fällda, %d tänder, %d ödeskort. %d poäng totalt, %d berlocker, tid %s.", "Night %d. %d kubbs felled, %d teeth, %d fate cards. %d points total, %d charms, time %s.") % [
+		Run.night, Run.stats.kubbs, Run.stats.teeth_total, Run.cards_drawn, Run.score_total, Run.keyring.size(), _clock()]
 
 
 ## Ödespoäng: var tredje fälld kubb drar du två ödeskort och väljer ett.
@@ -1187,6 +1234,14 @@ func _apply_fate(id: String) -> void:
 			Run.add_temp("acc_time_mult", 0.8, title)
 		"hans_pinne":
 			_opp_batons_next += 1
+		"kraksang":
+			Run.add_temp("flat_multi", 3, title)
+		"guldkubb":
+			_make_golden()
+		"gostas_ben":
+			_dog_run()
+		"stilla_hand":
+			thrower.force_perfect = true
 	if bad:
 		col = Color(0.85, 0.25, 0.9)
 		Sfx.play("bad", -8.0, 1.3)
@@ -1203,13 +1258,13 @@ const MULT_COL := Color(1.0, 0.3, 0.25)
 const XMULT_COL := Color(1.0, 0.35, 1.0)
 const TEETH_COL := Color(1.0, 0.9, 0.4)
 const TIERS := [1, 2, 4, 8, 16]
-const TIER_TEETH := [3, 3, 5, 8, 12]
+const TIER_TEETH := [1, 2, 2, 3, 5]
 
 
 ## Blodmånens krav för matchen (första nivån).
 func _target() -> int:
 	var n := Run.night if Run.active else 1
-	var t := 120.0 * pow(2.4, n - 1)
+	var t := 450.0 * pow(2.8, n - 1)
 	if Run.is_boss():
 		t *= 1.4
 	if Run.is_elite():
@@ -1275,6 +1330,8 @@ func _kubb_steps(k: Kubb, n: int, first_rep: bool) -> Array:
 			out.append(["x", float(sc.first_xmult), "GRYNING!" if sv else "DAWN!", XMULT_COL])
 		if sc.has("perfect_xmult") and _last_info.get("grade", "") == "perfect":
 			out.append(["x", float(sc.perfect_xmult), "PERFEKT!" if sv else "PERFECT!", XMULT_COL])
+	if k.get_meta("golden", false) and first_rep:
+		out.append(["x", 2.0, "GULDKUBB!" if sv else "GOLD KUBB!", Color(1.0, 0.85, 0.2)])
 	if sl >= 0:
 		if Run.grow_chips[sl] > 0:
 			out.append(["c", Run.grow_chips[sl], "", CHIP_COL])
@@ -1406,6 +1463,15 @@ func _score_throw() -> void:
 	score += total
 	Run.score_total += total
 	Run.lifetime.best_throw = maxi(Run.lifetime.get("best_throw", 0), total)
+	if total >= 1000:
+		Run.grant("tusen")
+	if total >= 10000:
+		Run.grant("tiotusen")
+	if n >= 5:
+		Run.grant("massaker")
+	if total >= _target() * 0.5:
+		_hitstop()
+		_fov_kick = 4.0
 	Run.lifetime.best_score = maxi(Run.lifetime.get("best_score", 0), Run.score_total)
 	_shake = clampf(0.2 + total / 400.0, 0.2, 1.2)
 	Sfx.play("coin", -2.0, clampf(1.6 - total / 2000.0, 0.7, 1.6))
@@ -1467,6 +1533,8 @@ func _charm_steps(n: int, any: Node3D, step: int, cm: Array) -> int:
 	var nx := Run.mod("night_x_mult", 1.0)
 	if nx > 1.0:
 		steps.append(["x", nx, "X%s " % str(nx) + Cards.night_title(Run.night_mod).to_upper(), XMULT_COL])
+	if not steps.is_empty():
+		hud.jingle()
 	for st in steps:
 		match st[0]:
 			"c": chips += int(st[1])
@@ -1508,7 +1576,8 @@ func _opp_score(n: int) -> void:
 	score = maxi(score - total, 0)
 	_stolen += stolen
 	hud.set_score(score, _goal())
-	hud.popup_col(camera.unproject_position(opponent.global_position + Vector3(0, 2.4, 0)), ("-%d POÄNG" if sv else "-%d POINTS") % total, Color(1.0, 0.2, 0.2), 14)
+	hud.popup_col(camera.unproject_position(opponent.global_position + Vector3(0, 2.4, 0)), ("-%d POÄNG" if sv else "-%d POINTS") % stolen, Color(1.0, 0.2, 0.2), 14)
+	hud.red_flash()
 	Sfx.play("bad", -2.0, 0.8)
 	_shake = 0.4
 	opponent.say("steal")
@@ -1829,6 +1898,7 @@ func _king_touched_early() -> void:
 	Sfx.play("clack", 0.0, 0.5)
 	Fx.burst(self, king.global_position + Vector3(0, 0.2, 0), Color(0.9, 0.05, 0.05), 40, 3.5, 1.4, 0.035, 4.0, 1.5, 1.0)
 	Fx.flash_light(self, king.global_position, Color(1, 0.1, 0.05), 8.0, 10.0, 1.2)
+	_cause = "opp_king_early" if current_by_opp else "king_early"
 	if current_by_opp:
 		# motståndaren rörde kungen: du vinner
 		opponent.say("opp_king_death")
@@ -1995,6 +2065,7 @@ func _evaluate() -> void:
 
 	if king.is_fallen():
 		if all_down_before:
+			_cause = "felled_king"
 			opponent.flinch()
 			opponent.say("king_win")
 			_award(0, true)
@@ -2044,6 +2115,11 @@ func _evaluate() -> void:
 	if newly > 0 and _side_cleared("theirs"):
 		opponent.say("all_down")
 		hud.big(_tl("ALLA NERE! FÄLL KUNGEN DEN HÄR TUREN, ANNARS DÖR DU", "ALL DOWN! FELL THE KING THIS TURN OR YOU DIE"), Color(1.0, 0.85, 0.3))
+		if batons_left <= 0:
+			# sista pinnen gick åt: kungen ger dig två chanser
+			batons_left = 2
+			hud.big(_tl("KUNGSPINNAR: +2 PINNAR, SEN ÄR DET SLUT", "KING'S BATONS: +2 BATONS, THEN IT'S OVER"), Color(1.0, 0.95, 0.5))
+			Sfx.play("sparkle", 0.0, 0.6)
 	if newly > 0 and Run.active:
 		await _fate_after_throw(newly)
 	if newly == 0 and not _hit_this_throw and _bdef().has("boomerang"):
@@ -2067,7 +2143,7 @@ func _award(n: int, king_win: bool, bonus := 0, xmult := 1.0) -> void:
 	var t := n * per + bonus
 	var parts: Array[String] = []
 	if n >= 2:
-		var combo := int(3 * (n - 1) * Run.mod("combo_mult", 1.0))
+		var combo := int(1 * (n - 1) * Run.mod("combo_mult", 1.0))
 		t += combo
 		Run.note_combo()
 		parts.append(Lang.t("combo") % n)
@@ -2155,6 +2231,7 @@ func _king_left_standing(by_opp: bool) -> void:
 	_shake = 0.8
 	Sfx.play("bad", 0.0, 0.4)
 	Fx.flash_light(self, king.global_position, Color(1, 0.1, 0.05), 8.0, 10.0, 1.2)
+	_cause = "opp_left_king" if by_opp else "left_king"
 	if by_opp:
 		opponent.say("opp_king_death")
 		hud.big(_tl("HAN LÄMNADE KUNGEN STÅENDE. HAN FÖRLORAR.", "HE LEFT THE KING STANDING. HE LOSES."), Color(1.0, 0.8, 0.3))
@@ -2275,6 +2352,15 @@ func _boss_phase_check() -> bool:
 	Fx.big_boom(self, opponent.global_position + Vector3(0, 0.2, 0.6), 1.0)
 	Fx.flash_light(self, opponent.global_position + Vector3(0, 2.0, 1.0), Color(1.0, 0.2, 0.05), 6.0, 8.0, 0.8)
 	_shake = 0.9
+	var rl: OmniLight3D = opponent.get_node_or_null("ArgLjus")
+	if rl == null:
+		rl = OmniLight3D.new()
+		rl.name = "ArgLjus"
+		rl.light_color = Color(1.0, 0.1, 0.03)
+		rl.omni_range = 4.0
+		rl.position = Vector3(0, 1.4, 0.8)
+		opponent.add_child(rl)
+	rl.light_energy = 1.5 * (want - 1)
 	hud.big(title + "  " + _tl("+1 PINNE, STJÄL MER", "+1 BATON, STEALS MORE"), Color(1.0, 0.3, 0.1))
 	await get_tree().create_timer(1.6).timeout
 	_intro_cam = []
@@ -2342,7 +2428,8 @@ func _opp_throw() -> void:
 	Sfx.play("whoosh", -6.0, 0.9)
 	_begin_flight(b)
 	await _wait_settled()
-	_log("   motst. kast mot %s från %s fart %.1f -> första träff %s, slut %s" % [str(tp.snapped(Vector3.ONE * 0.01)), str(from.snapped(Vector3.ONE * 0.01)), v.length(), str(b.first_contact.snapped(Vector3.ONE * 0.01)), str(b.global_position.snapped(Vector3.ONE * 0.01))])
+	if is_instance_valid(b):
+		_log("   motst. kast mot %s från %s fart %.1f -> första träff %s, slut %s" % [str(tp.snapped(Vector3.ONE * 0.01)), str(from.snapped(Vector3.ONE * 0.01)), v.length(), str(b.first_contact.snapped(Vector3.ONE * 0.01)), str(b.global_position.snapped(Vector3.ONE * 0.01))])
 
 
 func _evaluate_opp() -> void:
@@ -2354,6 +2441,7 @@ func _evaluate_opp() -> void:
 	newly -= await _def_fell()
 	if king.is_fallen():
 		if all_down_before:
+			_cause = "opp_felled_king"
 			opponent.say("lose")
 			hud.death(Lang.t("lost_title"), Lang.t("lost_sub") + "\n" + _run_summary() + "\n\n" + Lang.t("death_restart"))
 			_lose_run()
@@ -2458,35 +2546,58 @@ func _win_match() -> void:
 	_match_over = true
 	state = State.OVER
 	thrower.cancel_hold()
-	var reward := 8 + Run.night * 2 + int(Run.mod("win_teeth_add")) + maxi(batons_left, 0)
+	var reward := 4 + Run.night + int(Run.mod("win_teeth_add")) + mini(maxi(batons_left, 0), 3)
 	if Run.is_elite():
 		reward = int(reward * 1.5)
-	reward += mini(5, int(Run.teeth / 5)) * int(Run.mod("interest"))
+	var interest := mini(5, int(Run.teeth / 5)) * int(Run.mod("interest"))
+	reward += interest
+	var kx := Run.mod("king_x_mult", 1.0)
+	if kx > 1.0 and king.is_fallen():
+		score = int(score * kx)
+		hud.set_score(score, _goal())
 	var conv := _score_teeth()
+	var base_reward := reward - interest
 	reward += conv
 	Run.add_teeth(reward)
+	var oid := Run.opponent_id()
+	var was_big := Run.is_elite() or Run.is_boss()
+	Run.note_opp(oid, true)
+	Run.grant("forsta_vinst")
+	if oid in ["mummlan", "leif"]:
+		Run.grant(oid)
+	if oid == "tjock_leffe":
+		Run.grant("leffe")
+	if _stolen == 0:
+		Run.grant("inget_stulet")
+	if Run.difficulty == "blodmanen":
+		Run.grant("blodmanen")
+	if Run.daily:
+		Run.grant("dagens")
 	var won_all := Run.advance()
+	if won_all:
+		Run.grant("tre_natter")
+		Run.lifetime["last_run"] = _tl("vann alla tre nätterna", "won all three nights") + " (" + _clock() + ")"
 	if not _autotest:
 		await _king_finale()
 	if mode != Mode.MATCH:
 		return
 	Fx.confetti(self, king.global_position + Vector3(0, 0.3, 0))
 	Sfx.play("sparkle", 0.0, 1.0)
-	hud.center(Lang.t("win_title") % reward + "\n" + _tl("POÄNG %s  =  %d TÄNDER   (han stal %d)", "SCORE %s  =  %d TEETH   (he stole %d)") % [str(score), conv, _stolen] + "\n" + _summary() + "\n" + _tl("Tänder den här matchen: %d", "Teeth this match: %d") % maxi(Run.teeth - _match_teeth, 0))
+	hud.center(Lang.t("win_title") % reward + "\n" + _tl("vinst %d + poäng %d (%s) + ränta %d   han stal %d", "win %d + score %d (%s) + interest %d   he stole %d") % [base_reward, conv, str(score), interest, _stolen] + "\n" + _summary() + "\n" + _tl("Tänder den här matchen: %d", "Teeth this match: %d") % maxi(Run.teeth - _match_teeth, 0))
 	await get_tree().create_timer(3.0).timeout
 	if mode != Mode.MATCH:
 		return
 	if won_all:
 		menu.open("victory")
 	else:
-		menu.reward_pack()
+		menu.reward_pack(was_big)
 
 
 ## Kungen faller: en enorm explosion, sen smälter motståndaren ner i
 ## ängen till en röd pöl. Inga hoppskräck, bara obehag.
 ## Poäng blir tänder: 4 tänder per uppfyllt krav, max 30.
 func _score_teeth() -> int:
-	return clampi(int(score * 4.0 / maxf(_target(), 1.0) * Run.mod("conv_mult", 1.0)), 0, 30)
+	return clampi(int(score * 3.0 / maxf(_target(), 1.0) * Run.mod("conv_mult", 1.0)), 0, 15)
 
 
 func _king_finale() -> void:
@@ -2681,6 +2792,9 @@ func _lose_run() -> void:
 	_match_over = true
 	state = State.OVER
 	thrower.cancel_hold()
+	if Run.active:
+		Run.note_opp(Run.opponent_id(), false)
+		Run.lifetime["last_run"] = _tl("dog natt %d mot %s (%s)", "died night %d vs %s (%s)") % [Run.night, opponent.display_name[Lang.current], _clock()]
 	Run.end_run()
 
 
@@ -2750,7 +2864,7 @@ func _process(dt: float) -> void:
 	else:
 		_intro_pos = cam_pos
 	_shake = move_toward(_shake, 0.0, dt)
-	var jitter := Vector3(randf_range(-1, 1), randf_range(-1, 1), 0) * _shake * 0.06
+	var jitter := Vector3(randf_range(-1, 1), randf_range(-1, 1), 0) * _shake * 0.06 * Settings.shake
 	camera.look_at_from_position(cam_pos + jitter, _look)
 	var deck_on := mode == Mode.MATCH and Run.active and not menu.visible and (Input.is_key_pressed(KEY_TAB) or Input.is_joy_button_pressed(0, JOY_BUTTON_BACK) or _force_tab)
 	var his: Array = []
@@ -2760,7 +2874,9 @@ func _process(dt: float) -> void:
 				his.append(k.kind)
 	hud.show_deck(deck_on, his, _board_items() if deck_on else [], opponent.display_name[Lang.current])
 	var zoom := mode != Mode.MENU and Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT)
-	camera.fov = lerpf(camera.fov, 20.0 if zoom else 40.0, clampf(dt * 8.0, 0.0, 1.0))
+	_fov_kick = move_toward(_fov_kick, 0.0, dt * 20.0)
+	camera.fov = lerpf(camera.fov, (20.0 if zoom else 40.0) - _fov_kick, clampf(dt * 8.0, 0.0, 1.0))
+	_tick_extras(dt)
 	world.follow_camera(cam_pos)
 	if mode == Mode.MENU:
 		opponent.look_at_x(cam_pos.x)
@@ -2812,7 +2928,7 @@ func _update_magnet() -> void:
 
 func _unhandled_input(e: InputEvent) -> void:
 	if e.is_action_pressed("ui_cancel") or (e is InputEventJoypadButton and e.pressed and e.button_index == JOY_BUTTON_START):
-		if mode == Mode.MENU:
+		if mode == Mode.MENU or (menu.visible and not get_tree().paused):
 			menu.back()
 		elif _match_over and mode == Mode.MATCH and not menu.visible:
 			_to_menu()
@@ -3231,13 +3347,19 @@ func _screenshots(prefix: String) -> void:
 	vp.get_texture().get_image().save_png(prefix + "_smalter.png")
 	await get_tree().create_timer(1.2).timeout
 	vp.get_texture().get_image().save_png(prefix + "_smalter2.png")
-	for oid in ["birgit", "vedgubben"]:
+	for oid in ["mummlan", "leif"]:
 		Run.node = {"type": "match", "opp": oid}
+		Run.night_mod = "blodregn" if oid == "mummlan" else "korpnatt"
 		_start(Mode.MATCH, true)
 		for i in 10:
 			await get_tree().process_frame
 		while _intro:
 			await get_tree().process_frame
+		_make_golden()
+		_spawn_tooth()
+		for i in 40:
+			await get_tree().process_frame
+		vp.get_texture().get_image().save_png(prefix + "_vader_" + oid + ".png")
 		hud.tally(25, 3.0, true)
 		hud.tally_steal(true)
 		await get_tree().create_timer(0.3).timeout
@@ -3267,4 +3389,340 @@ func _screenshots(prefix: String) -> void:
 	for i in 90:
 		await get_tree().process_frame
 	vp.get_texture().get_image().save_png(prefix + "_tutorial.png")
+	_to_menu()
+	for pg in ["difficulty", "bragder"]:
+		menu.show_page(pg)
+		for i in 10:
+			await get_tree().process_frame
+		vp.get_texture().get_image().save_png(prefix + "_" + pg + ".png")
 	get_tree().quit()
+
+
+
+# ---------------------------------------------------------------- balanstest
+# Kör: godot --headless --fixed-fps 120 -- --balance=5
+# En bot spelar hela runs: siktar på närmaste stående kubb, kraft efter
+# avståndet och en precision med normalfördelat fel (skicklighet).
+
+var _bal_skill := 0.3
+var _cause := ""
+
+
+func _bot_target() -> Node3D:
+	var pool := side_kubbs("theirs", true).filter(func(k): return k.visible)
+	if pool.is_empty():
+		return king
+	var field := pool.filter(func(k): return k.field)
+	if not field.is_empty():
+		pool = field
+	pool.sort_custom(func(a, b): return a.global_position.z > b.global_position.z)
+	return pool[0] if randf() < 0.6 else pool[randi() % pool.size()]
+
+
+func _bot_throw() -> void:
+	var t := _bot_target().global_position
+	thrower.stand_x = clampf((t.x - ThrowController.SHOULDER.x) * 0.6, -2.3, 2.3)
+	var sx := thrower.stand_x + ThrowController.SHOULDER.x
+	thrower.aim = atan2(t.x - sx, -(t.z - thrower.throw_z))
+	var d := Vector2(t.x - sx, t.z - thrower.throw_z).length()
+	await get_tree().physics_frame
+	var pw := clampf(thrower.power_for_distance(d) * randfn(1.0, 0.04), 0.05, 1.0)
+	thrower.launch_meter(pw, clampf(randfn(0.0, _bal_skill), -1.2, 1.2))
+
+
+func _bot_shop() -> void:
+	# köp det första kortet som går, annars en berlock
+	var pool := Run.shop_pool()
+	pool.shuffle()
+	for id in pool.slice(0, 3):
+		var sl := Run.free_slot()
+		if sl >= 0 and Run.teeth >= Run.price(id):
+			Run.buy(id, sl)
+	var cp: Array = Cards.CHARMS.keys()
+	cp.shuffle()
+	for c in cp.slice(0, 2):
+		if Run.teeth >= Run.charm_price(c) and Run.add_charm(c):
+			Run.teeth -= Run.charm_price(c)
+	for i in 5:
+		if Run.cards[i] != "" and Run.teeth >= Run.def_up_price(i) + 6:
+			Run.upgrade_def(i)
+
+
+func _bot_reward() -> void:
+	var r := randf()
+	if r < 0.45:
+		var pool := Run.shop_pool()
+		var sl := Run.free_slot()
+		if not pool.is_empty():
+			Run.put(pool[randi() % pool.size()], sl if sl >= 0 else randi() % 5)
+	elif r < 0.8:
+		var rk: Array = Cards.RUNES.keys()
+		Run.set_rune(randi() % 5, rk[randi() % rk.size()])
+	else:
+		var cp: Array = Cards.CHARMS.keys()
+		Run.add_charm(cp[randi() % cp.size()])
+
+
+func _run_balance(runs: int) -> void:
+	thrower.mouse_aim = false
+	Settings.throw_mode = "meter"
+	var results: Array = []
+	for skill in [0.25, 0.45]:
+		_bal_skill = skill
+		for ri in runs:
+			Run.start("vanlig")
+			var alive := true
+			var matches := 0
+			while alive and Run.night <= Run.NIGHTS and matches < 12:
+				var layer: Array = Run.map[Run.layer]
+				var n := Run.choose(randi() % layer.size())
+				if n.type in ["match", "elite", "boss"]:
+					matches += 1
+					if mode != Mode.MATCH:
+						_start(Mode.MATCH, true)
+					else:
+						_begin_match()
+					await get_tree().physics_frame
+					_cause = "timeout"
+					var t0 := Time.get_ticks_msec()
+					var guard := 0
+					while not _match_over and turn <= 14 and guard < 120000:
+						guard += 1
+						if phase == Phase.PLAYER and state == State.READY and thrower.baton is Baton and not thrower.holding:
+							await _bot_throw()
+						await get_tree().physics_frame
+					var won := _match_over and Run.active
+					var row := {"skill": skill, "run": ri, "night": Run.night if not won else Run.night - (1 if Run.layer == 0 else 0),
+						"opp": Run.opponent_id(), "type": n.type, "won": won, "turns": turn, "score": score, "target": _target(),
+						"stolen": _stolen, "teeth": Run.teeth, "charms": Run.keyring.size(), "cards": Run.slots_used(), "night_mod": Run.night_mod,
+						"secs": (Time.get_ticks_msec() - t0) / 1000.0, "cause": _cause, "tier": _tier}
+					results.append(row)
+					print("BAL %s" % JSON.stringify(row))
+					if not won:
+						alive = false
+						if not _match_over:
+							_lose_run()
+						break
+					for i in 30:
+						await get_tree().physics_frame
+					_bot_reward()
+				else:
+					if n.type == "shop":
+						_bot_shop()
+					Run.step_done()
+			print("BAL RUN skill=%.2f run=%d nights_reached=%d matches=%d alive=%s" % [skill, ri, Run.night, matches, alive])
+	print("BAL KLART")
+	get_tree().quit()
+
+
+
+# ---------------------------------------------------------------- händelser på planen
+
+var _fov_kick := 0.0
+var _tooth: Node3D
+var _weather: Node3D
+var _king_light: OmniLight3D
+var _extra_t := 0.0
+
+
+func _clock() -> String:
+	var t := int(Run.run_time)
+	return "%d:%02d" % [t / 60, t % 60]
+
+
+func _clear_events() -> void:
+	if _tooth and is_instance_valid(_tooth):
+		_tooth.queue_free()
+	_tooth = null
+	if dog.in_match:
+		dog.in_match = false
+	if mode != Mode.TRAINING:
+		_set_dog_active(false)
+	for k in kubbs:
+		if k.has_meta("golden"):
+			k.remove_meta("golden")
+			for c in k.get_children():
+				if c.is_in_group("golden"):
+					c.queue_free()
+
+
+## Hit-stop: världen fryser ett ögonblick efter ett riktigt stort kast.
+func _hitstop() -> void:
+	if _autotest or _slowmo_on:
+		return
+	_slowmo_on = true
+	Engine.time_scale = 0.05
+	await get_tree().create_timer(0.07, true, false, true).timeout
+	Engine.time_scale = 1.0
+	_slowmo_on = false
+
+
+## En av hans kubbar blir guld: X2 multi när den fälls.
+func _make_golden() -> void:
+	var pool := side_kubbs("theirs", true).filter(func(k): return k.visible and not k.has_meta("golden"))
+	if pool.is_empty():
+		return
+	var k: Kubb = pool[randi() % pool.size()]
+	k.set_meta("golden", true)
+	var l := OmniLight3D.new()
+	l.light_color = Color(1.0, 0.8, 0.25)
+	l.light_energy = 1.6
+	l.omni_range = 1.1
+	l.position = Vector3(0, 0.25, 0)
+	l.add_to_group("golden")
+	k.add_child(l)
+	var crown := PS1.box(Vector3(0.1, 0.025, 0.1), PS1.mat(null, Color(1.6, 1.3, 0.3), Vector2.ONE, 1.2))
+	crown.position = Vector3(0, 0.17, 0)
+	crown.add_to_group("golden")
+	k.add_child(crown)
+	Fx.sparks(self, k.global_position + Vector3(0, 0.2, 0), Color(1.0, 0.85, 0.3), 20)
+	hud.toast(_tl("EN AV HANS KUBBAR BLEV GULD: X2 MULTI", "ONE OF HIS KUBBS TURNED TO GOLD: X2 MULT"))
+
+
+## Gösta springer över planen. Träffa honom för tänder.
+func _dog_run() -> void:
+	if mode != Mode.MATCH or dog.in_match:
+		return
+	_set_dog_active(true)
+	dog.reset()
+	dog.run_across(randf_range(-7.0, -4.8))
+	hud.toast(_tl("GÖSTA SPRINGER ÖVER PLANEN! TRÄFFA HONOM FÖR TÄNDER", "GÖSTA IS RUNNING ACROSS THE FIELD! HIT HIM FOR TEETH"))
+	Sfx.play("groan", -8.0, 1.4)
+
+
+func _on_dog_ran_off() -> void:
+	if mode == Mode.MATCH:
+		_set_dog_active(false)
+
+
+## En kråka släpper en guldtand på hans planhalva.
+func _spawn_tooth() -> void:
+	if _tooth and is_instance_valid(_tooth):
+		return
+	_tooth = Node3D.new()
+	add_child(_tooth)
+	var pos := Vector3(randf_range(-1.8, 1.8), 0.06, randf_range(-6.8, -3.2))
+	_tooth.global_position = pos + Vector3(0, 4.0, 0)
+	var t := PS1.box(Vector3(0.07, 0.1, 0.06), PS1.mat(null, Color(1.8, 1.5, 0.4), Vector2.ONE, 1.4))
+	_tooth.add_child(t)
+	var l := OmniLight3D.new()
+	l.light_color = Color(1.0, 0.85, 0.3)
+	l.light_energy = 1.2
+	l.omni_range = 0.9
+	_tooth.add_child(l)
+	var tw := create_tween()
+	tw.tween_property(_tooth, "global_position", pos, 0.9).set_trans(Tween.TRANS_BOUNCE).set_ease(Tween.EASE_OUT)
+	Sfx.play("caw", -4.0, 1.1)
+	hud.toast(_tl("EN KRÅKA TAPPADE EN GULDTAND. LANDA EN PINNE NÄRA DEN", "A CROW DROPPED A GOLDEN TOOTH. LAND A BATON NEAR IT"))
+
+
+func _tick_extras(dt: float) -> void:
+	if mode == Mode.MATCH and Run.active and not get_tree().paused:
+		Run.run_time += dt
+	if _tooth and is_instance_valid(_tooth):
+		_tooth.rotation.y += dt * 3.0
+		for b in batons:
+			if is_instance_valid(b) and not current_by_opp and b.global_position.y < 0.4:
+				var d := Vector2(b.global_position.x - _tooth.global_position.x, b.global_position.z - _tooth.global_position.z).length()
+				if d < 0.5:
+					Run.add_teeth(4)
+					Fx.sparks(self, _tooth.global_position, Color(1.0, 0.85, 0.3), 24)
+					Sfx.play("coin", 0.0, 1.5)
+					hud.big(_tl("GULDTAND! +4 TÄNDER", "GOLDEN TOOTH! +4 TEETH"), Color(1.0, 0.85, 0.3))
+					Run.grant("guldtand")
+					_tooth.queue_free()
+					_tooth = null
+					_refresh_ui()
+					break
+	# kungen lyser när du får fälla honom, och siktlinjen varnar annars
+	var cleared := mode == Mode.MATCH and _side_cleared("theirs")
+	if _king_light == null:
+		_king_light = OmniLight3D.new()
+		_king_light.light_color = Color(1.0, 0.85, 0.3)
+		_king_light.omni_range = 1.4
+		_king_light.position = Vector3(0, 0.3, 0)
+		king.add_child(_king_light)
+	_king_light.light_energy = lerpf(_king_light.light_energy, (1.4 + sin(Time.get_ticks_msec() * 0.006) * 0.6) if cleared and phase == Phase.PLAYER else 0.0, clampf(dt * 5.0, 0.0, 1.0))
+	thrower.king_danger = mode == Mode.MATCH and phase == Phase.PLAYER and not cleared
+	thrower.king_pos = king.global_position
+	_extra_t -= dt
+	if _extra_t <= 0.0:
+		_extra_t = 0.2
+		if mode == Mode.MATCH and Run.active:
+			hud.set_extra(_stolen, _score_teeth(), _clock() if Settings.show_timer else "")
+		elif mode == Mode.TRAINING:
+			hud.set_extra(-1, -1, "")
+
+
+## Nattens väder: regn, blodregn, eldflugor, stjärnfall, kråkor.
+func _set_weather(id: String) -> void:
+	if _weather and is_instance_valid(_weather):
+		_weather.queue_free()
+	_weather = null
+	if id in ["", "stilla", "dimma"]:
+		return
+	_weather = Node3D.new()
+	add_child(_weather)
+	var p := CPUParticles3D.new()
+	_weather.add_child(p)
+	p.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
+	p.emission_box_extents = Vector3(7, 0.5, 9)
+	p.position = Vector3(0, 6, -4)
+	var mesh := BoxMesh.new()
+	match id:
+		"regn", "blodregn":
+			mesh.size = Vector3(0.01, 0.35, 0.01)
+			p.amount = 500
+			p.lifetime = 0.9
+			p.direction = Vector3(0.1, -1, 0)
+			p.spread = 3.0
+			p.initial_velocity_min = 9.0
+			p.initial_velocity_max = 11.0
+			p.gravity = Vector3(0, -6, 0)
+			p.color = Color(0.5, 0.6, 0.9, 0.6) if id == "regn" else Color(0.8, 0.05, 0.05, 0.8)
+		"midsommar":
+			mesh.size = Vector3(0.03, 0.03, 0.03)
+			p.position = Vector3(0, 1.0, -4)
+			p.emission_box_extents = Vector3(5, 1.0, 6)
+			p.amount = 60
+			p.lifetime = 4.0
+			p.gravity = Vector3.ZERO
+			p.initial_velocity_min = 0.1
+			p.initial_velocity_max = 0.4
+			p.spread = 180.0
+			p.color = Color(1.0, 0.95, 0.4)
+		"stjarnfall", "fullmane":
+			mesh.size = Vector3(0.04, 0.04, 0.6)
+			p.position = Vector3(0, 14, -20)
+			p.emission_box_extents = Vector3(20, 2, 4)
+			p.amount = 6 if id == "stjarnfall" else 2
+			p.lifetime = 1.4
+			p.direction = Vector3(1, -0.4, 0)
+			p.spread = 10.0
+			p.gravity = Vector3.ZERO
+			p.initial_velocity_min = 14.0
+			p.initial_velocity_max = 18.0
+			p.color = Color(1.0, 1.0, 0.9)
+		"korpnatt", "vargtimme":
+			mesh.size = Vector3(0.25, 0.03, 0.12)
+			p.position = Vector3(0, 7, -6)
+			p.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
+			p.emission_sphere_radius = 4.0
+			p.amount = 14
+			p.lifetime = 6.0
+			p.gravity = Vector3.ZERO
+			p.orbit_velocity_min = 0.08
+			p.orbit_velocity_max = 0.15
+			p.initial_velocity_min = 0.5
+			p.initial_velocity_max = 1.0
+			p.color = Color(0.02, 0.02, 0.03)
+			if id == "vargtimme":
+				Sfx.play("howl", -6.0, 1.0)
+	var mm := StandardMaterial3D.new()
+	mm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mm.vertex_color_use_as_albedo = true
+	mm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mesh.material = mm
+	p.mesh = mesh
+	p.local_coords = false
+	p.emitting = true

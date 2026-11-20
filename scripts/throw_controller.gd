@@ -62,6 +62,10 @@ var magnet_targets: Array[Vector3] = []
 var locked_target := Vector3.INF
 var _line_mat: Material
 var _line_lock_mat: Material
+var _line_danger_mat: Material
+var king_danger := false    # siktar på kungen för tidigt: linjen blir röd
+var king_pos := Vector3.INF
+var force_perfect := false  # ödeskortet Stilla hand
 var _lock_mark: Node3D
 const MAGNET := 0.07       # rad: hur nära siktet måste vara för att dras in
 var input_enabled := true
@@ -96,6 +100,7 @@ func _ready() -> void:
 	add_child(_hand)
 	_line_mat = PS1.mat(null, Color(0.9, 0.85, 0.6), Vector2.ONE, 0.6)
 	_line_lock_mat = PS1.mat(null, Color(0.4, 1.0, 0.45), Vector2.ONE, 1.0)
+	_line_danger_mat = PS1.mat(null, Color(1.0, 0.15, 0.1), Vector2.ONE, 1.2)
 	_aim_line = PS1.box(Vector3(0.02, 0.005, 1.0), _line_mat)
 	# ring runt kubben siktet har låst på
 	_lock_mark = Node3D.new()
@@ -314,6 +319,9 @@ func _meter_launch() -> void:
 
 ## Mätarkast: kraft 0..1, markörens läge -1..1. Används också av autotestet.
 func launch_meter(power01: float, cursor: float) -> void:
+	if force_perfect:
+		force_perfect = false
+		cursor = 0.0
 	var speed := MAX_SPEED * clampf(power01, 0.0, 1.0) * power_factor()
 	var grade := grade_for(cursor)
 	# I det gröna går pinnen exakt dit siktlinjen pekar. Utanför växer felet
@@ -405,7 +413,11 @@ func _update_pose() -> void:
 		baton.global_transform = Transform3D(b, hand + dir * off)
 	_aim_line.visible = baton != null and Run.mod("no_aim_line") == 0.0
 	var locked := locked_target != Vector3.INF and baton != null
-	_aim_line.material_override = _line_lock_mat if locked else _line_mat
+	var danger := false
+	if king_danger and king_pos != Vector3.INF and baton is Baton:
+		var ka := atan2(king_pos.x - (stand_x + SHOULDER.x), -(king_pos.z - throw_z))
+		danger = absf(ka - aim) < 0.05
+	_aim_line.material_override = _line_danger_mat if danger else (_line_lock_mat if locked else _line_mat)
 	_lock_mark.visible = locked and _aim_line.visible
 	if _lock_mark.visible:
 		_lock_mark.global_position = Vector3(locked_target.x, 0.015, locked_target.z)

@@ -16,6 +16,9 @@ var fullscreen := false
 var rules := "real"        # "real" eller "simple"
 var show_hints := true
 var throw_mode := "meter"  # "meter" (tajmade tryck) eller "drag" (musdrag)
+var shake := 1.0           # skärmskakning 0..1.5
+var show_timer := false    # visa tid för runnen
+var difficulty := "natten"
 
 
 func _ready() -> void:
@@ -38,6 +41,9 @@ func load_settings() -> void:
 	rules = cf.get_value("spel", "rules", rules)
 	show_hints = cf.get_value("spel", "show_hints", show_hints)
 	throw_mode = cf.get_value("kast", "throw_mode", throw_mode)
+	shake = cf.get_value("grafik", "shake", shake)
+	show_timer = cf.get_value("spel", "show_timer", show_timer)
+	difficulty = cf.get_value("spel", "difficulty", difficulty)
 	Lang.current = cf.get_value("spel", "lang", Lang.current)
 
 
@@ -55,6 +61,9 @@ func save() -> void:
 	cf.set_value("spel", "show_hints", show_hints)
 	cf.set_value("kast", "throw_mode", throw_mode)
 	cf.set_value("spel", "lang", Lang.current)
+	cf.set_value("grafik", "shake", shake)
+	cf.set_value("spel", "show_timer", show_timer)
+	cf.set_value("spel", "difficulty", difficulty)
 	cf.save(PATH)
 
 

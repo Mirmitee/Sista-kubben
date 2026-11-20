@@ -31,9 +31,19 @@ var _t := 0.0
 var _swing := 0.0         # armens vinkel (positiv = bakåt)
 
 
+const FALLBACK := {
+	"last_baton": {
+		"sv": ["Sista pinnen. Jag hör ditt hjärta.", "En pinne kvar. Månen håller andan.", "Kasta nu. Eller stanna här för alltid."],
+		"en": ["Last baton. I can hear your heart.", "One baton left. The moon holds its breath.", "Throw now. Or stay here forever."],
+	},
+}
+
+
 func say(event: String) -> void:
 	var e: Dictionary = lines.get(event, {})
 	var arr: Array = e.get(Lang.current, [])
+	if arr.is_empty():
+		arr = FALLBACK.get(event, {}).get(Lang.current, [])
 	if arr.is_empty():
 		return
 	spoke.emit(display_name[Lang.current], arr[randi() % arr.size()])

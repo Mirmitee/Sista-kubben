@@ -179,6 +179,14 @@ const DEFS := {
 		"price": 6, "col": Color(0.8, 0.8, 0.9), "score": {"combo_mult": 2}},
 	"tornet": {"sv": ["Kyrktornet", "Väger dubbelt. FÄLLD: +100 marker. Dong."], "en": ["The Steeple", "Weighs double. FELLED: +100 chips. Dong."],
 		"price": 6, "col": Color(0.8, 0.75, 0.7), "mass": 2.0, "score": {"chips": 100}},
+	"tvillingkubb": {"sv": ["Tvillingkubben", "FÄLLD: +2 multi per annan kubb som faller i samma kast. Den vill inte vara ensam."], "en": ["Twin Kubb", "FELLED: +2 mult per other kubb felled in the same throw. It doesn't want to be alone."],
+		"price": 5, "col": Color(1.3, 0.9, 1.3), "score": {"combo_mult": 2}},
+	"benrangel": {"sv": ["Benrangelkubben", "FÄLLD: X1.5 multi. Den skramlar när den faller."], "en": ["Skeleton Kubb", "FELLED: X1.5 mult. It rattles when it falls."],
+		"price": 7, "col": Color(1.6, 1.55, 1.4), "score": {"xmult": 1.5}},
+	"lykta": {"sv": ["Lyktkubben", "FÄLLD: +40 marker och +3 multi. Lyser upp natten en sekund."], "en": ["Lantern Kubb", "FELLED: +40 chips and +3 mult. Lights up the night for a second."],
+		"price": 6, "col": Color(1.8, 1.5, 0.6), "score": {"chips": 40, "mult": 3}},
+	"girigbuk": {"sv": ["Girigbuken", "FÄLLD: +1 marker per 2 tänder du har. Den räknar dem varje natt."], "en": ["The Miser", "FELLED: +1 chip per 2 teeth you hold. It counts them every night."],
+		"price": 5, "col": Color(1.4, 1.2, 0.4), "score": {"teeth_chips": 1}},
 	"envis": {"sv": ["Envisa kubben", "+1 multi för varje kast som inte fäller något. Allt släpps loss när den fälls."], "en": ["Stubborn Kubb", "+1 mult for every throw that fells nothing. All of it is released when it falls."],
 		"price": 5, "col": Color(1.1, 0.7, 0.6), "score": {"miss_grow": 1, "mult": 1}},
 	"vackarkubb": {"sv": ["Väckarkubben", "FÖRBANNAD. FÄLLD: +5 tänder, men en av hans fällda kubbar reser sig. RIIING."], "en": ["Alarm Kubb", "CURSED. FELLED: +5 teeth, but one of his felled kubbs stands back up. RIIING."],
@@ -425,7 +433,7 @@ static func def_desc(id: String) -> String:
 const PINNKORT := {
 	"pk_granat": ["granatpinne", 2], "pk_bumerang": ["bumerang", 2], "pk_tre": ["trepinnen", 1],
 	"pk_malsok": ["malsokare", 2], "pk_krut": ["krutpinne", 2], "pk_ask": ["askpinne", 2],
-	"pk_jarn": ["jarnpinne", 2], "pk_gummi": ["gummipinne", 3], "pk_istapp": ["istappen", 2],
+	"pk_jarn": ["jarnpinne", 2], "pk_dubbel_granat": ["granatpinne", 3], "pk_bumerang3": ["bumerang", 3], "pk_gummi": ["gummipinne", 3], "pk_istapp": ["istappen", 2],
 	"pk_domino": ["dominopinne", 2], "pk_krak": ["kraknabb", 2], "pk_sista": ["sista_pinnen", 1],
 }
 
@@ -553,6 +561,10 @@ const FATE := {
 	"nad": {"price": 6, "sv": ["Kungens öga", "Kungen tål en träff till den här matchen."], "en": ["The King's Eye", "The king forgives one more hit this match."]},
 	"sovpiller": {"price": 6, "sv": ["Sömnpulver", "Motståndaren får en pinne mindre nästa tur."], "en": ["Sleeping Powder", "The opponent gets one baton less next turn."]},
 	"ranta": {"price": 4, "sv": ["Ockraren", "+1 tand per 4 tänder du har (max 6)."], "en": ["The Usurer", "+1 tooth per 4 teeth you hold (max 6)."]},
+	"kraksang": {"price": 5, "sv": ["Kråksång", "+3 multi på alla kast resten av matchen. Kråkorna sjunger falskt."], "en": ["Crow Song", "+3 mult on every throw for the rest of the match. The crows sing off-key."]},
+	"guldkubb": {"price": 5, "sv": ["Guldfeber", "En av hans kubbar blir guld: X2 multi när den fälls."], "en": ["Gold Fever", "One of his kubbs turns to gold: X2 mult when felled."]},
+	"gostas_ben": {"price": 3, "sv": ["Göstas ben", "Gösta springer över planen. Träffa honom för +5 tänder."], "en": ["Gösta's Bone", "Gösta runs across the field. Hit him for +5 teeth."]},
+	"stilla_hand": {"price": 6, "sv": ["Stilla hand", "Nästa kast blir perfekt, vad du än gör."], "en": ["Still Hand", "Your next throw is perfect, whatever you do."]},
 	"forbannad_kubb": {"price": 0, "cursed": true, "sv": ["Något i gräset", "FÖRBANNAD. En förbannad kubb kryper in i din lek."], "en": ["Something in the Grass", "CURSED. A cursed kubb crawls into your deck."]},
 	"darr": {"price": 0, "cursed": true, "sv": ["Darrhänt", "FÖRBANNAD. Precisionsmarkören går 20 % fortare resten av matchen."], "en": ["Shaky Hands", "CURSED. The accuracy cursor is 20% faster for the rest of the match."]},
 	"hans_pinne": {"price": 0, "cursed": true, "sv": ["Han hittar en pinne", "FÖRBANNAD. Motståndaren får en extra pinne nästa tur."], "en": ["He Finds a Baton", "CURSED. The opponent gets an extra baton next turn."]},
@@ -591,6 +603,12 @@ const CHARMS := {
 	"ogonsten": {"price": 6, "col": Color(0.4, 0.7, 1.0), "mods": {"flat_multi": 4}, "sv": ["Ögonsten", "+4 multi på varje kast som fäller. Den blinkar."], "en": ["Eye Stone", "+4 mult on every scoring throw. It blinks."]},
 	"vargtand": {"price": 8, "col": Color(0.85, 0.85, 0.9), "mods": {"big_x_mult": 2.0}, "sv": ["Vargtand", "X2 multi när ett kast fäller 3 kubbar eller fler."], "en": ["Wolf Fang", "X2 mult when a throw fells 3 or more kubbs."]},
 	"spikpase": {"price": 5, "col": Color(0.6, 0.6, 0.65), "mods": {"conv_mult": 1.5}, "sv": ["Spikpåse", "Poäng blir 50 % fler tänder efter matchen."], "en": ["Bag of Nails", "Points turn into 50% more teeth after the match."]},
+	"gostas_halsband": {"price": 5, "col": Color(0.8, 0.25, 0.2), "mods": {"dog_teeth": 3}, "sv": ["Göstas halsband", "Gösta dyker upp oftare under matcher och ger +3 tänder extra när du träffar honom."], "en": ["Gösta's Collar", "Gösta shows up more often in matches and gives +3 extra teeth when you hit him."]},
+	"kungakrona": {"price": 8, "col": Color(1.0, 0.85, 0.2), "mods": {"king_x_mult": 3.0}, "sv": ["Kungakrona", "X3 multi på kastet som fäller kungen."], "en": ["Crown", "X3 mult on the throw that fells the king."]},
+	"spindel": {"price": 6, "col": Color(0.3, 0.25, 0.3), "mods": {"steal_mult": 0.75, "opp_error_mult": 1.08}, "sv": ["Torkad spindel", "Han stjäl 25 % mindre och kastar 8 % sämre. Den rör sig ibland."], "en": ["Dried Spider", "He steals 25% less and throws 8% worse. It moves sometimes."]},
+	"tandborste": {"price": 4, "col": Color(0.6, 0.9, 1.0), "mods": {"perfect_teeth": 1}, "sv": ["Tandborste", "+1 tand extra på perfekta kast. Någon har använt den."], "en": ["Toothbrush", "+1 extra tooth on perfect throws. Someone has used it."]},
+	"rostig_spik": {"price": 6, "col": Color(0.6, 0.4, 0.3), "mods": {"first_chips": 20, "flat_multi": 2}, "sv": ["Rostig spik", "+20 marker på första kastet varje tur och +2 multi alltid. Stelkramp ingår."], "en": ["Rusty Nail", "+20 chips on the first throw each turn and +2 mult always. Tetanus included."]},
+	"glasoga": {"price": 9, "col": Color(0.8, 0.95, 1.2), "mods": {"green_mult": 1.25}, "sv": ["Glasöga", "Gröna fältet 25 % bredare. Ögat ser åt rätt håll."], "en": ["Glass Eye", "Green zone 25% wider. The eye looks the right way."]},
 	"tomtenisse": {"price": 7, "col": Color(0.9, 0.2, 0.2), "mods": {"opp_batons_add": -1}, "sv": ["Liten nisse", "Han får en pinne mindre. Nissen har gömt den."], "en": ["Little Gnome", "He gets one baton fewer. The gnome hid it."]},
 }
 
@@ -602,6 +620,8 @@ const NIGHT_MODS := {
 	"regn": {"col": Color(0.4, 0.55, 0.9), "mods": {"theirs_mass_mult": 0.7, "meter_time_mult": 0.85}, "sv": ["Regn", "Hans kubbar är hala och lätta att fälla. Mätaren går fortare."], "en": ["Rain", "His kubbs are slippery and easy to fell. The meter runs faster."]},
 	"korpnatt": {"col": Color(0.35, 0.3, 0.4), "mods": {"kubb_teeth": 1, "opp_batons_add": 1}, "sv": ["Korpnatt", "+1 tand per fälld kubb, men han får en extra pinne."], "en": ["Raven Night", "+1 tooth per felled kubb, but he gets an extra baton."]},
 	"blodregn": {"col": Color(1.0, 0.15, 0.1), "mods": {"conv_mult": 2.0, "steal_mult": 2.0}, "sv": ["Blodregn", "Poäng ger dubbla tänder. Han stjäl dubbelt."], "en": ["Blood Rain", "Points give double teeth. He steals double."]},
+	"stjarnfall": {"col": Color(0.8, 0.85, 1.0), "mods": {"perfect_teeth": 2, "green_mult": 1.15}, "sv": ["Stjärnfall", "Gröna fältet 15 % bredare och +2 tänder per perfekt kast. Önska dig något. Det hjälper inte."], "en": ["Starfall", "Green zone 15% wider and +2 teeth per perfect throw. Make a wish. It won't help."]},
+	"vargtimme": {"col": Color(0.6, 0.6, 0.75), "mods": {"opp_error_mult": 0.85, "flat_multi": 4}, "sv": ["Vargtimmen", "Han kastar 15 % bättre, men du får +4 multi på varje kast. Något ylar."], "en": ["Hour of the Wolf", "He throws 15% better, but you get +4 mult on every throw. Something howls."]},
 	"midsommar": {"col": Color(0.9, 1.0, 0.5), "mods": {"flat_multi": 2, "opp_error_mult": 1.1}, "sv": ["Midsommarnatt", "+2 multi på varje kast. Han är lite full."], "en": ["Midsummer Night", "+2 mult on every throw. He's a little drunk."]},
 }
 
@@ -637,3 +657,39 @@ static func def_level_text(id: String, lvl: int) -> String:
 		"falla": return ("Blixten slår ner %d gånger." if sv else "Lightning strikes %d times.") % (1 + lvl / 2)
 		"bastion": return ("+%d tänder." if sv else "+%d teeth.") % (4 + 3 * lvl)
 	return ("+%d tänder när den slår till." if sv else "+%d teeth when it triggers.") % lvl
+
+
+## SVÅRIGHET: väljs när runnen startar.
+const DIFFICULTY := {
+	"angen": {"mods": {"target_mult": 0.7, "opp_error_mult": 1.3, "steal_mult": 0.6}, "sv": ["Ängen", "Lättare. Han kastar sämre och stjäl mindre. För dig som vill se slutet."], "en": ["The Meadow", "Easier. He throws worse and steals less. For those who want to see the end."]},
+	"natten": {"mods": {}, "sv": ["Natten", "Som det är tänkt. Svårt."], "en": ["The Night", "As intended. Hard."]},
+	"blodmanen": {"mods": {"target_mult": 1.4, "opp_error_mult": 0.8, "steal_mult": 1.4, "win_teeth_add": 3}, "sv": ["Blodmånen", "Han kastar bättre, stjäl mer och månen kräver mer. +3 tänder per vinst."], "en": ["The Blood Moon", "He throws better, steals more and the moon demands more. +3 teeth per win."]},
+}
+
+## BRAGDER: sparas mellan runs.
+const BRAGDER := {
+	"forsta_vinst": {"sv": ["Första blodet", "Vinn en match."], "en": ["First Blood", "Win a match."]},
+	"tusen": {"sv": ["Tusen", "1 000 poäng i ett kast."], "en": ["A Thousand", "1,000 points in one throw."]},
+	"tiotusen": {"sv": ["Månen blev rädd", "10 000 poäng i ett kast."], "en": ["The Moon Got Scared", "10,000 points in one throw."]},
+	"massaker": {"sv": ["Massaker på ängen", "Fäll 5 kubbar med ett kast."], "en": ["Meadow Massacre", "Fell 5 kubbs with one throw."]},
+	"perfekt5": {"sv": ["Kirurgen", "5 perfekta kast i rad."], "en": ["The Surgeon", "5 perfect throws in a row."]},
+	"full_ring": {"sv": ["Skramlet", "5 berlocker på nyckelringen."], "en": ["The Rattle", "5 charms on your key ring."]},
+	"inget_stulet": {"sv": ["Ingenting att ta", "Vinn en match utan att han stjäl en enda poäng."], "en": ["Nothing to Take", "Win a match without him stealing a single point."]},
+	"mummlan": {"sv": ["Tystnad", "Besegra Mummlan."], "en": ["Silence", "Defeat the Mumbler."]},
+	"leif": {"sv": ["Regelbrott", "Besegra Leif."], "en": ["Rule Breaker", "Defeat Leif."]},
+	"leffe": {"sv": ["Korvregn", "Besegra Tjock-Leffe."], "en": ["Sausage Rain", "Defeat Fat Leffe."]},
+	"tre_natter": {"sv": ["Du överlevde", "Klara alla tre nätterna."], "en": ["You Survived", "Survive all three nights."]},
+	"blodmanen": {"sv": ["Månens barn", "Vinn en match på Blodmånen."], "en": ["Child of the Moon", "Win a match on Blood Moon."]},
+	"dagens": {"sv": ["Dagens offer", "Vinn en match i Dagens natt."], "en": ["Today's Sacrifice", "Win a match in Tonight's Night."]},
+	"gosta9": {"sv": ["Gösta minns", "Träffa Gösta 9 gånger i rad så att han poppar tillbaka."], "en": ["Gösta Remembers", "Hit Gösta 9 times so he pops back to size."]},
+	"gosta_match": {"sv": ["Hundfångaren", "Träffa Gösta när han springer över planen i en match."], "en": ["Dog Catcher", "Hit Gösta when he runs across the field in a match."]},
+	"guldtand": {"sv": ["Tandläkaren", "Plocka upp kråkans guldtand."], "en": ["The Dentist", "Pick up the crow's golden tooth."]},
+}
+
+
+static func pick_title(d: Dictionary, id: String) -> String:
+	return d[id][Lang.current][0]
+
+
+static func pick_desc(d: Dictionary, id: String) -> String:
+	return d[id][Lang.current][1]
