@@ -2,7 +2,7 @@
 
 Läskig (men mest rolig) roguelike-kubb i PS1-stil. Haunted midsommar: en äng i skymningen under en blodröd måne, och Vedgubben väntar på andra sidan planen.
 
-Version **v0.20**: runs över tre nätter med riktiga kubbregler, en kubblek med 67 specialkubbar, 34 pinnar att låsa upp och ett träningsläge där du kastar på Gösta, en ful hund som ingen äger.
+Version **v0.21**: runs över tre nätter med riktiga kubbregler, en kubblek med 67 specialkubbar, 34 pinnar att låsa upp och ett träningsläge där du kastar på Gösta, en ful hund som ingen äger.
 
 Nytt i v0.12-0.13 (grafik): 16:9, 640x360 internt uppskalat exakt 3x till ett 1920x1080-fönster, procedurella pixelart-kort (ditherad bakgrund, ram med hörnprydnader, ikon per korttyp) i scripts/ui/art.gd, pixelramar på alla paneler och knappar, och ordnad 4x4-dithering över 3D-bilden (shaders/dither.gdshader).
 
@@ -19,6 +19,7 @@ Nytt i v0.11 (Balatro-poäng):
 - v0.18: efter varje vunnen match öppnar du ett gratis boosterpaket (kubbar, runor eller berlocker) och väljer 1.
 - v0.19: precisionen spelar större roll i sidled (mer spridning utanför det gröna, svagare siktmagnet). Faller kungen innan alla kubbar på motståndarsidan ligger förlorar den som kastade, även om kungen bara knuffas omkull. Fäller du sista kubben måste kungen falla samma tur, annars förlorar du (gäller honom också). Kungen är lättare att välta.
 - v0.20: två nya motståndare (Mummlan och Leif), svårighetsval (Ängen, Natten, Blodmånen), Dagens natt med samma frö för alla, 16 bragder och rekord mot varje motståndare, 6 nya berlocker, 2 nya nätter (stjärnfall, vargtimme), Gösta springer över planen mitt i matcher, kråkans guldtand, guldkubbar (x2), REA i boden, omslumpning av berlocker, klocka, 4 ödeskort, 4 kubbar och 2 pinnkort. Kungspinnar ger nu +2 pinnar. Vädereffekter, hitstop och zoom på stora kast, röd blink när han stjäl, dödstext som skrivs fram. 10 buggfixar och en balansbot (--balance=N).
+- v0.21: ny pixelfont (Pixelify Sans, OFL, se fonts/OFL.txt) med konturer och större text, rullbara menyer och val av textstorlek. Kasttyper på kubbvis (Fältkubb, Baskubb, Dubbelfällning, Trippelfällning, Rensning, Fältstädning, Massaker, Öppna kungen) ger grundmarker x grundmulti och höjs med stjärnkort (bod, stjärnpaket, dragning). Oändlig natt direkt från menyn med rekord. Vanliga matcher kan hoppas över för ett märke (tänder, paket, dubbla vinsttänder, stjärnor, rea). Ränta på sparade tänder, utbetalning som räknas upp rad för rad, växande berlocker (Midsommarstång, Bärnstensbit, Hembränt m.fl.), frö för varje run och fyra nya bragder.
 - v0.14: håll Tab för spelplanen uppifrån: var varje kubb står, numrerade dina kubbar med runfärg, hans specialkubbar i rött, plus listan över allt kubbarna bär.
 
 ## Kör spelet

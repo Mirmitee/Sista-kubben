@@ -224,6 +224,18 @@ static func icon(img: Image, kind: String, c: Color, o: Vector2i, seed := 1) -> 
 			if kind == "fate_bad":
 				for i in 4:
 					_px(img, o.x - 6 + i * 4, o.y + 8 + (i % 2), Color(0.8, 0.0, 0.05))
+		"star":
+			# en femuddig stjärna med glöd
+			for y in range(-11, 12):
+				for x in range(-11, 12):
+					var a := atan2(float(y), float(x)) + PI / 2.0
+					var r := sqrt(x * x + y * y)
+					var lim := 5.0 + 6.0 * pow(absf(cos(a * 2.5)), 3.0)
+					if r < lim:
+						_px(img, o.x + x, o.y + y, _dq(c.lightened(0.35 - r * 0.03), x, y, 5.0))
+					elif r < lim + 1.5 and _hash(x, y, seed) > 0.6:
+						_px(img, o.x + x, o.y + y, c.darkened(0.3))
+			_rect(img, o.x - 1, o.y - 1, 3, 3, Color(1, 1, 0.9))
 		"charm":
 			# nyckelring: en ring med en liten nyckel som dinglar
 			var metal := Color(0.75, 0.72, 0.65)

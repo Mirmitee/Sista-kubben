@@ -69,18 +69,20 @@ func _ready() -> void:
 	_info = _label(8, Color(0.9, 0.9, 0.8), Vector2(8, 292))
 	_icons = _label(8, Color(0.95, 0.75, 0.5), Vector2(8, 280))
 	_hint = _label(8, Color(0.75, 0.6, 0.6), Vector2(8, 330))
-	_center = _label(12, Color(1.0, 0.3, 0.2), Vector2(0, 118), Vector2(640, 130))
+	_center = _label(12, Color(1.0, 0.3, 0.2), Vector2(160, 118), Vector2(320, 130))
 	_center.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_flash = _label(14, Color(1.0, 0.85, 0.2), Vector2(0, 96), Vector2(640, 20))
+	_center.autowrap_mode = TextServer.AUTOWRAP_WORD
+	_flash = _label(14, Color(1.0, 0.85, 0.2), Vector2(160, 96), Vector2(320, 20))
+	_flash.autowrap_mode = TextServer.AUTOWRAP_WORD
 	_flash.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	var ver := _label(8, Color(0.8, 0.15, 0.1), Vector2(546, 349))
-	ver.text = "SISTA KUBBEN v0.20"
+	ver.text = "SISTA KUBBEN v0.21"
 	_teeth = _label(8, Color(1.0, 0.95, 0.75), Vector2(422, 40), Vector2(210, 10))
 	_teeth.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	_cards = _label(8, Color(0.75, 0.7, 0.85), Vector2(422, 52), Vector2(210, 120))
 	_cards.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	_phase = _label(8, Color(1.0, 0.55, 0.3), Vector2(8, 266), Vector2(320, 10))
-	_banner = _label(12, Color(1.0, 0.8, 0.6), Vector2(0, 80), Vector2(640, 90))
+	_banner = _label(11, Color(1.0, 0.8, 0.6), Vector2(165, 76), Vector2(310, 110))
 	_banner.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_banner.autowrap_mode = TextServer.AUTOWRAP_WORD
 	_banner.modulate.a = 0.0
@@ -147,7 +149,7 @@ func _ready() -> void:
 	add_child(_blood)
 	_death = Label.new()
 	var dls := LabelSettings.new()
-	dls.font_size = 24
+	dls.font_size = Settings.fs(24)
 	dls.font_color = Color(1.0, 0.85, 0.8)
 	dls.shadow_color = Color(0, 0, 0, 1)
 	dls.shadow_offset = Vector2(2, 2)
@@ -167,9 +169,11 @@ func _ready() -> void:
 func _label(size: int, color: Color, pos: Vector2, sz := Vector2.ZERO) -> Label:
 	var l := Label.new()
 	var ls := LabelSettings.new()
-	ls.font_size = size
+	ls.font_size = Settings.fs(size)
 	ls.font_color = color
-	ls.shadow_color = Color(0, 0, 0, 0.9)
+	ls.outline_size = 3
+	ls.outline_color = Color(0.02, 0.0, 0.01, 0.95)
+	ls.shadow_color = Color(0, 0, 0, 0.6)
 	ls.shadow_offset = Vector2(1, 1)
 	l.label_settings = ls
 	l.position = pos
@@ -463,9 +467,11 @@ func _show_cards() -> void:
 func _mk(size: int, color: Color, text: String) -> Label:
 	var l := Label.new()
 	var ls := LabelSettings.new()
-	ls.font_size = size
+	ls.font_size = Settings.fs(size)
 	ls.font_color = color
-	ls.shadow_color = Color(0, 0, 0, 0.9)
+	ls.outline_size = 3
+	ls.outline_color = Color(0.02, 0.0, 0.01, 0.95)
+	ls.shadow_color = Color(0, 0, 0, 0.6)
 	ls.shadow_offset = Vector2(1, 1)
 	l.label_settings = ls
 	l.text = text
@@ -478,7 +484,13 @@ var _board: Board
 var _board_bg: Panel
 
 
+var _deck_was := true
+
+
 func show_deck(on: bool, his: Array = [], board: Array = [], opp_name := "") -> void:
+	if not on and not _deck_was:
+		return
+	_deck_was = on
 	if _board == null:
 		_board_bg = Panel.new()
 		_board_bg.add_theme_stylebox_override("panel", Art.frame_style(Color(0.6, 0.15, 0.1), Color(0.03, 0.0, 0.02, 0.94), 16, 4))
@@ -684,7 +696,7 @@ func _box(col: Color, pos: Vector2, sz: Vector2, parent: Control, r: ColorRect =
 	fr.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	r.color = Color(0, 0, 0, 0)
 	r.add_child(fr)
-	var l := _mk(14, Color(1, 1, 1), "0")
+	var l := _mk(12, Color(1, 1, 1), "0")
 	l.size = sz
 	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
@@ -703,44 +715,50 @@ func _build_score() -> void:
 	panel.add_theme_stylebox_override("panel", Art.frame_style(Color(0.6, 0.12, 0.08), Color(0.06, 0.01, 0.03, 0.9), 16, 4))
 	panel.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	panel.position = Vector2(-3, -3)
-	panel.size = Vector2(132, 54)
+	panel.size = Vector2(150, 68)
 	panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_score_root.add_child(panel)
 	_score_panel = panel
 	_goal_lbl = _mk(7, Color(0.85, 0.5, 0.45), "")
-	_goal_lbl.position = Vector2(4, 2)
+	_goal_lbl.position = Vector2(4, 1)
 	_score_root.add_child(_goal_lbl)
 	_goal_big = _mk(14, Color(1.0, 0.22, 0.15), "0")
 	_goal_big.position = Vector2(4, 10)
 	_score_root.add_child(_goal_big)
 	_score_lbl = _mk(12, Color(1.0, 0.9, 0.55), "0")
-	_score_lbl.position = Vector2(4, 28)
+	_score_lbl.position = Vector2(4, 29)
 	_score_lbl.pivot_offset = Vector2(0, 8)
 	_score_root.add_child(_score_lbl)
 	_bar_bg = ColorRect.new()
 	_bar_bg.color = Color(0.15, 0.02, 0.03, 0.9)
-	_bar_bg.position = Vector2(4, 44)
-	_bar_bg.size = Vector2(118, 3)
+	_bar_bg.position = Vector2(4, 50)
+	_bar_bg.size = Vector2(138, 3)
 	_score_root.add_child(_bar_bg)
 	_bar = ColorRect.new()
-	_bar.position = Vector2(4, 44)
+	_bar.position = Vector2(4, 50)
 	_bar.size = Vector2(0, 3)
 	_score_root.add_child(_bar)
 	_tally_root = Control.new()
-	_tally_root.position = Vector2(4, 52)
+	_tally_root.position = Vector2(4, 58)
 	_score_root.add_child(_tally_root)
 	_chips_box = ColorRect.new()
 	_mult_box = ColorRect.new()
-	_chips_lbl = _box(Color(0.12, 0.38, 0.95, 1.0), Vector2(0, 0), Vector2(52, 22), _tally_root, _chips_box)
+	_hand_lbl = _mk(9, Color(1.0, 0.95, 0.85), "")
+	_hand_lbl.position = Vector2(0, -1)
+	_hand_lbl.size = Vector2(138, 12)
+	_hand_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_hand_lbl.pivot_offset = Vector2(69, 6)
+	_tally_root.add_child(_hand_lbl)
+	_chips_lbl = _box(Color(0.12, 0.38, 0.95, 1.0), Vector2(0, 13), Vector2(62, 22), _tally_root, _chips_box)
 	var x := _mk(14, Color(1, 0.3, 0.25), "X")
-	x.position = Vector2(54, 2)
+	x.position = Vector2(64, 14)
 	_tally_root.add_child(x)
-	_mult_lbl = _box(Color(0.95, 0.15, 0.1, 1.0), Vector2(66, 0), Vector2(52, 22), _tally_root, _mult_box)
+	_mult_lbl = _box(Color(0.95, 0.15, 0.1, 1.0), Vector2(76, 13), Vector2(62, 22), _tally_root, _mult_box)
 	_total_lbl = _mk(10, Color(1.0, 0.95, 0.6), "")
-	_total_lbl.position = Vector2(0, 24)
-	_total_lbl.size = Vector2(118, 12)
+	_total_lbl.position = Vector2(0, 36)
+	_total_lbl.size = Vector2(138, 14)
 	_total_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_total_lbl.pivot_offset = Vector2(59, 6)
+	_total_lbl.pivot_offset = Vector2(69, 7)
 	_tally_root.add_child(_total_lbl)
 	_flames = Control.new()
 	_flames.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -754,6 +772,8 @@ func _build_score() -> void:
 
 
 var _goal_big: Label
+var _hand_lbl: Label
+var _shown_i := -1
 var _score_panel: Panel
 var _tally_on := false
 var _show_tw: Tween
@@ -766,8 +786,8 @@ var _steal_lbl: Label
 func tally_steal(on: bool) -> void:
 	if _steal_lbl == null:
 		_steal_lbl = _mk(8, Color(1.0, 0.25, 0.2), "")
-		_steal_lbl.position = Vector2(0, 36)
-		_steal_lbl.size = Vector2(118, 10)
+		_steal_lbl.position = Vector2(0, 50)
+		_steal_lbl.size = Vector2(138, 10)
 		_steal_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		_tally_root.add_child(_steal_lbl)
 	_steal_lbl.text = ("HAN STJÄL DINA POÄNG" if Lang.current == "sv" else "HE STEALS YOUR POINTS") if on else ""
@@ -786,13 +806,18 @@ func _tally_show(on: bool) -> void:
 		_tally_root.visible = true
 		_tally_root.modulate.a = 0.0
 		_tally_root.scale = Vector2(1.0, 0.2)
-		_show_tw.tween_property(_score_panel, "size:y", 100.0, 0.15)
+		_show_tw.tween_property(_score_panel, "size:y", 122.0, 0.15)
+		if _extra:
+			_extra.visible = false
 		_show_tw.tween_property(_tally_root, "modulate:a", 1.0, 0.12)
 		_show_tw.tween_property(_tally_root, "scale", Vector2.ONE, 0.2).set_trans(Tween.TRANS_BACK)
 	else:
 		_show_tw.tween_property(_tally_root, "modulate:a", 0.0, 0.25)
-		_show_tw.tween_property(_score_panel, "size:y", 54.0, 0.3).set_delay(0.15)
-		_show_tw.chain().tween_callback(func(): _tally_root.visible = false)
+		_show_tw.tween_property(_score_panel, "size:y", 68.0, 0.3).set_delay(0.15)
+		_show_tw.chain().tween_callback(func():
+			_tally_root.visible = false
+			if _extra:
+				_extra.visible = true)
 var _chips_box: ColorRect
 var _mult_box: ColorRect
 var _flames: Control
@@ -804,6 +829,7 @@ var _flame_t := 0.0
 
 func set_score(v: int, goal: int, instant := false) -> void:
 	_score = v
+	_shown_i = -1
 	_goal = maxi(goal, 1)
 	if instant:
 		_shown = v
@@ -868,6 +894,7 @@ func tally_total(total: int) -> void:
 		_chips_lbl.text = "0"
 		_mult_lbl.text = "0"
 		_total_lbl.text = ""
+		_hand_lbl.text = ""
 		_tally_show(false))
 
 
@@ -933,10 +960,12 @@ func _process(dt: float) -> void:
 	else:
 		_shown = _score
 	_score_lbl.scale = _score_lbl.scale.lerp(Vector2.ONE, clampf(dt * 10.0, 0.0, 1.0))
-	_score_lbl.text = ("POÄNG " if Lang.current == "sv" else "SCORE ") + _fmt(int(_shown))
+	if int(_shown) != _shown_i:
+		_shown_i = int(_shown)
+		_score_lbl.text = ("POÄNG " if Lang.current == "sv" else "SCORE ") + _fmt(_shown_i)
 	# eld ur rutorna när siffrorna är stora
 	_heat = move_toward(_heat, 0.0, dt * 0.6)
-	if _heat > 0.15 and _flames.is_visible_in_tree():
+	if _heat > 0.15 and _flames.is_visible_in_tree() and _flames.get_child_count() < 90:
 		_flame_t -= dt
 		if _flame_t <= 0.0:
 			_flame_t = 0.03 / clampf(_heat, 0.3, 4.0)
@@ -948,7 +977,7 @@ func _process(dt: float) -> void:
 				fr.mouse_filter = Control.MOUSE_FILTER_IGNORE
 				var hot := randf()
 				fr.color = (Color(0.4, 0.75, 1.0) if bi == 0 else Color(1.0, 0.55, 0.15)).lerp(Color(1, 1, 0.8), hot * 0.5)
-				fr.position = box.position + Vector2(randf_range(0, 52 - sz), randf_range(-2, 6))
+				fr.position = box.position + Vector2(randf_range(0, 62 - sz), randf_range(-2, 6))
 				_flames.add_child(fr)
 				var tw := fr.create_tween().set_parallel(true)
 				var life := randf_range(0.35, 0.6 + _heat * 0.12)
@@ -958,7 +987,7 @@ func _process(dt: float) -> void:
 				tw.tween_property(fr, "modulate:a", 0.0, life)
 				tw.chain().tween_callback(fr.queue_free)
 	var f := clampf(_shown / float(_goal), 0.0, 1.0)
-	_bar.size.x = 110.0 * f
+	_bar.size.x = 138.0 * f
 	_bar.color = Color(0.85, 0.1, 0.08).lerp(Color(1.0, 0.8, 0.2), f)
 
 
@@ -973,7 +1002,10 @@ func tally_reset() -> void:
 	_total_lbl.text = ""
 	_tally_root.visible = false
 	_tally_root.modulate.a = 0.0
-	_score_panel.size.y = 54.0
+	_score_panel.size.y = 68.0
+	_hand_lbl.text = ""
+	if _extra:
+		_extra.visible = true
 	_tally_on = false
 	_heat = 0.0
 	tally_steal(false)
@@ -1013,7 +1045,7 @@ func set_extra(stolen: int, teeth: int, clock: String) -> void:
 	if _extra == null:
 		_extra = _mk(7, Color(0.85, 0.6, 0.5), "")
 		_extra.position = Vector2(4, 54)
-		_extra.size = Vector2(124, 10)
+		_extra.size = Vector2(142, 10)
 		_score_root.add_child(_extra)
 	if stolen < 0:
 		_extra.text = ""
@@ -1022,5 +1054,65 @@ func set_extra(stolen: int, teeth: int, clock: String) -> void:
 	var t := ("STULET %d  ≈%d TÄNDER" if sv else "STOLEN %d  ≈%d TEETH") % [stolen, teeth]
 	if clock != "":
 		t += "  " + clock
-	_extra.text = t
+	if _extra.text != t:
+		_extra.text = t
 	_extra.visible = not _tally_on
+
+
+## Kasttypen (som Balatros händer): namn och nivå ovanför rutorna.
+func tally_hand(name: String, lvl: int, col := Color(1.0, 0.95, 0.85)) -> void:
+	_tally_show(true)
+	_hand_lbl.text = "%s  niv. %d" % [name, lvl] if Lang.current == "sv" else "%s  lvl %d" % [name, lvl]
+	_hand_lbl.label_settings.font_color = col
+	_pulse(_hand_lbl, 1.6)
+
+
+var _cash: PanelContainer
+
+
+## Utbetalningen efter en vinst: rader som tickar fram med mynt-ljud.
+func cash_out(title: String, rows: Array, total: int) -> void:
+	if _cash:
+		_cash.queue_free()
+	_cash = PanelContainer.new()
+	_cash.add_theme_stylebox_override("panel", Art.frame_style(Color(0.9, 0.7, 0.2), Color(0.06, 0.02, 0.02, 0.94), 24, 10))
+	_cash.position = Vector2(190, 70)
+	_cash.custom_minimum_size = Vector2(260, 0)
+	add_child(_cash)
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 2)
+	_cash.add_child(v)
+	var t := _mk(14, Color(1.0, 0.85, 0.3), title)
+	t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	v.add_child(t)
+	var sum := 0
+	for r in rows:
+		var h := HBoxContainer.new()
+		var a := _mk(9, Color(0.9, 0.82, 0.72), str(r[0]))
+		a.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		h.add_child(a)
+		var n := int(r[1])
+		var b := _mk(10, Color(1.0, 0.95, 0.6) if n > 0 else Color(0.6, 0.45, 0.4), ("+%d" % n) if n > 0 else "-")
+		h.add_child(b)
+		h.modulate.a = 0.0
+		v.add_child(h)
+		var tw := create_tween()
+		tw.tween_property(h, "modulate:a", 1.0, 0.12)
+		await get_tree().create_timer(0.28, true, false, true).timeout
+		if n > 0:
+			sum += n
+			Sfx.play("coin", -4.0, 1.0 + 0.1 * v.get_child_count())
+			_pulse(b, 1.8)
+	var tot := _mk(16, Color(1.0, 0.95, 0.75), ("TÄNDER +%d" if Lang.current == "sv" else "TEETH +%d") % total)
+	tot.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	tot.pivot_offset = Vector2(120, 10)
+	v.add_child(tot)
+	_pulse(tot, 2.2)
+	Sfx.play("sparkle", -2.0, 1.2)
+	await get_tree().create_timer(1.8, true, false, true).timeout
+	var ft := create_tween()
+	ft.tween_property(_cash, "modulate:a", 0.0, 0.3)
+	await ft.finished
+	if _cash:
+		_cash.queue_free()
+		_cash = null

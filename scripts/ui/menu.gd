@@ -6,6 +6,7 @@ extends CanvasLayer
 signal run_start(baton_id: String)
 signal shop_done
 signal map_pick(index: int)
+signal skip_play
 signal training_pressed
 signal tutorial_pressed
 signal resume_pressed
@@ -23,12 +24,14 @@ var _curse := ""
 var _fate_offers: Array[String] = []
 var _reroll := 2
 var _charm_offers: Array[String] = []
+var _star_offers: Array[String] = []
 var _packs_bought: Array[String] = []
 var _pack_kind := ""
 var _pack_items: Array[String] = []
 const PACKS := {
 	"kubb": {"price": 6, "n": 3, "col": Color(0.8, 0.55, 0.3), "sv": ["Kubbpaket", "3 kubbar, ta 1 gratis."], "en": ["Kubb Pack", "3 kubbs, take 1 for free."]},
 	"rune": {"price": 5, "n": 3, "col": Color(0.4, 0.7, 1.0), "sv": ["Runpaket", "3 runor, ta 1 gratis."], "en": ["Rune Pack", "3 runes, take 1 for free."]},
+	"star": {"price": 4, "n": 3, "col": Color(0.6, 0.8, 1.0), "sv": ["Stjärnpaket", "3 stjärnkort, ta 1. Höjer en kasttyp."], "en": ["Star Pack", "3 star cards, take 1. Levels up a throw type."]},
 	"charm": {"price": 8, "n": 2, "col": Color(0.9, 0.8, 0.4), "sv": ["Berlockpaket", "2 berlocker, ta 1 till nyckelringen."], "en": ["Charm Pack", "2 charms, take 1 for your key ring."]},
 }
 var _baton_page := 0
@@ -48,7 +51,7 @@ func _ready() -> void:
 
 func _make_theme() -> Theme:
 	var t := Theme.new()
-	t.default_font_size = 8
+	t.default_font_size = Settings.fs(8)
 	# pixelramar: ditherad fyllning, ljus innerkant, mörk ytterkant
 	var normal := Art.frame_style(Color(0.5, 0.1, 0.07), Color(0.1, 0.03, 0.04, 0.95), 16, 5)
 	normal.content_margin_top = 3
@@ -72,6 +75,10 @@ func _make_theme() -> Theme:
 	t.set_color("font_shadow_color", "Label", Color(0, 0, 0, 0.9))
 	t.set_constant("shadow_offset_x", "Label", 1)
 	t.set_constant("shadow_offset_y", "Label", 1)
+	t.set_constant("outline_size", "Label", 3)
+	t.set_color("font_outline_color", "Label", Color(0.02, 0.0, 0.01, 0.95))
+	t.set_constant("outline_size", "Button", 2)
+	t.set_color("font_outline_color", "Button", Color(0.02, 0.0, 0.01, 0.9))
 	var panel := Art.frame_style(Color(0.55, 0.1, 0.07), Color(0.04, 0.01, 0.02, 0.88), 24, 10)
 	t.set_stylebox("panel", "PanelContainer", panel)
 	var grab := StyleBoxFlat.new()
@@ -91,6 +98,7 @@ func _make_theme() -> Theme:
 func open(p: String) -> void:
 	visible = true
 	if p == "shop":
+		Run.shop_half = Run.take_tag("rea")
 		_reroll = 2
 		_packs_bought.clear()
 		_gen_shop()
@@ -113,6 +121,9 @@ func _gen_shop() -> void:
 	var cp := Run.cursed_pool()
 	_curse = cp[randi() % cp.size()] if not cp.is_empty() and randf() < 0.85 else ""
 	_charm_offers.assign(_charm_pool().slice(0, 2))
+	var sp: Array = Cards.STARS.keys()
+	sp.shuffle()
+	_star_offers.assign(sp.slice(0, 2))
 	Run.sale_id = _offers[randi() % _offers.size()] if not _offers.is_empty() else ""
 
 
@@ -131,6 +142,7 @@ func close() -> void:
 
 func show_page(p: String) -> void:
 	page = p
+	_btn_parent = null
 	for c in _root.get_children():
 		c.queue_free()
 	var center := CenterContainer.new()
@@ -138,9 +150,14 @@ func show_page(p: String) -> void:
 	_root.add_child(center)
 	var panel := PanelContainer.new()
 	center.add_child(panel)
+	# allt ryms inte alltid på 360 pixlar: rulla i så fall
+	var scroll := ScrollContainer.new()
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.follow_focus = true
+	panel.add_child(scroll)
 	_box = VBoxContainer.new()
 	_box.add_theme_constant_override("separation", 3)
-	panel.add_child(_box)
+	scroll.add_child(_box)
 	match p:
 		"title": _page_title()
 		"rules": _page_rules()
@@ -152,6 +169,8 @@ func show_page(p: String) -> void:
 		"shop2": _page_shop2()
 		"difficulty": _page_difficulty()
 		"bragder": _page_bragder()
+		"hands": _page_hands()
+		"skip": _page_skip()
 		"pack": _page_pack()
 		"victory": _page_victory()
 		"slot": _page_slot()
@@ -160,11 +179,24 @@ func show_page(p: String) -> void:
 		"fate_node": _page_fate_node()
 		"grave": _page_grave()
 	# första knappen får fokus så att tangentbord och gamepad funkar
+	var box := _box
 	await get_tree().process_frame
-	for c in _box.get_children():
-		if c is Button or c is HSlider or c is CheckButton:
+	if not is_instance_valid(scroll) or scroll.is_queued_for_deletion() or box != _box:
+		return  # en ny sida hann öppnas
+	# radbrytande etiketter vet sin storlek först efter en bildruta till
+	for f in 2:
+		var need := box.get_combined_minimum_size()
+		scroll.custom_minimum_size = Vector2(need.x + (10.0 if need.y > 330.0 else 0.0), minf(need.y, 330.0))
+		await get_tree().process_frame
+		if not is_instance_valid(scroll) or box != _box:
+			return
+	for c in box.find_children("*", "Control", true, false):
+		if (c is Button and not c.disabled) or c is HSlider:
 			c.grab_focus()
 			break
+	await get_tree().process_frame
+	if is_instance_valid(scroll) and box == _box:
+		scroll.scroll_vertical = 0  # börja alltid längst upp
 
 
 func _t(sv: String, en: String) -> String:
@@ -175,7 +207,7 @@ func _title(text: String, size := 16, color := Color(0.85, 0.12, 0.08)) -> void:
 	var l := Label.new()
 	l.text = text
 	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	l.add_theme_font_size_override("font_size", size)
+	l.add_theme_font_size_override("font_size", Settings.fs(size))
 	l.add_theme_color_override("font_color", color)
 	_box.add_child(l)
 
@@ -194,8 +226,15 @@ func _button(text: String, cb: Callable) -> Button:
 		Sfx.play("click", -8.0)
 		cb.call())
 	b.focus_entered.connect(func(): Sfx.play("click", -18.0, 0.7))
-	_box.add_child(b)
+	if _btn_parent and is_instance_valid(_btn_parent):
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		_btn_parent.add_child(b)
+	else:
+		_box.add_child(b)
 	return b
+
+
+var _btn_parent: Container
 
 
 func _slider(label: String, key: String, lo: float, hi: float, step: float) -> void:
@@ -253,14 +292,26 @@ func _page_title() -> void:
 	if Run.lifetime.runs == 0:
 		_text(_t("Ny här? Börja med LÄR DIG SPELA. Gösta väntar.", "New here? Start with LEARN TO PLAY. Gösta is waiting."), Color(1.0, 0.85, 0.4))
 	_box.add_child(HSeparator.new())
+	var grid := GridContainer.new()
+	grid.columns = 2
+	grid.add_theme_constant_override("h_separation", 4)
+	grid.add_theme_constant_override("v_separation", 3)
+	_box.add_child(grid)
+	_btn_parent = grid
 	_button(_t("SPELA", "PLAY"), func():
 		daily_pending = false
+		endless_pending = false
 		show_page("rules"))
 	var dd := Time.get_date_dict_from_system()
-	_button(_t("DAGENS NATT (%02d/%02d, SAMMA FÖR ALLA)", "TONIGHT'S NIGHT (%02d/%02d, SAME FOR EVERYONE)") % [dd.day, dd.month], func():
+	_button(_t("DAGENS NATT %02d/%02d", "DAILY NIGHT %02d/%02d") % [dd.day, dd.month], func():
 		daily_pending = true
 		Settings.set_value("rules", "real")
 		show_page("baton"))
+	var be := int(Run.lifetime.get("best_endless", 0))
+	_button(_t("OÄNDLIG NATT (ENDLESS)", "ENDLESS NIGHT") + ((_t("  REKORD: NATT %d", "  RECORD: NIGHT %d") % be) if be > 0 else ""), func():
+		daily_pending = false
+		endless_pending = true
+		show_page("rules"))
 	_button(_t("BRAGDER", "FEATS") + " (%d/%d)" % [Run.lifetime.get("bragder", []).size(), Cards.BRAGDER.size()], func(): show_page("bragder"))
 	_button(_t("LÄR DIG SPELA (GÖSTA FÖRKLARAR)", "LEARN TO PLAY (GÖSTA EXPLAINS)"), func(): tutorial_pressed.emit())
 	_button(_t("TRÄNA PÅ GÖSTA (HUNDEN)", "PRACTICE ON GÖSTA (THE DOG)"), func(): training_pressed.emit())
@@ -270,6 +321,7 @@ func _page_title() -> void:
 		Lang.toggle()
 		Settings.save())
 	_button(_t("AVSLUTA", "QUIT"), func(): get_tree().quit())
+	_btn_parent = null
 
 
 func _page_rules() -> void:
@@ -305,6 +357,11 @@ func _page_settings() -> void:
 	_toggle(_t("KRAFTMÄTARE", "POWER METER"), "power_meter")
 	_toggle(_t("TIPS PÅ SKÄRMEN", "ON-SCREEN TIPS"), "show_hints")
 	_toggle(_t("VISA TID FÖR RUNNEN", "SHOW RUN TIMER"), "show_timer")
+	var big := Settings.text_scale > 1.01
+	_button(_t("TEXTSTORLEK: ", "TEXT SIZE: ") + (_t("STOR", "LARGE") if big else _t("NORMAL", "NORMAL")) + _t("  (spelets text efter omstart)", "  (in-game text after restart)"), func():
+		Settings.set_value("text_scale", 1.0 if big else 1.15)
+		_root.theme = _make_theme()
+		show_page("settings"))
 	_button(_t("TILLBAKA", "BACK"), func(): show_page("pause" if paused_menu else "title"))
 
 
@@ -340,8 +397,16 @@ func _page_pause() -> void:
 			Cards.pick_title(Cards.DIFFICULTY, Run.difficulty), Run.teeth], Color(0.8, 0.8, 1.0))
 		if not kn.is_empty():
 			_text(_t("Nyckelring: ", "Key ring: ") + ", ".join(kn), Color(0.95, 0.85, 0.45))
+		var tn: Array[String] = []
+		for tg in Run.tags:
+			tn.append(Cards.TAGS[tg][Lang.current][0])
+		_text(_t("Frö %s%s%s", "Seed %s%s%s") % [Run.seed_text(), _t("   OÄNDLIG" , "   ENDLESS") if Run.endless_mode else "", (_t("   Märken: ", "   Tags: ") + ", ".join(tn)) if not tn.is_empty() else ""], Color(0.6, 0.55, 0.5))
 	_button(_t("FORTSÄTT", "RESUME"), func(): resume_pressed.emit())
 	_button(_t("BÖRJA OM RUNDAN", "RESTART ROUND"), func(): restart_pressed.emit())
+	if Run.active:
+		_button(_t("KASTTYPER", "THROW TYPES"), func():
+			hands_back = "pause"
+			show_page("hands"))
 	_button(_t("INSTÄLLNINGAR", "SETTINGS"), func(): show_page("settings"))
 	_button(_t("KONTROLLER", "CONTROLS"), func(): show_page("controls"))
 	_button(_t("TILL HUVUDMENYN", "MAIN MENU"), func(): main_menu_pressed.emit())
@@ -363,9 +428,9 @@ func _card_panel(id: String, parent: Container, price_text: String, action_text:
 	var cursed: bool = d.get("cursed", false)
 	var pc := PanelContainer.new()
 	var kind := "cursed" if cursed else ("baton" if Cards.BATONS.has(id) else "kubb")
-	var st := Art.card_style(kind, (Cards.color(id) * 0.75).clamp(Color(0.2, 0.2, 0.2), Color(1, 1, 1)), 112, 150, id.hash() % 97)
+	var st := Art.card_style(kind, (Cards.color(id) * 0.75).clamp(Color(0.2, 0.2, 0.2), Color(1, 1, 1)), 124, 160, id.hash() % 97)
 	pc.add_theme_stylebox_override("panel", st)
-	pc.custom_minimum_size = Vector2(112, 150)
+	pc.custom_minimum_size = Vector2(124, 160)
 	var v := VBoxContainer.new()
 	v.add_theme_constant_override("separation", 1)
 	pc.add_child(v)
@@ -373,7 +438,7 @@ func _card_panel(id: String, parent: Container, price_text: String, action_text:
 	var sw := HBoxContainer.new()
 	sw.add_theme_constant_override("separation", 2)
 	var tag := Label.new()
-	tag.add_theme_font_size_override("font_size", 6)
+	tag.add_theme_font_size_override("font_size", Settings.fs(6))
 	if d.has("hit") and d.has("fell"):
 		tag.text = _t("TRÄFF+FÄLLD", "HIT+FELL")
 	elif d.has("hit"):
@@ -398,7 +463,8 @@ func _card_panel(id: String, parent: Container, price_text: String, action_text:
 	var dl := Label.new()
 	dl.text = Cards.desc(id)
 	dl.autowrap_mode = TextServer.AUTOWRAP_WORD
-	dl.custom_minimum_size = Vector2(100, 50)
+	dl.add_theme_font_size_override("font_size", Settings.fs(7))
+	dl.custom_minimum_size = Vector2(112, 50)
 	dl.add_theme_color_override("font_color", Color(0.85, 0.78, 0.7))
 	v.add_child(dl)
 	if price_text != "":
@@ -503,6 +569,35 @@ func _page_shop() -> void:
 			_pending = "r:" + id
 			show_page("slot"))
 		rrow.add_child(rb)
+	# stjärnkort: höj en kasttyp (Balatros planeter)
+	var srow := HFlowContainer.new()
+	srow.custom_minimum_size.x = 600
+	_box.add_child(srow)
+	var sl := Label.new()
+	sl.text = _t("STJÄRNOR:", "STARS:")
+	sl.add_theme_color_override("font_color", Color(1.0, 0.95, 0.55))
+	srow.add_child(sl)
+	for id in _star_offers:
+		var sb := Button.new()
+		var sprice := 3 + Run.night - 1
+		var hid: String = Cards.STARS[id].hand
+		sb.text = "%s: %s %d>%d (%d)" % [Cards.star_title(id), Cards.hand_title(hid), Run.hand_level(hid), Run.hand_level(hid) + 1, sprice]
+		sb.tooltip_text = Cards.star_desc(id)
+		sb.disabled = Run.teeth < sprice
+		sb.pressed.connect(func():
+			if Run.teeth >= sprice:
+				Run.teeth -= sprice
+				Run.level_hand(hid)
+				_star_offers.erase(id)
+				Sfx.play("sparkle", -4.0, 1.4)
+				show_page("shop"))
+		srow.add_child(sb)
+	var hb := Button.new()
+	hb.text = _t("KASTTYPER...", "THROW TYPES...")
+	hb.pressed.connect(func():
+		hands_back = "shop"
+		show_page("hands"))
+	srow.add_child(hb)
 	# ödesleken: köp nya ödeskort, bränn dåliga
 	var frow := HFlowContainer.new()
 	frow.custom_minimum_size.x = 600
@@ -577,8 +672,8 @@ func _page_shop() -> void:
 ## Litet pixelkort med titel, text och en knapp.
 func _mini_card(kind: String, col: Color, title: String, desc: String, foot: String, btn: String, cb: Callable, enabled := true, parent: Container = null) -> void:
 	var pc := PanelContainer.new()
-	pc.add_theme_stylebox_override("panel", Art.card_style(kind, (col * 0.8).clamp(Color(0.2, 0.2, 0.2), Color(1, 1, 1)), 112, 150, title.hash() % 97))
-	pc.custom_minimum_size = Vector2(112, 150)
+	pc.add_theme_stylebox_override("panel", Art.card_style(kind, (col * 0.8).clamp(Color(0.2, 0.2, 0.2), Color(1, 1, 1)), 124, 160, title.hash() % 97))
+	pc.custom_minimum_size = Vector2(124, 160)
 	var v := VBoxContainer.new()
 	v.add_theme_constant_override("separation", 1)
 	pc.add_child(v)
@@ -589,7 +684,8 @@ func _mini_card(kind: String, col: Color, title: String, desc: String, foot: Str
 	var dl := Label.new()
 	dl.text = desc
 	dl.autowrap_mode = TextServer.AUTOWRAP_WORD
-	dl.custom_minimum_size = Vector2(100, 50)
+	dl.add_theme_font_size_override("font_size", Settings.fs(7))
+	dl.custom_minimum_size = Vector2(112, 50)
 	dl.add_theme_color_override("font_color", Color(0.85, 0.78, 0.7))
 	v.add_child(dl)
 	if foot != "":
@@ -612,8 +708,10 @@ func _mini_card(kind: String, col: Color, title: String, desc: String, foot: Str
 func _page_shop2() -> void:
 	_title(_t("KRÅKMORS BAKFICKA", "CROW MOTHER'S BACK POCKET"), 12)
 	_text(_t("Tänder %d   Nyckelring %d/%d", "Teeth %d   Key ring %d/%d") % [Run.teeth, Run.keyring.size(), Cards.MAX_CHARMS], Color(1.0, 0.9, 0.6))
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 3)
+	var row := HFlowContainer.new()
+	row.custom_minimum_size.x = 512
+	row.add_theme_constant_override("h_separation", 3)
+	row.add_theme_constant_override("v_separation", 3)
 	_box.add_child(row)
 	for pk in PACKS:
 		var d: Dictionary = PACKS[pk]
@@ -715,6 +813,7 @@ func _page_shop2() -> void:
 var _pack_after := "shop2"
 var _pack_extra := 0
 var daily_pending := false
+var endless_pending := false
 
 
 func _pack_done() -> void:
@@ -729,7 +828,7 @@ func reward_pack(big := false) -> void:
 	_pack_after = "map"
 	_pack_extra = 1 if big else 0
 	var r := randf()
-	var kind := "kubb" if r < 0.45 else ("rune" if r < 0.8 else "charm")
+	var kind := "kubb" if r < 0.35 else ("rune" if r < 0.6 else ("star" if r < 0.82 else "charm"))
 	if kind == "charm" and Run.keyring.size() >= Cards.MAX_CHARMS:
 		kind = "rune"
 	if kind == "kubb" and Run.shop_pool().is_empty():
@@ -753,6 +852,10 @@ func _open_pack(kind: String) -> void:
 			_pack_items.assign(rp.slice(0, n))
 		"charm":
 			_pack_items.assign(_charm_pool().slice(0, n))
+		"star":
+			var sp: Array = Cards.STARS.keys()
+			sp.shuffle()
+			_pack_items.assign(sp.slice(0, n))
 	Sfx.play("sparkle", 0.0, 0.9)
 	Sfx.play("clack2", -4.0, 0.6)
 	show_page("pack")
@@ -785,6 +888,12 @@ func _page_pack() -> void:
 					_charm_offers.erase(iid)
 					Sfx.play("coin", -4.0, 1.3)
 					_pack_done(), Run.keyring.size() < Cards.MAX_CHARMS, row)
+			"star":
+				var hid: String = Cards.STARS[id].hand
+				_mini_card("star", Cards.HANDS[hid].col, Cards.star_title(id), Cards.star_desc(id), _t("NIVÅ %d > %d", "LEVEL %d > %d") % [Run.hand_level(hid), Run.hand_level(hid) + 1], _t("TA", "TAKE"), func():
+					Run.level_hand(hid)
+					Sfx.play("sparkle", -3.0, 1.4)
+					_pack_done(), true, row)
 	# korten vänds upp ett i taget
 	var ci := 0
 	for c in row.get_children():
@@ -1118,6 +1227,9 @@ func back() -> bool:
 	if page == "difficulty":
 		show_page("rules")
 		return true
+	if page == "hands":
+		show_page(hands_back)
+		return true
 	if page in ["bragder"]:
 		show_page("title")
 		return true
@@ -1136,3 +1248,60 @@ func back() -> bool:
 		show_page("pause" if paused_menu else "title")
 		return true
 	return false
+
+
+var hands_back := "shop"
+
+
+## Alla kasttyper med nivå, grundvärden och hur ofta du kastat dem.
+func _page_hands() -> void:
+	_title(_t("KASTTYPER", "THROW TYPES"), 12)
+	_text(_t("Vad ett kast fäller avgör grundmarker x grundmulti. Stjärnkort höjer nivån.", "What a throw fells sets base chips x base mult. Star cards level them up."), Color(0.75, 0.65, 0.6))
+	var g := GridContainer.new()
+	g.columns = 5
+	g.add_theme_constant_override("h_separation", 12)
+	_box.add_child(g)
+	for h in [_t("KASTTYP", "TYPE"), _t("NIV.", "LVL"), _t("GRUND", "BASE"), _t("GGR", "TIMES"), _t("NÄR", "WHEN")]:
+		var l := Label.new()
+		l.text = h
+		l.add_theme_color_override("font_color", Color(0.6, 0.5, 0.45))
+		g.add_child(l)
+	var order: Array = Cards.HAND_ORDER.duplicate()
+	order.reverse()
+	for id in order:
+		var b := Run.hand_base(id)
+		for t in [Cards.hand_title(id), str(Run.hand_level(id)), "%d X %d" % [b[0], int(b[1])], str(int(Run.hand_played.get(id, 0))), Cards.HANDS[id][Lang.current][1]]:
+			var l := Label.new()
+			l.text = t
+			l.add_theme_color_override("font_color", Cards.HANDS[id].col if g.get_child_count() % 5 != 4 else Color(0.72, 0.64, 0.6))
+			if g.get_child_count() % 5 == 4:
+				l.add_theme_font_size_override("font_size", Settings.fs(7))
+			g.add_child(l)
+	_button(_t("TILLBAKA", "BACK"), func(): show_page(hands_back))
+
+
+## Innan en vanlig match: spela den, eller hoppa över och ta märket (Balatros blinds).
+func _page_skip() -> void:
+	var opp: String = Run.node.get("opp", "vedgubben")
+	_title(_t("LITEN MÅNE", "SMALL MOON") if Run.layer == 0 else _t("STOR MÅNE", "BIG MOON"), 14, Color(1.0, 0.35, 0.2))
+	_text(_node_name(Run.node) + ". " + _opp_rule(opp), Color(0.9, 0.82, 0.72))
+	_text(_t("Månen kräver %d poäng. Vinst ger tänder, poäng ger fler.", "The moon demands %d points. A win gives teeth, points give more.") % Run.preview_target(), Color(1.0, 0.85, 0.4))
+	_box.add_child(HSeparator.new())
+	_button(_t("SPELA MATCHEN", "PLAY THE MATCH"), func():
+		close()
+		skip_play.emit())
+	var tg: Dictionary = Cards.TAGS[Run.skip_tag]
+	var b := _button(_t("HOPPA ÖVER: ", "SKIP: ") + tg[Lang.current][0].to_upper(), func():
+		var tid := Run.skip_tag
+		Run.skip_tag = ""
+		Run.skips += 1
+		if Run.skips >= 3:
+			Run.grant("hoppare")
+		Run.step_done()
+		Sfx.play("whoosh", -4.0, 0.8)
+		if Run.apply_tag(tid):
+			reward_pack(true)
+		else:
+			show_page("map"))
+	b.add_theme_color_override("font_color", tg.col)
+	_text("  " + tg[Lang.current][1] + _t(" Du får inga tänder för matchen.", " You get no teeth for the match."), Color(0.7, 0.62, 0.58))

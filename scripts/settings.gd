@@ -21,9 +21,25 @@ var show_timer := false    # visa tid för runnen
 var difficulty := "natten"
 
 
+const FONT := preload("res://fonts/pixelify.ttf")
+## Textstorlek: 1.0 = normal, 1.15 = stor.
+var text_scale := 1.0
+
+
 func _ready() -> void:
 	load_settings()
 	apply()
+	# tydlig pixelfont överallt (menyer, HUD och 3D-siffror)
+	var fv := FontVariation.new()
+	fv.base_font = FONT
+	fv.variation_opentype = {"wght": 500}
+	ThemeDB.fallback_font = fv
+	ThemeDB.fallback_font_size = fs(8)
+
+
+## Gamla storlekar var för standardfonten. Pixelfonten behöver ca 25 % mer.
+func fs(size: int) -> int:
+	return maxi(8, int(round(size * 1.25 * text_scale)))
 
 
 func load_settings() -> void:
@@ -44,6 +60,7 @@ func load_settings() -> void:
 	shake = cf.get_value("grafik", "shake", shake)
 	show_timer = cf.get_value("spel", "show_timer", show_timer)
 	difficulty = cf.get_value("spel", "difficulty", difficulty)
+	text_scale = cf.get_value("grafik", "text_scale", text_scale)
 	Lang.current = cf.get_value("spel", "lang", Lang.current)
 
 
@@ -64,6 +81,7 @@ func save() -> void:
 	cf.set_value("grafik", "shake", shake)
 	cf.set_value("spel", "show_timer", show_timer)
 	cf.set_value("spel", "difficulty", difficulty)
+	cf.set_value("grafik", "text_scale", text_scale)
 	cf.save(PATH)
 
 

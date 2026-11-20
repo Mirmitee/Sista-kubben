@@ -163,6 +163,7 @@ func set_kind(id: String, mass_mult := 1.0) -> void:
 		cap.position.y = SIZE.y * 0.5 + 0.004
 	_rune.add_child(cap)
 	_cap = cap
+	set_process(true)
 
 
 ## Runorna syns på kubben: förstärkningen färgar träet, utgåvan blir
@@ -194,6 +195,7 @@ func set_runes(e: String, d: String, sg: String, mass_mult := 1.0) -> void:
 		_runes.add_child(b)
 	if d != "":
 		_ed_mat = PS1.mat(null, Cards.RUNES[d].col, Vector2.ONE, 1.0)
+		set_process(true)
 		for c in [Vector2(-1, -1), Vector2(1, -1), Vector2(-1, 1), Vector2(1, 1)]:
 			var strip := PS1.box(Vector3(0.012, SIZE.y * 1.02, 0.012), _ed_mat)
 			strip.position = Vector3(c.x * SIZE.x * 0.5, 0, c.y * SIZE.z * 0.5)
@@ -244,6 +246,10 @@ func shatter() -> void:
 
 
 func _process(dt: float) -> void:
+	# vanliga kubbar utan märke eller utgåva behöver inte uppdateras varje bildruta
+	if _cap == null and _ed_mat == null:
+		set_process(false)
+		return
 	_t += dt
 	if _cap and visible:
 		_cap.rotate_y(dt * 2.2)  # specialkubbarnas märke snurrar sakta, de lever

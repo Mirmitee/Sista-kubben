@@ -175,6 +175,9 @@ func _ready() -> void:
 	menu.main_menu_pressed.connect(_to_menu)
 	menu.shop_done.connect(_node_done)
 	menu.map_pick.connect(_on_map_pick)
+	menu.skip_play.connect(func():
+		Run.skip_tag = ""
+		_play_match())
 	Run.unlocked.connect(func(t: String): hud.toast(Lang.t("unlocked") + " " + t))
 	Lang.changed.connect(_refresh_ui)
 	Settings.changed.connect(_refresh_ui)
@@ -305,9 +308,10 @@ func _start_run(baton_id: String) -> void:
 	if mode == Mode.MATCH:
 		await hud.fade_out()
 		_to_menu()
-	Run.start(baton_id, menu.daily_pending)
+	Run.start(baton_id, menu.daily_pending, menu.endless_pending)
 	Run.difficulty = "natten" if Run.daily else Settings.difficulty
 	menu.daily_pending = false
+	menu.endless_pending = false
 	menu.open("map")
 
 
@@ -321,6 +325,12 @@ func _on_map_pick(i: int) -> void:
 			menu.open("fate_node")
 		"grave":
 			menu.open("grave")
+		"match":
+			# vanlig match: spela, eller hoppa över för ett märke
+			if Run.skip_tag == "":
+				var tk: Array = Cards.TAGS.keys()
+				Run.skip_tag = tk[randi() % tk.size()]
+			menu.open("skip")
 		_:
 			_play_match()
 
@@ -702,12 +712,12 @@ const TUT := [
 	"WOOF. I'm Gösta and I'll teach you kubb. A throw is three presses: CLICK (or space) once to wind up. CLICK again to lock the POWER. CLICK a third time with the marker in the green for ACCURACY. Throw a baton now."],
 	["Bra! A och D flyttar dig i sidled, musen siktar. Pinnen ska snurra som en väderkvarn, aldrig som en helikopter. Träffa mig nu. Jag lovar att stöna.",
 	"Good! A and D move you sideways, the mouse aims. The baton must spin end over end, never like a helicopter. Hit me now. I promise to groan."],
-	["UUOOH. Ser du? Jag krympte. I matchen fäller du hans kubbar. Varje fälld kubb ger MARKER (blå) gånger MULTI (röd). Fäll alla hans kubbar och sist KUNGEN i mitten. Rör kungen för tidigt och du dör. Kasta igen.",
-	"UUOOH. See? I shrank. In a match you fell his kubbs. Each felled kubb gives CHIPS (blue) times MULT (red). Fell all his kubbs and the KING in the middle last. Touch the king too early and you die. Throw again."],
+	["UUOOH. Ser du? Jag krympte. I matchen fäller du hans kubbar. Vad kastet fäller blir en KASTTYP, som DUBBELFÄLLNING eller FÄLTSTÄDNING, och den ger MARKER (blå) gånger MULTI (röd). Fäll alla hans kubbar och sist KUNGEN i mitten. Rör kungen för tidigt och du dör. Kasta igen.",
+	"UUOOH. See? I shrank. In a match you fell his kubbs. What a throw fells becomes a THROW TYPE, like DOUBLE FELL or FIELD CLEAN-UP, and it gives CHIPS (blue) times MULT (red). Fell all his kubbs and the KING in the middle last. Touch the king too early and you die. Throw again."],
 	["Sen kastar han tillbaka på DINA kubbar. Varje kubbkort du har ger din kubb ett FÖRSVAR, som sköld eller taggar. När han fäller dina kubbar STJÄL han poäng. Håll TAB i matchen så ser du hela planen. Kasta igen.",
 	"Then he throws back at YOUR kubbs. Every kubb card you own gives your kubb a DEFENSE, like a shield or thorns. When he fells your kubbs he STEALS points. Hold TAB in a match to see the whole field. Throw again."],
-	["Klarar du BLODMÅNENS krav vinner du matchen, och dina poäng blir TÄNDER. Hos Kråkmor köper du kubbkort, runor, boosterpaket och berlocker till din NYCKELRING. Varje natt har sitt eget väder. Ett kast till.",
-	"Meet the BLOOD MOON's demand and you win the match, and your points become TEETH. At Crow Mother's you buy kubb cards, runes, booster packs and charms for your KEY RING. Every night has its own weather. One more throw."],
+	["Klarar du BLODMÅNENS krav vinner du matchen, och dina poäng blir TÄNDER. Hos Kråkmor köper du kubbkort, runor, STJÄRNKORT som höjer kasttyper, boosterpaket och berlocker till din NYCKELRING. Spara tänder: du får ränta. Varje natt har sitt eget väder. Ett kast till.",
+	"Meet the BLOOD MOON's demand and you win the match, and your points become TEETH. At Crow Mother's you buy kubb cards, runes, STAR CARDS that level up throw types, booster packs and charms for your KEY RING. Save teeth: you earn interest. Every night has its own weather. One more throw."],
 	["Det var allt. Tre nätter, sex matcher och Tjock-Leffe på slutet. Förlorar du en match är runnen slut. Gösta ska lägga sig nu. Kasta på mig hur länge du vill, eller tryck Esc.",
 	"That's it. Three nights, six matches and Fat Leffe at the end. Lose one match and the run is over. Gösta is going to lie down now. Throw at me as long as you like, or press Esc."],
 ]
@@ -1114,8 +1124,9 @@ func _fell_effects() -> Array:
 				for o in fallen_kubbs(k.side):
 					if o != k:
 						fallen.append(o)
+			fallen.shuffle()  # olika kubbar, inte samma två gånger
 			for i in mini(int(fd.reraise), fallen.size()):
-				var o: Kubb = fallen[randi() % fallen.size()]
+				var o: Kubb = fallen[i]
 				if o.field:
 					o.raise_at(o.global_position)
 				else:
@@ -1263,14 +1274,7 @@ const TIER_TEETH := [1, 2, 2, 3, 5]
 
 ## Blodmånens krav för matchen (första nivån).
 func _target() -> int:
-	var n := Run.night if Run.active else 1
-	var t := 450.0 * pow(2.8, n - 1)
-	if Run.is_boss():
-		t *= 1.4
-	if Run.is_elite():
-		t *= 1.2
-	t *= Run.mod("target_mult", 1.0)
-	return int(snappedf(t, 10.0))
+	return Run.preview_target()
 
 
 func _goal() -> int:
@@ -1332,6 +1336,7 @@ func _kubb_steps(k: Kubb, n: int, first_rep: bool) -> Array:
 			out.append(["x", float(sc.perfect_xmult), "PERFEKT!" if sv else "PERFECT!", XMULT_COL])
 	if k.get_meta("golden", false) and first_rep:
 		out.append(["x", 2.0, "GULDKUBB!" if sv else "GOLD KUBB!", Color(1.0, 0.85, 0.2)])
+		call_deferred("_strip_golden", k)  # guldet betalar bara en gång
 	if sl >= 0:
 		if Run.grow_chips[sl] > 0:
 			out.append(["c", Run.grow_chips[sl], "", CHIP_COL])
@@ -1388,11 +1393,27 @@ func _score_throw() -> void:
 	var sv := Lang.current == "sv"
 	var n := _felled_valid.size()
 	_match_felled += n
-	var chips := 0
-	var mult := 1.0
 	var step := 0
 	var any: Node3D = _felled_valid[0]
-	hud.tally(0, mult, true)
+	# kasttypen ger grundmarker x grundmulti, som en hand i Balatro
+	var opp_side := "theirs" if phase == Phase.PLAYER else "mine"
+	var left := side_kubbs(opp_side, true).filter(func(k): return k.visible and not k.is_king)
+	var hid := Run.hand_of(_felled_valid, left.is_empty(), left.filter(func(k): return k.field).is_empty())
+	var hb := Run.hand_base(hid)
+	var chips: int = hb[0]
+	var mult: float = hb[1]
+	if n >= 2:
+		mult *= Run.mod("combo_x_mult", 1.0)
+	Run.hand_played[hid] = int(Run.hand_played.get(hid, 0)) + 1
+	if hid == "kungsoppning":
+		Run.grant("oppna_kungen")
+	_prev_hand = _cur_hand
+	_cur_hand = hid
+	hud.tally(chips, mult, true)
+	hud.tally_hand(Cards.hand_title(hid), Run.hand_level(hid), Cards.HANDS[hid].col)
+	Sfx.play("coin", -6.0, 0.8 + 0.08 * Cards.HAND_ORDER.size() - 0.08 * Cards.HAND_ORDER.find(hid))
+	if not _autotest:
+		await get_tree().create_timer(0.35, true, false, true).timeout
 	if _charge > 0:
 		mult += _charge
 		await _tick(any, ("+%d MULTI (LADDAT)" if sv else "+%d MULT (CHARGED)") % _charge, MULT_COL, step)
@@ -1433,12 +1454,6 @@ func _score_throw() -> void:
 				hud.tally(chips, mult)
 				await _tick(k, label, st[3], step, 12 if st[0] == "x" else 10)
 				step += 1
-	if n >= 2:
-		var cb := int((n - 1) * 2 * Run.mod("combo_x_mult", 1.0))
-		mult += cb
-		hud.tally(chips, mult)
-		await _tick(any, ("KOMBO +%d MULTI" if sv else "COMBO +%d MULT") % cb, MULT_COL, step, 12)
-		step += 1
 	if _last_info.get("grade", "") == "perfect":
 		mult += 2
 		hud.tally(chips, mult)
@@ -1459,6 +1474,8 @@ func _score_throw() -> void:
 		hud.tally(chips, mult)
 		await _tick(any, "X%s MULTI" % str(snappedf(_throw_xmult, 0.1)), XMULT_COL, step, 12)
 	var total := int(chips * mult)
+	if mode != Mode.MATCH or not Run.active:
+		return  # matchen avbröts mitt i räkningen
 	hud.tally_total(total)
 	score += total
 	Run.score_total += total
@@ -1491,6 +1508,12 @@ func _score_throw() -> void:
 
 
 var _cm := [0, 1.0]
+var _mag_frame := 0
+var _cleared_cache := false
+var _flight_bdef := {}
+var _dbl_tag := false
+var _cur_hand := ""
+var _prev_hand := ""
 
 
 ## Nyckelringen och nattens väder lägger på sina effekter.
@@ -1530,6 +1553,35 @@ func _charm_steps(n: int, any: Node3D, step: int, cm: Array) -> int:
 	var bx := Run.mod("big_x_mult", 1.0)
 	if bx > 1.0 and n >= 3:
 		steps.append(["x", bx, ("X%s VARGTAND" if sv else "X%s WOLF FANG") % str(bx), XMULT_COL])
+	# växande och samspelande berlocker
+	if Run.mod("scale_pole") > 0.0:
+		if n >= 2:
+			Run.bump_charm("pole")
+		var pv := int(Run.charm_val("pole"))
+		if pv > 0:
+			steps.append(["m", pv, ("+%d MULTI MIDSOMMARSTÅNG" if sv else "+%d MULT MAYPOLE") % pv, MULT_COL])
+	if Run.mod("scale_amber") > 0.0:
+		if _last_info.get("grade", "") == "perfect":
+			Run.bump_charm("amber")
+		var av := 1.0 + Run.charm_val("amber") * 0.2
+		if av > 1.0:
+			steps.append(["x", av, ("X%s BÄRNSTEN" if sv else "X%s AMBER") % str(snappedf(av, 0.1)), XMULT_COL])
+	if Run.mod("scale_booze") > 0.0:
+		var hv := 15 + int(Run.charm_val("booze")) * 10
+		steps.append(["c", hv, ("+%d HEMBRÄNT" if sv else "+%d MOONSHINE") % hv, CHIP_COL])
+	var fid := int(Run.mod("fiddle_multi"))
+	if fid > 0:
+		steps.append(["m", fid * Run.keyring.size(), ("+%d MULTI FIOL" if sv else "+%d MULT FIDDLE") % (fid * Run.keyring.size()), MULT_COL])
+	var lvm := int(Run.mod("level_multi"))
+	if lvm > 0:
+		var lv := Run.hand_level(_cur_hand) * lvm
+		steps.append(["m", lv, ("+%d MULTI KVAST" if sv else "+%d MULT BROOM") % lv, MULT_COL])
+	var bch := int(Run.mod("batons_chips"))
+	if bch > 0 and batons_left > 0:
+		steps.append(["c", bch * batons_left, ("+%d TIPSKUPONG" if sv else "+%d BETTING SLIP") % (bch * batons_left), CHIP_COL])
+	var sx := Run.mod("same_x_mult", 1.0)
+	if sx > 1.0 and _prev_hand == _cur_hand:
+		steps.append(["x", sx, ("X%s KRÅKANS ÖGA" if sv else "X%s CROW'S EYE") % str(sx), XMULT_COL])
 	var nx := Run.mod("night_x_mult", 1.0)
 	if nx > 1.0:
 		steps.append(["x", nx, "X%s " % str(nx) + Cards.night_title(Run.night_mod).to_upper(), XMULT_COL])
@@ -1571,11 +1623,19 @@ func _opp_score(n: int) -> void:
 	hud.tally(chips, mult, true)
 	hud.tally_steal(true)
 	await get_tree().create_timer(0.35).timeout
+	if mode != Mode.MATCH or not Run.active:
+		return
 	var stolen := mini(total, score)
-	hud.tally_total(-total)
+	hud.tally_total(-stolen)
 	score = maxi(score - total, 0)
 	_stolen += stolen
 	hud.set_score(score, _goal())
+	if stolen <= 0:
+		# inget att ta: han får bara se dum ut
+		hud.popup_col(camera.unproject_position(opponent.global_position + Vector3(0, 2.4, 0)), "INGET ATT STJÄLA" if sv else "NOTHING TO STEAL", Color(0.8, 0.6, 0.6), 10)
+		await get_tree().create_timer(0.3).timeout
+		hud.tally_steal(false)
+		return
 	hud.popup_col(camera.unproject_position(opponent.global_position + Vector3(0, 2.4, 0)), ("-%d POÄNG" if sv else "-%d POINTS") % stolen, Color(1.0, 0.2, 0.2), 14)
 	hud.red_flash()
 	Sfx.play("bad", -2.0, 0.8)
@@ -1784,7 +1844,10 @@ func _draw_options() -> Array[String]:
 	var pk: Array = Cards.PINNKORT.keys()
 	out.append("p:" + str(pk[randi() % pk.size()]))
 	var pool := Run.shop_pool()
-	if randf() < 0.6 or pool.is_empty():
+	if randf() < 0.3:
+		var sk: Array = Cards.STARS.keys()
+		out.append("s:" + str(sk[randi() % sk.size()]))
+	elif randf() < 0.6 or pool.is_empty():
 		var r := randf()
 		var kind := "enh" if r < 0.7 else ("ed" if r < 0.85 else "seal")
 		var rs := Cards.runes_of(kind)
@@ -1803,6 +1866,9 @@ func _choice_view(o: String) -> Array:
 			v.append("ÖDESKORT" if sv else "FATE CARD")
 			v.append("fate_bad" if Cards.FATE[id].get("cursed", false) else "fate")
 			return v
+		"s:":
+			var hid: String = Cards.STARS[id].hand
+			return [Cards.star_title(id), Cards.star_desc(id) + (" Nu nivå %d." if sv else " Now level %d.") % Run.hand_level(hid), Cards.HANDS[hid].col, "STJÄRNKORT" if sv else "STAR CARD", "star"]
 		"p:":
 			return [Cards.pk_title(id), Cards.pk_desc(id), Cards.BATONS[Cards.PINNKORT[id][0]].get("trail", Color(1, 0.8, 0.5)), "PINNKORT" if sv else "BATON CARD", "pinnkort"]
 		"d:":
@@ -1822,6 +1888,12 @@ func _apply_choice(o: String) -> void:
 		"f:":
 			_apply_fate(id)
 			return
+		"s:":
+			var hid: String = Cards.STARS[id].hand
+			Run.level_hand(hid)
+			Run.cards_drawn += 1
+			hud.fate_card(v[0], _tl("%s är nu nivå %d.", "%s is now level %d.") % [Cards.hand_title(hid), Run.hand_level(hid)], v[2])
+			Sfx.play("sparkle", -3.0, 1.4)
 		"p:":
 			var p: Array = Cards.PINNKORT[id]
 			for i in int(p[1]):
@@ -1947,7 +2019,9 @@ func _physics_process(dt: float) -> void:
 		_shadow.visible = false
 		return
 	_fly_time += dt
-	var bdp := _bdef() if not current_by_opp else {}
+	if _fly_time <= dt * 1.01:
+		_flight_bdef = _bdef() if not current_by_opp else {}
+	var bdp := _flight_bdef
 	if current is Baton and not current.touched:
 		if bdp.has("homing") and not _homing_targets.is_empty():
 			# styr mjukt mot närmaste giltiga kubb
@@ -1971,10 +2045,13 @@ func _physics_process(dt: float) -> void:
 	_trail_tick += 1
 	if not current.touched and _trail_tick % 3 == 0:
 		_spawn_trail(p)
-	var moving := false
-	for k in kubbs + [king]:
-		if k.visible and not k.sleeping and k.linear_velocity.length() > 0.08 and k != current:
-			moving = true
+	# rör sig något fortfarande? (ingen ny array per fysiksteg)
+	var moving := king.visible and not king.sleeping and king.linear_velocity.length_squared() > 0.0064 and king != current
+	if not moving:
+		for k in kubbs:
+			if k.visible and not k.sleeping and k != current and k.linear_velocity.length_squared() > 0.0064:
+				moving = true
+				break
 	var gone := p.y < -2.0 or p.length() > 40.0
 	if current.touched:
 		_touch_t += dt
@@ -2549,8 +2626,14 @@ func _win_match() -> void:
 	var reward := 4 + Run.night + int(Run.mod("win_teeth_add")) + mini(maxi(batons_left, 0), 3)
 	if Run.is_elite():
 		reward = int(reward * 1.5)
-	var interest := mini(5, int(Run.teeth / 5)) * int(Run.mod("interest"))
+	# ränta som i Balatro: 1 tand per 5 du sparat (max 5), berlocken ger mer
+	var interest := mini(5, int(Run.teeth / 5)) * (1 + int(Run.mod("interest")))
 	reward += interest
+	if Run.take_tag("dubbel"):
+		reward += 4 + Run.night
+		_dbl_tag = true
+	if Run.mod("scale_booze") > 0.0:
+		Run.bump_charm("booze")
 	var kx := Run.mod("king_x_mult", 1.0)
 	if kx > 1.0 and king.is_fallen():
 		score = int(score * kx)
@@ -2583,8 +2666,23 @@ func _win_match() -> void:
 		return
 	Fx.confetti(self, king.global_position + Vector3(0, 0.3, 0))
 	Sfx.play("sparkle", 0.0, 1.0)
-	hud.center(Lang.t("win_title") % reward + "\n" + _tl("vinst %d + poäng %d (%s) + ränta %d   han stal %d", "win %d + score %d (%s) + interest %d   he stole %d") % [base_reward, conv, str(score), interest, _stolen] + "\n" + _summary() + "\n" + _tl("Tänder den här matchen: %d", "Teeth this match: %d") % maxi(Run.teeth - _match_teeth, 0))
-	await get_tree().create_timer(3.0).timeout
+	# kassan: raderna räknas upp en i taget, som Balatros utbetalning
+	var rows: Array = [
+		[_tl("Vinst", "Win"), base_reward - (4 + Run.night if _dbl_tag else 0) - mini(maxi(batons_left, 0), 3)],
+		[_tl("Pinnar kvar (max 3)", "Batons left (max 3)"), mini(maxi(batons_left, 0), 3)],
+		[_tl("Poäng %s av %s", "Score %s of %s") % [str(score), str(_target())], conv],
+		[_tl("Ränta (1 per 5 sparade)", "Interest (1 per 5 saved)"), interest],
+	]
+	if _dbl_tag:
+		rows.append([_tl("Dubbelmärke", "Double Tag"), 4 + Run.night])
+	if _stolen > 0:
+		rows.append([_tl("Han stal %d poäng", "He stole %d points") % _stolen, 0])
+	_dbl_tag = false
+	hud.center("")
+	if not _autotest:
+		await hud.cash_out(Lang.t("win_title") % reward, rows, reward)
+	else:
+		await get_tree().create_timer(0.5).timeout
 	if mode != Mode.MATCH:
 		return
 	if won_all:
@@ -2911,7 +3009,12 @@ func _board_items() -> Array:
 
 
 func _update_magnet() -> void:
+	# räkna om var sjätte bildruta, inte varje (kubbarna står still när man siktar)
+	_mag_frame += 1
+	if _mag_frame % 6 != 0 and not thrower.magnet_targets.is_empty():
+		return
 	thrower.magnet_targets.clear()
+	_cleared_cache = mode == Mode.MATCH and _side_cleared("theirs")
 	if mode == Mode.MENU or phase != Phase.PLAYER or thrower.payload_kubb:
 		return
 	if mode == Mode.TRAINING:
@@ -2948,6 +3051,8 @@ func _unhandled_input(e: InputEvent) -> void:
 				if mode == Mode.TRAINING and not thrower.holding:
 					_new_training()
 				elif mode == Mode.MATCH and _match_over and not menu.visible and not Run.active:
+					# samma sorts run igen: oändlig blir oändlig
+					menu.endless_pending = Run.endless_mode
 					_start_run(Run.baton)
 
 
@@ -3395,6 +3500,28 @@ func _screenshots(prefix: String) -> void:
 		for i in 10:
 			await get_tree().process_frame
 		vp.get_texture().get_image().save_png(prefix + "_" + pg + ".png")
+	Run.start("vanlig")
+	Run.level_hand("dubbel", 2)
+	Run.hand_played = {"dubbel": 4, "faltkubb": 7, "rensning": 1}
+	Run.node = Run.map[0][0]
+	Run.skip_tag = "stjarna"
+	for pg in ["hands", "skip"]:
+		menu.open(pg)
+		for i in 10:
+			await get_tree().process_frame
+		vp.get_texture().get_image().save_png(prefix + "_" + pg + ".png")
+	menu.close()
+	_start(Mode.MATCH, true)
+	while _intro:
+		await get_tree().process_frame
+	hud.tally(45, 6.0, true)
+	hud.tally_hand(Cards.hand_title("faltstadning"), 2, Cards.HANDS.faltstadning.col)
+	await get_tree().create_timer(0.4).timeout
+	vp.get_texture().get_image().save_png(prefix + "_kasttyp.png")
+	hud.tally_reset()
+	hud.cash_out(Lang.t("win_title") % 21, [["Vinst", 7], ["Pinnar kvar (max 3)", 2], ["Poäng 1260 av 450", 8], ["Ränta (1 per 5 sparade)", 4], ["Han stal 140 poäng", 0]], 21)
+	await get_tree().create_timer(2.2).timeout
+	vp.get_texture().get_image().save_png(prefix + "_kassa.png")
 	get_tree().quit()
 
 
@@ -3446,6 +3573,14 @@ func _bot_shop() -> void:
 	for i in 5:
 		if Run.cards[i] != "" and Run.teeth >= Run.def_up_price(i) + 6:
 			Run.upgrade_def(i)
+	# stjärnkort på den kasttyp den kastar mest
+	var best := "faltkubb"
+	for h in Run.hand_played:
+		if int(Run.hand_played[h]) > int(Run.hand_played.get(best, 0)):
+			best = h
+	if Run.teeth >= 3 + Run.night - 1 + 4:
+		Run.teeth -= 3 + Run.night - 1
+		Run.level_hand(best)
 
 
 func _bot_reward() -> void:
@@ -3546,6 +3681,15 @@ func _clear_events() -> void:
 					c.queue_free()
 
 
+func _strip_golden(k: Kubb) -> void:
+	if not is_instance_valid(k) or not k.has_meta("golden"):
+		return
+	k.remove_meta("golden")
+	for c in k.get_children():
+		if c.is_in_group("golden"):
+			c.queue_free()
+
+
 ## Hit-stop: världen fryser ett ögonblick efter ett riktigt stort kast.
 func _hitstop() -> void:
 	if _autotest or _slowmo_on:
@@ -3635,7 +3779,7 @@ func _tick_extras(dt: float) -> void:
 					_refresh_ui()
 					break
 	# kungen lyser när du får fälla honom, och siktlinjen varnar annars
-	var cleared := mode == Mode.MATCH and _side_cleared("theirs")
+	var cleared := _cleared_cache
 	if _king_light == null:
 		_king_light = OmniLight3D.new()
 		_king_light.light_color = Color(1.0, 0.85, 0.3)

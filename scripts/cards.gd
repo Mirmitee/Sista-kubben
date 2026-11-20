@@ -595,7 +595,7 @@ const CHARMS := {
 	"snackskal": {"price": 6, "col": Color(0.75, 0.65, 0.45), "mods": {"steal_mult": 0.6}, "sv": ["Snäckskal", "Han stjäl 40 % mindre poäng. Han hör havet och blir ledsen."], "en": ["Snail Shell", "He steals 40% fewer points. He hears the sea and gets sad."]},
 	"mygga": {"price": 6, "col": Color(0.5, 0.5, 0.45), "mods": {"grow_multi": 1}, "sv": ["Torkad mygga", "+1 multi för varje kast du gjort den här matchen."], "en": ["Dried Mosquito", "+1 mult for every throw you've made this match."]},
 	"ljusstump": {"price": 5, "col": Color(1.0, 0.85, 0.4), "mods": {"stand_chips": 8}, "sv": ["Ljusstump", "+8 marker per egen kubb som står kvar på din baslinje."], "en": ["Candle Stub", "+8 chips per kubb of yours still standing on your baseline."]},
-	"tandsticksask": {"price": 6, "col": Color(0.9, 0.3, 0.2), "mods": {"combo_x_mult": 2.0}, "sv": ["Tändsticksask", "Kombobonusen är dubbelt så stor."], "en": ["Matchbox", "The combo bonus is twice as big."]},
+	"tandsticksask": {"price": 6, "col": Color(0.9, 0.3, 0.2), "mods": {"combo_x_mult": 2.0}, "sv": ["Tändsticksask", "Kasttyper med två eller fler kubbar får dubbel grundmulti."], "en": ["Matchbox", "Throw types with two or more kubbs get double base mult."]},
 	"benknapp": {"price": 10, "col": Color(0.9, 0.88, 0.8), "mods": {"batons_add": 1}, "sv": ["Benknapp", "+1 pinne varje tur. Någon saknar en knapp."], "en": ["Bone Button", "+1 baton every turn. Someone is missing a button."]},
 	"grodlar": {"price": 6, "col": Color(0.45, 0.8, 0.35), "mods": {"perfect_x_mult": 2.0}, "sv": ["Grodlår", "X2 multi på perfekta kast."], "en": ["Frog Leg", "X2 mult on perfect throws."]},
 	"minikung": {"price": 7, "col": Color(0.9, 0.75, 0.3), "mods": {"king_shield": 1}, "sv": ["Minikung", "Kungen tål en tidig träff. Den lilla kungen tar smällen."], "en": ["Tiny King", "The king survives one early hit. The tiny king takes it."]},
@@ -609,6 +609,13 @@ const CHARMS := {
 	"tandborste": {"price": 4, "col": Color(0.6, 0.9, 1.0), "mods": {"perfect_teeth": 1}, "sv": ["Tandborste", "+1 tand extra på perfekta kast. Någon har använt den."], "en": ["Toothbrush", "+1 extra tooth on perfect throws. Someone has used it."]},
 	"rostig_spik": {"price": 6, "col": Color(0.6, 0.4, 0.3), "mods": {"first_chips": 20, "flat_multi": 2}, "sv": ["Rostig spik", "+20 marker på första kastet varje tur och +2 multi alltid. Stelkramp ingår."], "en": ["Rusty Nail", "+20 chips on the first throw each turn and +2 mult always. Tetanus included."]},
 	"glasoga": {"price": 9, "col": Color(0.8, 0.95, 1.2), "mods": {"green_mult": 1.25}, "sv": ["Glasöga", "Gröna fältet 25 % bredare. Ögat ser åt rätt håll."], "en": ["Glass Eye", "Green zone 25% wider. The eye looks the right way."]},
+	"midsommarstang": {"price": 7, "col": Color(0.4, 0.85, 0.35), "mods": {"scale_pole": 1}, "sv": ["Midsommarstång", "Växer: +1 multi för varje kast som fäller 2+ kubbar den här runnen."], "en": ["Maypole", "Grows: +1 mult for every throw that fells 2+ kubbs this run."]},
+	"barnsten_bit": {"price": 8, "col": Color(1.0, 0.65, 0.2), "mods": {"scale_amber": 1}, "sv": ["Bärnstensbit", "Växer: X multi ökar med 0.2 för varje perfekt kast den här runnen."], "en": ["Amber Shard", "Grows: X mult goes up 0.2 for every perfect throw this run."]},
+	"hembrant": {"price": 6, "col": Color(0.85, 0.9, 1.0), "mods": {"scale_booze": 1}, "sv": ["Hembränt", "Växer: +15 marker, och +10 till för varje match du vinner. Luktar ingenting."], "en": ["Moonshine", "Grows: +15 chips, plus 10 more for every match you win. Smells of nothing."]},
+	"krakans_oga": {"price": 7, "col": Color(0.2, 0.2, 0.3), "mods": {"same_x_mult": 2.0}, "sv": ["Kråkans öga", "X2 multi om kastet är samma kasttyp som förra kastet."], "en": ["Crow's Eye", "X2 mult if the throw is the same throw type as the last one."]},
+	"gammal_fiol": {"price": 6, "col": Color(0.6, 0.35, 0.2), "mods": {"fiddle_multi": 2}, "sv": ["Gammal fiol", "+2 multi per berlock på nyckelringen. Spelar själv i dimman."], "en": ["Old Fiddle", "+2 mult per charm on your key ring. Plays itself in the fog."]},
+	"kvast": {"price": 6, "col": Color(0.8, 0.7, 0.4), "mods": {"level_multi": 3}, "sv": ["Kråkmors kvast", "+3 multi per nivå på kasttypen du kastar."], "en": ["Crow Mother's Broom", "+3 mult per level of the throw type you make."]},
+	"stryktips": {"price": 5, "col": Color(0.95, 0.95, 0.9), "mods": {"batons_chips": 12}, "sv": ["Gammal tipskupong", "+12 marker per pinne du har kvar när kastet räknas."], "en": ["Old Betting Slip", "+12 chips per baton you have left when the throw scores."]},
 	"tomtenisse": {"price": 7, "col": Color(0.9, 0.2, 0.2), "mods": {"opp_batons_add": -1}, "sv": ["Liten nisse", "Han får en pinne mindre. Nissen har gömt den."], "en": ["Little Gnome", "He gets one baton fewer. The gnome hid it."]},
 }
 
@@ -631,7 +638,13 @@ static func charm_title(id: String) -> String:
 
 
 static func charm_desc(id: String) -> String:
-	return CHARMS[id][Lang.current][1]
+	var t: String = CHARMS[id][Lang.current][1]
+	var sv := Lang.current == "sv"
+	match id:
+		"midsommarstang": t += (" Nu +%d." if sv else " Now +%d.") % int(Run.charm_val("pole"))
+		"barnsten_bit": t += (" Nu X%s." if sv else " Now X%s.") % str(snappedf(1.0 + Run.charm_val("amber") * 0.2, 0.1))
+		"hembrant": t += (" Nu +%d." if sv else " Now +%d.") % (15 + int(Run.charm_val("booze")) * 10)
+	return t
 
 
 static func night_title(id: String) -> String:
@@ -668,6 +681,10 @@ const DIFFICULTY := {
 
 ## BRAGDER: sparas mellan runs.
 const BRAGDER := {
+	"natt_sju": {"sv": ["Natten tar aldrig slut", "Nå natt 7 i den oändliga natten."], "en": ["The Night Never Ends", "Reach night 7 in the endless night."]},
+	"stjarnskadare": {"sv": ["Stjärnskådare", "Få en kasttyp till nivå 5."], "en": ["Stargazer", "Get a throw type to level 5."]},
+	"hoppare": {"sv": ["Månen kan vänta", "Hoppa över tre matcher i en run."], "en": ["The Moon Can Wait", "Skip three matches in one run."]},
+	"oppna_kungen": {"sv": ["Kungen står naken", "Gör kasttypen Öppna kungen."], "en": ["The King Stands Naked", "Make the Open the King throw type."]},
 	"forsta_vinst": {"sv": ["Första blodet", "Vinn en match."], "en": ["First Blood", "Win a match."]},
 	"tusen": {"sv": ["Tusen", "1 000 poäng i ett kast."], "en": ["A Thousand", "1,000 points in one throw."]},
 	"tiotusen": {"sv": ["Månen blev rädd", "10 000 poäng i ett kast."], "en": ["The Moon Got Scared", "10,000 points in one throw."]},
@@ -693,3 +710,53 @@ static func pick_title(d: Dictionary, id: String) -> String:
 
 static func pick_desc(d: Dictionary, id: String) -> String:
 	return d[id][Lang.current][1]
+
+
+# ------------------------------------------------------------ kasttyper
+## Som Balatros händer: vad ett kast fällde avgör grundmarker x grundmulti.
+## Stjärnkort höjer en kasttyps nivå (+chips_lvl, +mult_lvl per nivå).
+const HAND_ORDER := ["kungsoppning", "massaker", "faltstadning", "rensning", "trippel", "dubbel", "baskubb", "faltkubb"]
+const HANDS := {
+	"faltkubb": {"chips": 5, "mult": 1, "chips_lvl": 10, "mult_lvl": 1, "col": Color(0.75, 0.75, 0.8), "sv": ["FÄLTKUBB", "En fältkubb föll."], "en": ["FIELD KUBB", "One field kubb fell."]},
+	"baskubb": {"chips": 10, "mult": 1, "chips_lvl": 15, "mult_lvl": 1, "col": Color(0.85, 0.7, 0.5), "sv": ["BASKUBB", "En kubb på baslinjen föll."], "en": ["BASE KUBB", "One baseline kubb fell."]},
+	"dubbel": {"chips": 10, "mult": 2, "chips_lvl": 15, "mult_lvl": 1, "col": Color(0.5, 0.8, 1.0), "sv": ["DUBBELFÄLLNING", "Två kubbar i samma kast."], "en": ["DOUBLE FELL", "Two kubbs in one throw."]},
+	"trippel": {"chips": 20, "mult": 3, "chips_lvl": 20, "mult_lvl": 2, "col": Color(0.55, 1.0, 0.5), "sv": ["TRIPPELFÄLLNING", "Tre eller fyra kubbar i samma kast."], "en": ["TRIPLE FELL", "Three or four kubbs in one throw."]},
+	"rensning": {"chips": 30, "mult": 3, "chips_lvl": 25, "mult_lvl": 2, "col": Color(1.0, 0.85, 0.3), "sv": ["RENSNING", "Fältkubbar och baslinjekubbar i samma kast."], "en": ["SWEEP", "Field kubbs and baseline kubbs in one throw."]},
+	"faltstadning": {"chips": 35, "mult": 4, "chips_lvl": 25, "mult_lvl": 2, "col": Color(1.0, 0.55, 0.9), "sv": ["FÄLTSTÄDNING", "Sista fältkubbarna faller, minst två i samma kast."], "en": ["FIELD CLEAN-UP", "The last field kubbs fall, at least two in one throw."]},
+	"massaker": {"chips": 40, "mult": 6, "chips_lvl": 30, "mult_lvl": 3, "col": Color(1.0, 0.25, 0.15), "sv": ["MASSAKER", "Fem eller fler kubbar i samma kast."], "en": ["MASSACRE", "Five or more kubbs in one throw."]},
+	"kungsoppning": {"chips": 50, "mult": 6, "chips_lvl": 30, "mult_lvl": 3, "col": Color(1.0, 0.8, 0.1), "sv": ["ÖPPNA KUNGEN", "Kastet fäller hans sista kubb. Nu står bara kungen kvar."], "en": ["OPEN THE KING", "The throw fells his last kubb. Only the king is left."]},
+}
+## Stjärnkort (Balatros planeter): ett per kasttyp, midsommarnattens stjärnor.
+const STARS := {
+	"lyktstjarnan": {"hand": "faltkubb", "sv": "Lyktstjärnan", "en": "The Lantern Star"},
+	"polstjarnan": {"hand": "baskubb", "sv": "Polstjärnan", "en": "The Pole Star"},
+	"tvillingarna": {"hand": "dubbel", "sv": "Tvillingarna", "en": "Gemini"},
+	"orions_balte": {"hand": "trippel", "sv": "Orions bälte", "en": "Orion's Belt"},
+	"karlavagnen": {"hand": "rensning", "sv": "Karlavagnen", "en": "The Big Dipper"},
+	"sjustjarnan": {"hand": "faltstadning", "sv": "Sjustjärnan", "en": "The Pleiades"},
+	"kometen": {"hand": "massaker", "sv": "Kometen", "en": "The Comet"},
+	"kungsstjarnan": {"hand": "kungsoppning", "sv": "Kungsstjärnan", "en": "The King's Star"},
+}
+
+
+static func hand_title(id: String) -> String:
+	return HANDS[id][Lang.current][0]
+
+
+static func star_title(id: String) -> String:
+	return STARS[id][Lang.current]
+
+
+static func star_desc(id: String) -> String:
+	var h: Dictionary = HANDS[STARS[id].hand]
+	return ("Höjer %s en nivå: +%d marker, +%d multi." if Lang.current == "sv" else "Levels up %s: +%d chips, +%d mult.") % [h[Lang.current][0], h.chips_lvl, h.mult_lvl]
+
+
+## Märken: det du får för att hoppa över en vanlig match (Balatros tags).
+const TAGS := {
+	"tander": {"col": Color(1.0, 0.95, 0.7), "sv": ["Tandmärke", "+8 tänder direkt (+1 per natt)."], "en": ["Tooth Tag", "+8 teeth right away (+1 per night)."]},
+	"paket": {"col": Color(0.8, 0.55, 0.3), "sv": ["Paketmärke", "Öppna ett gratis boosterpaket med ett extra kort."], "en": ["Pack Tag", "Open a free booster pack with one extra card."]},
+	"dubbel": {"col": Color(1.0, 0.8, 0.2), "sv": ["Dubbelmärke", "Nästa vinst ger dubbla vinsttänder."], "en": ["Double Tag", "Your next win gives double win teeth."]},
+	"stjarna": {"col": Color(0.6, 0.85, 1.0), "sv": ["Stjärnmärke", "Din mest kastade kasttyp går upp två nivåer."], "en": ["Star Tag", "Your most played throw type goes up two levels."]},
+	"rea": {"col": Color(0.9, 0.3, 0.3), "sv": ["Reamärke", "Allt i nästa bod kostar hälften."], "en": ["Sale Tag", "Everything in the next shop costs half."]},
+}

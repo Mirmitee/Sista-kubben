@@ -59,6 +59,7 @@ var payload_kubb := false
 var mouse_aim := true      # av i autotest/skärmdumpar
 ## siktmagnet: kubbar du får sikta på just nu (sätts av main varje bild)
 var magnet_targets: Array[Vector3] = []
+var _no_move := false
 var locked_target := Vector3.INF
 var _line_mat: Material
 var _line_lock_mat: Material
@@ -192,7 +193,9 @@ func _physics_process(dt: float) -> void:
 		_drag.y = clampf(_drag.y, -THETA_MAX / k, -THETA_MIN / k)
 		theta = -_drag.y * k
 	else:
-		if input_enabled and Run.mod("no_move") == 0.0:
+		if Engine.get_physics_frames() % 15 == 0:
+			_no_move = Run.mod("no_move") != 0.0
+		if input_enabled and not _no_move:
 			var mv := float(Input.is_key_pressed(KEY_D)) - float(Input.is_key_pressed(KEY_A))
 			mv += float(Input.is_joy_button_pressed(0, JOY_BUTTON_DPAD_RIGHT) or Input.is_joy_button_pressed(0, JOY_BUTTON_RIGHT_SHOULDER))
 			mv -= float(Input.is_joy_button_pressed(0, JOY_BUTTON_DPAD_LEFT) or Input.is_joy_button_pressed(0, JOY_BUTTON_LEFT_SHOULDER))

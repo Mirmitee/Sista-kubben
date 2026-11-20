@@ -30,6 +30,14 @@ var def_cards: Array[String] = ["", "", "", "", ""]
 ## Pinnkort i handen: dina nästa pinnar (en per kast).
 var hand: Array[String] = []
 var keyring: Array[String] = []        # berlocker (jokrar) hela runnen
+var hand_lvl := {}         # kasttyp -> nivå (1 = start), höjs med stjärnkort
+var hand_played := {}
+var charm_vals := {}       # växande berlocker: räknare      # kasttyp -> antal gånger den här runnen
+var tags: Array[String] = []  # märken från överhoppade matcher
+var shop_half := false     # reamärke: boden kostar hälften
+var skip_tag := ""        # märket som erbjuds för att hoppa över nästa match
+var endless_mode := false
+var run_seed := 0  # startade direkt i den oändliga natten
 var def_lvl: Array[int] = [0, 0, 0, 0, 0]  # försvarsnivå per plats
 var night_mod := "stilla"
 var difficulty := "natten"
@@ -68,7 +76,7 @@ func _ready() -> void:
 	load_meta()
 
 
-func start(baton_id: String, is_daily := false) -> void:
+func start(baton_id: String, is_daily := false, is_endless := false) -> void:
 	daily = is_daily
 	if daily:
 		# samma natt för alla: fröet är dagens datum
@@ -76,12 +84,17 @@ func start(baton_id: String, is_daily := false) -> void:
 		seed(hash("%04d-%02d-%02d" % [d.year, d.month, d.day]))
 	else:
 		randomize()
+		run_seed = randi() % 1000000
+		seed(run_seed)
+	if daily:
+		run_seed = -1
 	run_time = 0.0
 	active = true
 	night = 1
 	match_index = 0
 	teeth = 4
-	endless = false
+	endless = is_endless
+	endless_mode = is_endless
 	node = {}
 	gen_map()
 	cards.assign(["", "", "", "", ""])
@@ -89,6 +102,13 @@ func start(baton_id: String, is_daily := false) -> void:
 	score_total = 0
 	randomize_runes()
 	keyring.clear()
+	hand_lvl = {}
+	hand_played = {}
+	charm_vals = {}
+	tags.clear()
+	skips = 0
+	shop_half = false
+	skip_tag = ""
 	def_lvl.assign([0, 0, 0, 0, 0])
 	roll_night()
 
@@ -164,6 +184,10 @@ func step_done() -> bool:
 	if layer >= map.size():
 		night += 1
 		lifetime.best_night = maxi(lifetime.best_night, night)
+		if endless_mode:
+			lifetime["best_endless"] = maxi(int(lifetime.get("best_endless", 0)), night)
+		if endless and night >= 7:
+			grant("natt_sju")
 		gen_map()
 		roll_night()
 		save_meta()
@@ -204,6 +228,99 @@ func mod(key: String, default := 0.0) -> float:
 	if not mult and v == 0.0:
 		return default
 	return v
+
+
+## Vilken kasttyp ett kast är, efter kubbregler. cleared = hans sida tom
+## efter kastet, field_cleared = inga fältkubbar kvar.
+func hand_of(felled: Array, cleared := false, field_cleared := false) -> String:
+	var n := felled.size()
+	var field := 0
+	for k in felled:
+		if k.field:
+			field += 1
+	var base := n - field
+	if cleared:
+		return "kungsoppning"
+	if n >= 5:
+		return "massaker"
+	if field >= 2 and field_cleared:
+		return "faltstadning"
+	if field > 0 and base > 0:
+		return "rensning"
+	if n >= 3:
+		return "trippel"
+	if n == 2:
+		return "dubbel"
+	return "baskubb" if base == 1 else "faltkubb"
+
+
+## Ta emot ett märke. Returnerar true om ett paket ska öppnas.
+func apply_tag(id: String) -> bool:
+	match id:
+		"tander":
+			add_teeth(8 + night - 1)
+		"dubbel", "rea":
+			tags.append(id)
+		"stjarna":
+			var best := "faltkubb"
+			for h in hand_played:
+				if int(hand_played[h]) > int(hand_played.get(best, 0)):
+					best = h
+			level_hand(best, 2)
+		"paket":
+			return true
+	return false
+
+
+var skips := 0
+
+
+func take_tag(id: String) -> bool:
+	if id in tags:
+		tags.erase(id)
+		return true
+	return false
+
+
+## Blodmånens krav för noden man står på.
+func preview_target() -> int:
+	var n := night if active else 1
+	var t := 600.0 * pow(2.8, n - 1)
+	if is_boss():
+		t *= 1.4
+	if is_elite():
+		t *= 1.2
+	t *= mod("target_mult", 1.0)
+	return int(snappedf(t, 10.0))
+
+
+func seed_text() -> String:
+	return "DAGENS" if run_seed < 0 else "%06d" % run_seed
+
+
+func charm_val(key: String) -> float:
+	return float(charm_vals.get(key, 0.0))
+
+
+func bump_charm(key: String, by := 1.0) -> void:
+	charm_vals[key] = charm_val(key) + by
+
+
+func hand_level(id: String) -> int:
+	return int(hand_lvl.get(id, 1))
+
+
+## [marker, multi] för en kasttyp på nuvarande nivå.
+func hand_base(id: String) -> Array:
+	var h: Dictionary = Cards.HANDS[id]
+	var l := hand_level(id) - 1
+	return [int(h.chips) + int(h.chips_lvl) * l, float(h.mult) + float(h.mult_lvl) * l]
+
+
+func level_hand(id: String, by := 1) -> void:
+	hand_lvl[id] = hand_level(id) + by
+	if hand_level(id) >= 5:
+		grant("stjarnskadare")
 
 
 func baton_stat(key: String) -> float:
@@ -278,7 +395,8 @@ func roll_night() -> void:
 
 
 func charm_price(id: String) -> int:
-	return maxi(1, int(Cards.CHARMS[id].price) + (night - 1) - int(mod("shop_discount")))
+	var p := maxi(1, int(Cards.CHARMS[id].price) + (night - 1) - int(mod("shop_discount")))
+	return maxi(1, p / 2) if shop_half else p
 
 
 func add_charm(id: String) -> bool:
@@ -341,7 +459,8 @@ func defs_used() -> int:
 
 
 func rune_price(id: String) -> int:
-	return maxi(1, int(Cards.RUNES[id].price) - int(mod("shop_discount")))
+	var p := maxi(1, int(Cards.RUNES[id].price) - int(mod("shop_discount")))
+	return maxi(1, p / 2) if shop_half else p
 
 
 func buy_rune(id: String, slot: int) -> bool:
@@ -402,6 +521,8 @@ func price(id: String) -> int:
 	if d.get("cursed", false):
 		return 0
 	var p := maxi(1, int(d.price) + (night - 1) - int(mod("shop_discount")))
+	if shop_half:
+		p = maxi(1, p / 2)
 	return maxi(1, p / 2) if id == sale_id else p
 
 
@@ -430,6 +551,8 @@ func on_kubbs(n: int) -> void:
 
 func end_run() -> void:
 	lifetime.best_night = maxi(lifetime.best_night, night)
+	if endless_mode:
+		lifetime["best_endless"] = maxi(int(lifetime.get("best_endless", 0)), night)
 	check_unlocks()
 	save_meta()
 	active = false
