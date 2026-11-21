@@ -76,7 +76,7 @@ func _ready() -> void:
 	_flash.autowrap_mode = TextServer.AUTOWRAP_WORD
 	_flash.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	var ver := _label(8, Color(0.8, 0.15, 0.1), Vector2(546, 349))
-	ver.text = "SISTA KUBBEN v0.21"
+	ver.text = "SISTA KUBBEN v0.22"
 	_teeth = _label(8, Color(1.0, 0.95, 0.75), Vector2(422, 40), Vector2(210, 10))
 	_teeth.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	_cards = _label(8, Color(0.75, 0.7, 0.85), Vector2(422, 52), Vector2(210, 120))
@@ -485,6 +485,7 @@ var _board_bg: Panel
 
 
 var _deck_was := true
+var _deck_tick := 0
 
 
 func show_deck(on: bool, his: Array = [], board: Array = [], opp_name := "") -> void:
@@ -510,7 +511,8 @@ func show_deck(on: bool, his: Array = [], board: Array = [], opp_name := "") -> 
 		_board.opp_name = opp_name
 		_play_root.move_child(_board_bg, -1)
 	if _deck_box == null:
-		_deck_box = _label(8, Color(0.95, 0.9, 0.8), Vector2(234, 44), Vector2(392, 300))
+		_deck_box = _label(7, Color(0.95, 0.9, 0.8), Vector2(228, 40), Vector2(404, 310))
+		_deck_box.clip_text = true
 		_deck_box.autowrap_mode = TextServer.AUTOWRAP_WORD
 		var bg := Panel.new()
 		bg.add_theme_stylebox_override("panel", Art.frame_style(Color(0.6, 0.15, 0.1), Color(0.03, 0.0, 0.02, 0.92), 16, 4))
@@ -525,6 +527,11 @@ func show_deck(on: bool, his: Array = [], board: Array = [], opp_name := "") -> 
 		_deck_box.add_child(bg)
 	_deck_box.visible = on
 	if not on:
+		_deck_tick = 0
+		return
+	# texten byggs om var tionde bildruta medan Tab hålls, inte varje
+	_deck_tick += 1
+	if _deck_tick % 10 != 1:
 		return
 	_play_root.move_child(_deck_box, -1)
 	var sv := Lang.current == "sv"
@@ -540,21 +547,33 @@ func show_deck(on: bool, his: Array = [], board: Array = [], opp_name := "") -> 
 		lines.append(("NATTEN: " if sv else "THE NIGHT: ") + Cards.night_title(Run.night_mod) + " - " + Cards.night_desc(Run.night_mod))
 	for i in Run.cards.size():
 		var id: String = Run.cards[i]
-		lines.append("  %d " % (i + 1) + ((Cards.title(id) + ": " + Cards.desc(id)) if id != "" else ("vanlig kubb" if sv else "plain kubb")))
+		var rn: Array[String] = []
 		for r in [Run.enh[i], Run.ed[i], Run.seal[i]]:
 			if r != "":
-				lines.append("      * " + Cards.rune_title(r) + ": " + Cards.rune_desc(r))
+				rn.append(Cards.rune_title(r))
+		lines.append("  %d " % (i + 1) + ((Cards.title(id) + ": " + Cards.desc(id)) if id != "" else ("vanlig kubb" if sv else "plain kubb")) + (("  [" + ", ".join(rn) + "]") if not rn.is_empty() else ""))
 		if id != "":
 			var df := Cards.def_of(id)
 			var lv: int = Run.def_lvl[i]
-			lines.append(("      FÖRSVAR (din sida) " if sv else "      DEFENSE (your side) ") + Cards.def_title(df) + " " + ["I", "II", "III"][lv] + ": " + Cards.def_desc(df) + ((" " + Cards.def_level_text(df, lv)) if lv > 0 else ""))
+			lines.append(("    FÖRSVAR " if sv else "    DEFENSE ") + Cards.def_title(df) + " " + ["I", "II", "III"][lv] + ": " + Cards.def_desc(df) + ((" " + Cards.def_level_text(df, lv)) if lv > 0 else ""))
 		if Run.grow_chips[i] > 0 or Run.grow_mult[i] > 0:
-			lines.append(("      vuxit: +%d marker, +%d multi" if sv else "      grown: +%d chips, +%d mult") % [Run.grow_chips[i], Run.grow_mult[i]])
+			lines.append(("    vuxit: +%d marker, +%d multi" if sv else "    grown: +%d chips, +%d mult") % [Run.grow_chips[i], Run.grow_mult[i]])
 	if not Run.temp_names.is_empty():
 		lines.append(("DENNA MATCH: " if sv else "THIS MATCH: ") + ", ".join(Run.temp_names))
 	for id in his:
 		lines.append(("  HANS " if sv else "  HIS ") + Cards.title(id) + ": " + Cards.desc(id))
 	lines.append(("Kungens nåd kvar: %d" if sv else "King's mercy left: %d") % Run.king_shield_left)
+	var hl: Array[String] = []
+	for hid in Cards.HAND_ORDER:
+		if Run.hand_level(hid) > 1:
+			hl.append("%s %d" % [Cards.hand_title(hid), Run.hand_level(hid)])
+	if not hl.is_empty():
+		lines.append(("KASTTYPER: " if sv else "THROW TYPES: ") + ", ".join(hl))
+	if not Run.vouchers.is_empty():
+		var vn: Array[String] = []
+		for vo in Run.vouchers:
+			vn.append(Cards.voucher_title(vo))
+		lines.append(("LÖFTEN: " if sv else "VOUCHERS: ") + ", ".join(vn))
 	if not Run.hand.is_empty():
 		var hn: Array[String] = []
 		for h in Run.hand:
@@ -642,10 +661,18 @@ func choose_cards(opts: Array, header: String) -> int:
 			btn.call_deferred("grab_focus")
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	var r: int = await fate_chosen
-	Sfx.play("click", -4.0, 1.2)
-	_choice_root.queue_free()
-	_choice_root = null
+	if r >= 0:
+		Sfx.play("click", -4.0, 1.2)
+	if _choice_root:
+		_choice_root.queue_free()
+		_choice_root = null
 	return r
+
+
+## Matchen avbröts med korten uppe: stäng valet utan att något väljs.
+func cancel_choice() -> void:
+	if _choice_root:
+		fate_chosen.emit(-1)
 
 
 func _unhandled_key_input(e: InputEvent) -> void:
@@ -1099,6 +1126,8 @@ func cash_out(title: String, rows: Array, total: int) -> void:
 		var tw := create_tween()
 		tw.tween_property(h, "modulate:a", 1.0, 0.12)
 		await get_tree().create_timer(0.28, true, false, true).timeout
+		if not is_instance_valid(v):
+			return
 		if n > 0:
 			sum += n
 			Sfx.play("coin", -4.0, 1.0 + 0.1 * v.get_child_count())
@@ -1110,6 +1139,8 @@ func cash_out(title: String, rows: Array, total: int) -> void:
 	_pulse(tot, 2.2)
 	Sfx.play("sparkle", -2.0, 1.2)
 	await get_tree().create_timer(1.8, true, false, true).timeout
+	if _cash == null or not is_instance_valid(_cash):
+		return
 	var ft := create_tween()
 	ft.tween_property(_cash, "modulate:a", 0.0, 0.3)
 	await ft.finished

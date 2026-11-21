@@ -32,7 +32,9 @@ var hand: Array[String] = []
 var keyring: Array[String] = []        # berlocker (jokrar) hela runnen
 var hand_lvl := {}         # kasttyp -> nivå (1 = start), höjs med stjärnkort
 var hand_played := {}
-var charm_vals := {}       # växande berlocker: räknare      # kasttyp -> antal gånger den här runnen
+var charm_vals := {}
+var vouchers: Array[String] = []  # Kråkmors löften
+var voucher_offer := ""        # nattens löfte i boden       # växande berlocker: räknare      # kasttyp -> antal gånger den här runnen
 var tags: Array[String] = []  # märken från överhoppade matcher
 var shop_half := false     # reamärke: boden kostar hälften
 var skip_tag := ""        # märket som erbjuds för att hoppa över nästa match
@@ -105,6 +107,8 @@ func start(baton_id: String, is_daily := false, is_endless := false) -> void:
 	hand_lvl = {}
 	hand_played = {}
 	charm_vals = {}
+	vouchers.clear()
+	voucher_offer = ""
 	tags.clear()
 	skips = 0
 	shop_half = false
@@ -212,6 +216,10 @@ func mod(key: String, default := 0.0) -> float:
 		var cm: Dictionary = Cards.CHARMS[c].mods
 		if cm.has(key):
 			v = v * cm[key] if mult else v + cm[key]
+	for vo in vouchers:
+		var vm: Dictionary = Cards.VOUCHERS[vo].mods
+		if vm.has(key):
+			v = v * vm[key] if mult else v + vm[key]
 	var dm: Dictionary = Cards.DIFFICULTY.get(difficulty, {}).get("mods", {})
 	if dm.has(key):
 		v = v * dm[key] if mult else v + dm[key]
@@ -296,6 +304,17 @@ func preview_target() -> int:
 
 func seed_text() -> String:
 	return "DAGENS" if run_seed < 0 else "%06d" % run_seed
+
+
+## Ett nytt löfte per natt i boden (inte ett du redan har).
+func roll_voucher() -> void:
+	var pool: Array = Cards.VOUCHERS.keys().filter(func(id): return not id in vouchers)
+	voucher_offer = pool[randi() % pool.size()] if not pool.is_empty() else ""
+
+
+func star_price() -> int:
+	var p := maxi(1, 3 + night - 1 - int(mod("star_discount")))
+	return maxi(1, p / 2) if shop_half else p
 
 
 func charm_val(key: String) -> float:
@@ -389,6 +408,7 @@ func set_rune(slot: int, id: String) -> void:
 
 ## Ny natt, nytt väder. Första natten är oftast lugn.
 func roll_night() -> void:
+	roll_voucher()
 	var ids: Array = Cards.NIGHT_MODS.keys()
 	ids.erase("stilla")
 	night_mod = "stilla" if night == 1 and randf() < 0.5 else str(ids[randi() % ids.size()])

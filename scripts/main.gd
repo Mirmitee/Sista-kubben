@@ -298,6 +298,10 @@ func _to_menu() -> void:
 	_set_weather("")
 	for n in get_tree().get_nodes_in_group("finale"):
 		n.queue_free()
+	hud.cancel_choice()
+	if hud._cash:
+		hud._cash.queue_free()
+		hud._cash = null
 	menu.paused_menu = false
 	menu.open("title")
 	hud.set_playing(false)
@@ -414,6 +418,7 @@ func _clear_batons() -> void:
 # ---------------------------------------------------------------- match
 
 func _begin_match() -> void:
+	_match_id += 1
 	_tut = 0
 	hud.tutorial("")
 	hud.tally_reset()
@@ -685,7 +690,7 @@ func _next_baton() -> void:
 	var b := Baton.new()
 	b.setup(Run.cur_baton() if Run.active else "vanlig")
 	add_child(b)
-	_trail_mat = PS1.mat(null, b.trail_color, Vector2.ONE, 1.0)
+	_trail_mat = Fx._mat(b.trail_color, 1.0)
 	b.body_entered.connect(_on_baton_hit.bind(b))
 	batons.append(b)
 	current = b
@@ -1168,6 +1173,8 @@ func _fate_after_throw(newly: int) -> void:
 			for o in opts:
 				views.append(_choice_view(o))
 			pick = await hud.choose_cards(views, _tl("DRA ETT KORT", "DRAW A CARD") + ("  (%d/%d)" % [di + 1, draws] if draws > 1 else ""))
+			if pick < 0 or _gone():
+				return  # matchen avbröts medan korten låg uppe
 		thrower.input_enabled = true
 		_apply_choice(opts[pick])
 
@@ -1390,6 +1397,7 @@ func _kubb_steps(k: Kubb, n: int, first_rep: bool) -> Array:
 func _score_throw() -> void:
 	if not Run.active or _felled_valid.is_empty():
 		return
+	var mid := _match_id
 	var sv := Lang.current == "sv"
 	var n := _felled_valid.size()
 	_match_felled += n
@@ -1411,6 +1419,8 @@ func _score_throw() -> void:
 	_cur_hand = hid
 	hud.tally(chips, mult, true)
 	hud.tally_hand(Cards.hand_title(hid), Run.hand_level(hid), Cards.HANDS[hid].col)
+	if Cards.HAND_ORDER.find(hid) <= Cards.HAND_ORDER.find("dubbel"):
+		hud.flash(Cards.hand_title(hid) + "!")
 	Sfx.play("coin", -6.0, 0.8 + 0.08 * Cards.HAND_ORDER.size() - 0.08 * Cards.HAND_ORDER.find(hid))
 	if not _autotest:
 		await get_tree().create_timer(0.35, true, false, true).timeout
@@ -1474,12 +1484,16 @@ func _score_throw() -> void:
 		hud.tally(chips, mult)
 		await _tick(any, "X%s MULTI" % str(snappedf(_throw_xmult, 0.1)), XMULT_COL, step, 12)
 	var total := int(chips * mult)
-	if mode != Mode.MATCH or not Run.active:
+	if mode != Mode.MATCH or not Run.active or mid != _match_id:
 		return  # matchen avbröts mitt i räkningen
 	hud.tally_total(total)
 	score += total
 	Run.score_total += total
-	Run.lifetime.best_throw = maxi(Run.lifetime.get("best_throw", 0), total)
+	var prev_best := int(Run.lifetime.get("best_throw", 0))
+	Run.lifetime.best_throw = maxi(prev_best, total)
+	if prev_best > 0 and total > prev_best:
+		hud.toast(_tl("NYTT REKORD: BÄSTA KASTET NÅGONSIN, %d POÄNG", "NEW RECORD: BEST THROW EVER, %d POINTS") % total)
+		Sfx.play("sparkle", 0.0, 1.5)
 	if total >= 1000:
 		Run.grant("tusen")
 	if total >= 10000:
@@ -1508,6 +1522,7 @@ func _score_throw() -> void:
 
 
 var _cm := [0, 1.0]
+var _match_id := 0
 var _mag_frame := 0
 var _cleared_cache := false
 var _flight_bdef := {}
@@ -1607,6 +1622,7 @@ func _charm_steps(n: int, any: Node3D, step: int, cm: Array) -> int:
 func _opp_score(n: int) -> void:
 	if not Run.active or mode != Mode.MATCH or n <= 0:
 		return
+	var mid := _match_id
 	var sv := Lang.current == "sv"
 	var chips := 0
 	for k in _felled_valid:
@@ -1623,7 +1639,7 @@ func _opp_score(n: int) -> void:
 	hud.tally(chips, mult, true)
 	hud.tally_steal(true)
 	await get_tree().create_timer(0.35).timeout
-	if mode != Mode.MATCH or not Run.active:
+	if mode != Mode.MATCH or not Run.active or mid != _match_id:
 		return
 	var stolen := mini(total, score)
 	hud.tally_total(-stolen)
@@ -2080,8 +2096,12 @@ func _spawn_trail(p: Vector3) -> void:
 
 
 func _wait_settled() -> void:
+	var mid := _match_id
+	var m := mode
 	while not _settled:
 		await get_tree().physics_frame
+		if mid != _match_id or mode != m:
+			return  # spelaren lämnade matchen medan pinnen flög
 
 
 ## Fallna kubbar på en planhalva sedan snapshot, med regeln att
@@ -2224,8 +2244,6 @@ func _award(n: int, king_win: bool, bonus := 0, xmult := 1.0) -> void:
 		t += combo
 		Run.note_combo()
 		parts.append(Lang.t("combo") % n)
-		var names := ["", "", _tl("DUBBELKLONK!", "DOUBLE CLONK!"), _tl("TRIPPELKLONK!", "TRIPLE CLONK!"), _tl("KVADRUPELKLONK!", "QUADRUPLE CLONK!")]
-		hud.flash(names[n] if n < names.size() else _tl("MASSAKER PÅ ÄNGEN!", "MEADOW MASSACRE!"))
 	if _last_info.get("grade", "") == "perfect":
 		t += 1 + int(Run.mod("perfect_teeth"))
 		Run.note_perfect()
@@ -2319,15 +2337,25 @@ func _king_left_standing(by_opp: bool) -> void:
 		_lose_run()
 
 
+## Matchen är slut eller spelaren har lämnat den: avbryt pågående turflöde.
+func _gone(mid := -1) -> bool:
+	return mode != Mode.MATCH or _match_over or (mid >= 0 and mid != _match_id)
+
+
 func _end_player_turn() -> void:
+	var mid := _match_id
 	state = State.BUSY
 	thrower.input_enabled = false
 	Run.override = ""
 	await get_tree().create_timer(0.35).timeout
+	if _gone(mid):
+		return
 	if mode == Mode.MATCH and not _match_over and _side_cleared("theirs") and not king.is_fallen():
 		_king_left_standing(false)
 		return
 	await _stand_effects()
+	if _gone(mid):
+		return
 	_ghost.visible = false
 	_line_mark.visible = false
 	# 2. motståndaren kastar in kubbarna du fällde på din planhalva
@@ -2339,18 +2367,21 @@ func _end_player_turn() -> void:
 	if _simple():
 		# förenklat: fällda kubbar kastas bort, inget fram och tillbaka
 		await _throw_away(fallen)
+		if _gone(mid):
+			return
 	elif not fallen.is_empty():
 		opponent.say("toss")
 		for k in fallen:
 			await _opp_toss(k)
-			if _match_over:
+			if _gone(mid):
 				return
 	_clear_batons()
 	# 3. motståndarens pinnar (han kliver fram om dina fältkubbar står kvar)
 	phase = Phase.OPP_THROW
 	_refresh_ui()
 	if await _boss_phase_check():
-		pass
+		if _gone(mid):
+			return
 	else:
 		opponent.say("my_turn")
 	var adv := _advance_line("theirs")
@@ -2362,6 +2393,8 @@ func _end_player_turn() -> void:
 		Fx.ring(self, Vector3(0, 0, adv), Color(1.0, 0.35, 0.2), 1.5)
 		await opponent.walk_to_z(clampf(adv - 1.0, OPP_Z, -5.0), 0.9)
 	await get_tree().create_timer(0.45).timeout
+	if _gone(mid):
+		return
 	var opp_n := maxi(1, 6 + int(Run.mod("opp_batons_add")) + _opp_batons_next + opponent.extra_batons)
 	_opp_batons_next = 0
 	_opp_total = opp_n
@@ -2376,13 +2409,17 @@ func _end_player_turn() -> void:
 		_refresh_ui()
 		await _opp_throw()
 		oi += 1
-		if _match_over:
+		if _gone(mid):
 			return
 	await _after_opp_defense()
+	if _gone(mid):
+		return
 	if not _match_over and _side_cleared("mine") and not king.is_fallen():
 		_king_left_standing(true)
 		return
 	await get_tree().create_timer(0.3).timeout
+	if _gone(mid):
+		return
 	opponent.walk_to_x(0.0)
 	opponent.walk_to_z(OPP_Z, 0.9)
 	_line_mark.visible = false
@@ -2395,10 +2432,14 @@ func _end_player_turn() -> void:
 	if _simple():
 		await _throw_away(mine_fallen)
 		mine_fallen.clear()
+		if _gone(mid):
+			return
 	for k in mine_fallen:
-		if _match_over:
+		if _gone(mid):
 			return
 		await _player_toss(k)
+	if _gone(mid):
+		return
 	thrower.input_enabled = true
 	_start_player_turn()
 
@@ -2484,7 +2525,7 @@ func _opp_throw() -> void:
 	var b := Baton.new()
 	b.setup()
 	add_child(b)
-	_trail_mat = PS1.mat(null, Color(0.95, 0.8, 0.6), Vector2.ONE, 1.0)
+	_trail_mat = Fx._mat(Color(0.95, 0.8, 0.6), 1.0)
 	b.body_entered.connect(_on_baton_hit.bind(b))
 	batons.append(b)
 	var from := opponent.hand_pos()
@@ -2578,6 +2619,7 @@ func _opp_toss(k: Kubb) -> void:
 
 
 func _player_toss(k: Kubb) -> void:
+	var mid := _match_id
 	for attempt in 2:
 		state = State.READY
 		thrower.give_baton(k)
@@ -2589,10 +2631,14 @@ func _player_toss(k: Kubb) -> void:
 			thrower.meter_power = 0.68
 			thrower.call_deferred("launch_kubb", 0.75, 9.5 * 0.68)
 		var got = await thrower.tossed
+		if _gone(mid):
+			return  # gammal match: någon annan tur äger kastet nu
 		current_by_opp = false
 		_begin_flight(got)
 		Sfx.play("whoosh", -6.0, 0.7)
 		await _wait_settled()
+		if _gone(mid) or not is_instance_valid(k):
+			return
 		var p := k.global_position
 		if _in_half(p, "theirs"):
 			k.side = "theirs"
@@ -2627,7 +2673,7 @@ func _win_match() -> void:
 	if Run.is_elite():
 		reward = int(reward * 1.5)
 	# ränta som i Balatro: 1 tand per 5 du sparat (max 5), berlocken ger mer
-	var interest := mini(5, int(Run.teeth / 5)) * (1 + int(Run.mod("interest")))
+	var interest := mini(5 + int(Run.mod("interest_cap")), int(Run.teeth / 5)) * (1 + int(Run.mod("interest")))
 	reward += interest
 	if Run.take_tag("dubbel"):
 		reward += 4 + Run.night

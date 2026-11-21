@@ -23,10 +23,18 @@ class Bit extends MeshInstance3D:
 		var k := 1.0 - age / life
 		scale = Vector3.ONE * maxf(k, 0.01) * (1.0 + grow * age)
 		if age >= life:
+			set_process(false)
 			queue_free()
+
+	func _exit_tree() -> void:
+		Fx.live = maxi(Fx.live - 1, 0)
 
 
 static var _mats := {}
+static var _bit_meshes := {}
+## Antal flygande bitar just nu. Över taket hoppar vi över nya (ingen lagg vid jättesmällar).
+static var live := 0
+const MAX_BITS := 700
 
 
 static func _mat(c: Color, emit: float) -> Material:
@@ -40,9 +48,16 @@ static func burst(parent: Node, pos: Vector3, color: Color, n := 8, speed := 2.0
 		size := 0.02, grav := 9.8, up := 1.0, emit := 0.6, grow := 0.0) -> void:
 	if parent == null or not parent.is_inside_tree():
 		return
+	if live >= MAX_BITS:
+		return
+	n = mini(n, MAX_BITS - live)
 	var m := _mat(color, emit)
-	var bm := BoxMesh.new()
-	bm.size = Vector3.ONE * size
+	var bm: BoxMesh = _bit_meshes.get(size)
+	if bm == null:
+		bm = BoxMesh.new()
+		bm.size = Vector3.ONE * size
+		_bit_meshes[size] = bm
+	live += n
 	for i in n:
 		var b := Bit.new()
 		b.mesh = bm

@@ -99,7 +99,7 @@ func open(p: String) -> void:
 	visible = true
 	if p == "shop":
 		Run.shop_half = Run.take_tag("rea")
-		_reroll = 2
+		_reroll = maxi(0, 2 - int(Run.mod("reroll_discount")))
 		_packs_bought.clear()
 		_gen_shop()
 	show_page(p)
@@ -108,7 +108,7 @@ func open(p: String) -> void:
 func _gen_shop() -> void:
 	var pool := Run.shop_pool()
 	pool.shuffle()
-	_offers.assign(pool.slice(0, 3))
+	_offers.assign(pool.slice(0, 3 + int(Run.mod("shop_slots"))))
 	var rp: Array = Cards.RUNES.keys()
 	rp.shuffle()
 	_rune_offers.assign(rp.slice(0, 2))
@@ -397,6 +397,11 @@ func _page_pause() -> void:
 			Cards.pick_title(Cards.DIFFICULTY, Run.difficulty), Run.teeth], Color(0.8, 0.8, 1.0))
 		if not kn.is_empty():
 			_text(_t("Nyckelring: ", "Key ring: ") + ", ".join(kn), Color(0.95, 0.85, 0.45))
+		if not Run.vouchers.is_empty():
+			var vn: Array[String] = []
+			for vo in Run.vouchers:
+				vn.append(Cards.voucher_title(vo))
+			_text(_t("Löften: ", "Vouchers: ") + ", ".join(vn), Color(1.0, 0.6, 0.3))
 		var tn: Array[String] = []
 		for tg in Run.tags:
 			tn.append(Cards.TAGS[tg][Lang.current][0])
@@ -551,6 +556,34 @@ func _page_shop() -> void:
 		_card_panel(_curse, row, _t("GRATIS...", "FREE..."), _t("TA", "TAKE"), func():
 			_pending = _curse
 			show_page("slot"))
+	# nattens löfte: en permanent uppgradering för hela runnen
+	if Run.voucher_offer != "":
+		var vid := Run.voucher_offer
+		var vprice: int = Cards.VOUCHERS[vid].price
+		if Run.shop_half:
+			vprice = maxi(1, vprice / 2)
+		var vrow := HBoxContainer.new()
+		_box.add_child(vrow)
+		var vl := Label.new()
+		vl.text = _t("LÖFTE:", "VOUCHER:")
+		vl.add_theme_color_override("font_color", Color(1.0, 0.6, 0.3))
+		vrow.add_child(vl)
+		var vb := Button.new()
+		vb.text = "%s (%d)" % [Cards.voucher_title(vid), vprice]
+		vb.disabled = Run.teeth < vprice
+		vb.pressed.connect(func():
+			if Run.teeth >= vprice:
+				Run.teeth -= vprice
+				Run.vouchers.append(vid)
+				Run.voucher_offer = ""
+				Sfx.play("sparkle", -2.0, 0.8)
+				Sfx.play("coin", -4.0, 0.9)
+				show_page("shop"))
+		vrow.add_child(vb)
+		var vd := Label.new()
+		vd.text = Cards.voucher_desc(vid)
+		vd.add_theme_color_override("font_color", Color(0.85, 0.7, 0.6))
+		vrow.add_child(vd)
 	# runor: förstärkningar, utgåvor, sigill för en av dina kubbar
 	var rrow := HFlowContainer.new()
 	rrow.custom_minimum_size.x = 600
@@ -579,7 +612,7 @@ func _page_shop() -> void:
 	srow.add_child(sl)
 	for id in _star_offers:
 		var sb := Button.new()
-		var sprice := 3 + Run.night - 1
+		var sprice := Run.star_price()
 		var hid: String = Cards.STARS[id].hand
 		sb.text = "%s: %s %d>%d (%d)" % [Cards.star_title(id), Cards.hand_title(hid), Run.hand_level(hid), Run.hand_level(hid) + 1, sprice]
 		sb.tooltip_text = Cards.star_desc(id)

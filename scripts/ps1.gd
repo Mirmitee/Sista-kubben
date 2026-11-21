@@ -148,10 +148,19 @@ static func face() -> ImageTexture:
 	return _finish("face", img)
 
 
+static var _box_meshes := {}
+
+
+## Lådor med samma storlek delar mesh (spår, gnistor och flisor skapas ofta).
 static func box(size: Vector3, m: Material) -> MeshInstance3D:
 	var mi := MeshInstance3D.new()
-	var bm := BoxMesh.new()
-	bm.size = size
+	var key := size.snapped(Vector3.ONE * 0.0005)
+	var bm: BoxMesh = _box_meshes.get(key)
+	if bm == null:
+		bm = BoxMesh.new()
+		bm.size = size
+		if _box_meshes.size() < 400:
+			_box_meshes[key] = bm
 	mi.mesh = bm
 	mi.material_override = m
 	return mi

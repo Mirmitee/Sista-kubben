@@ -760,3 +760,23 @@ const TAGS := {
 	"stjarna": {"col": Color(0.6, 0.85, 1.0), "sv": ["Stjärnmärke", "Din mest kastade kasttyp går upp två nivåer."], "en": ["Star Tag", "Your most played throw type goes up two levels."]},
 	"rea": {"col": Color(0.9, 0.3, 0.3), "sv": ["Reamärke", "Allt i nästa bod kostar hälften."], "en": ["Sale Tag", "Everything in the next shop costs half."]},
 }
+
+
+## Kråkmors löften (Balatros vouchers): köps en gång, gäller resten av runnen.
+const VOUCHERS := {
+	"extra_hylla": {"price": 10, "col": Color(0.8, 0.6, 0.35), "mods": {"shop_slots": 1}, "sv": ["Extra hylla", "Boden visar en kubb till."], "en": ["Extra Shelf", "The shop shows one more kubb."]},
+	"billig_slump": {"price": 8, "col": Color(0.6, 0.8, 0.5), "mods": {"reroll_discount": 2}, "sv": ["Billig slump", "Nya kubbar i boden kostar 2 tänder mindre."], "en": ["Cheap Shuffle", "Rerolling the shop costs 2 teeth less."]},
+	"stor_ficka": {"price": 10, "col": Color(1.0, 0.9, 0.6), "mods": {"interest_cap": 5}, "sv": ["Stor ficka", "Räntan kan bli 5 tänder högre (max 10)."], "en": ["Deep Pocket", "Interest can go 5 teeth higher (max 10)."]},
+	"extra_pinne": {"price": 15, "col": Color(0.9, 0.75, 0.5), "mods": {"batons_add": 1}, "sv": ["Kråkmors pinne", "+1 pinne varje tur, resten av runnen."], "en": ["Crow Mother's Baton", "+1 baton every turn for the rest of the run."]},
+	"stjarnhimmel": {"price": 8, "col": Color(0.6, 0.8, 1.0), "mods": {"star_discount": 2}, "sv": ["Stjärnhimmel", "Stjärnkort kostar 2 tänder mindre."], "en": ["Starry Sky", "Star cards cost 2 teeth less."]},
+	"vass_blick": {"price": 10, "col": Color(0.5, 1.0, 0.6), "mods": {"green_mult": 1.15}, "sv": ["Vass blick", "Gröna fältet 15 % bredare."], "en": ["Sharp Eye", "Green zone 15% wider."]},
+	"tjuvlas": {"price": 9, "col": Color(0.7, 0.4, 0.4), "mods": {"steal_mult": 0.8}, "sv": ["Tjuvlås", "Han stjäl 20 % mindre."], "en": ["Thief Lock", "He steals 20% less."]},
+}
+
+
+static func voucher_title(id: String) -> String:
+	return VOUCHERS[id][Lang.current][0]
+
+
+static func voucher_desc(id: String) -> String:
+	return VOUCHERS[id][Lang.current][1]
