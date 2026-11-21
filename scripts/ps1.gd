@@ -166,6 +166,74 @@ static func box(size: Vector3, m: Material) -> MeshInstance3D:
 	return mi
 
 
+static var _prism_meshes := {}
+
+
+## Kubb-form: fyrkantig stav med avfasade kanter (8 sidor), platt-skuggad.
+## Ändträt får ljusare färg och nederkanten lite mörkare (bakad skugga).
+static func prism(size: Vector3, m: Material, bevel := 0.18, ao := 0.62) -> MeshInstance3D:
+	var key := [size.snapped(Vector3.ONE * 0.0005), bevel, ao]
+	var am: ArrayMesh = _prism_meshes.get(key)
+	if am == null:
+		am = _build_prism(size, bevel, ao)
+		if _prism_meshes.size() < 300:
+			_prism_meshes[key] = am
+	var mi := MeshInstance3D.new()
+	mi.mesh = am
+	mi.material_override = m
+	return mi
+
+
+static func _build_prism(size: Vector3, bevel: float, ao: float) -> ArrayMesh:
+	var hx := size.x * 0.5
+	var hz := size.z * 0.5
+	var hy := size.y * 0.5
+	var bx := size.x * bevel
+	var bz := size.z * bevel
+	# åtta hörn runt om, moturs sett uppifrån
+	var ring: Array[Vector2] = [
+		Vector2(hx - bx, -hz), Vector2(hx, -hz + bz), Vector2(hx, hz - bz), Vector2(hx - bx, hz),
+		Vector2(-hx + bx, hz), Vector2(-hx, hz - bz), Vector2(-hx, -hz + bz), Vector2(-hx + bx, -hz)]
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var per := 0.0
+	var top_c := Color(1.25, 1.12, 0.92)
+	var low_c := Color(ao, ao * 0.9, ao * 0.9)
+	var mid_c := Color(1, 1, 1)
+	for i in 8:
+		var a := ring[i]
+		var b := ring[(i + 1) % 8]
+		var n := Vector3(b.y - a.y, 0, -(b.x - a.x)).normalized()
+		var len := a.distance_to(b)
+		var u0 := per / (size.x * 4.0)
+		var u1 := (per + len) / (size.x * 4.0)
+		per += len
+		var shade := 0.92 if i % 2 == 0 else 1.0  # fasningarna en aning ljusare
+		var cl := Color(low_c.r * shade, low_c.g * shade, low_c.b * shade)
+		var cm := Color(mid_c.r * shade, mid_c.g * shade, mid_c.b * shade)
+		var v := [Vector3(a.x, -hy, a.y), Vector3(b.x, -hy, b.y), Vector3(b.x, hy, b.y), Vector3(a.x, hy, a.y)]
+		var uv := [Vector2(u0 * 4.0, 1), Vector2(u1 * 4.0, 1), Vector2(u1 * 4.0, 0), Vector2(u0 * 4.0, 0)]
+		var cols := [cl, cl, cm, cm]
+		for idx in [0, 1, 2, 0, 2, 3]:
+			st.set_normal(n)
+			st.set_color(cols[idx])
+			st.set_uv(uv[idx])
+			st.add_vertex(v[idx])
+	for cap in [1.0, -1.0]:
+		var y: float = hy * cap
+		var cc: Color = top_c if cap > 0.0 else low_c
+		for i in range(1, 7):
+			var tri := [ring[0], ring[i], ring[i + 1]]
+			if cap < 0.0:
+				tri = [ring[0], ring[i + 1], ring[i]]
+			for q in tri:
+				st.set_normal(Vector3(0, cap, 0))
+				st.set_color(cc)
+				st.set_uv(Vector2(0.3 + q.x / size.x * 0.4, 0.3 + q.y / size.z * 0.4))
+				st.add_vertex(Vector3(q.x, y, q.y))
+	return st.commit()
+
+
 static func cylinder(radius: float, height: float, m: Material, segs := 6, top := -1.0) -> MeshInstance3D:
 	var mi := MeshInstance3D.new()
 	var cm := CylinderMesh.new()

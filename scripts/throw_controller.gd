@@ -95,9 +95,9 @@ var land_dist := -1.0
 
 func _ready() -> void:
 	var skin := PS1.mat(null, Color(0.72, 0.66, 0.58))
-	_arm = PS1.box(Vector3(0.075, ARM_LEN, 0.075), PS1.mat(PS1.cloth(), Color(5.5, 5.4, 5.0), Vector2(1, 3)))
+	_arm = PS1.prism(Vector3(0.075, ARM_LEN, 0.075), PS1.mat(PS1.cloth(), Color(5.5, 5.4, 5.0), Vector2(1, 3)))
 	add_child(_arm)
-	_hand = PS1.box(Vector3(0.08, 0.09, 0.06), skin)
+	_hand = PS1.prism(Vector3(0.08, 0.09, 0.06), skin, 0.25, 0.85)
 	add_child(_hand)
 	_line_mat = PS1.mat(null, Color(0.9, 0.85, 0.6), Vector2.ONE, 0.6)
 	_line_lock_mat = PS1.mat(null, Color(0.4, 1.0, 0.45), Vector2.ONE, 1.0)

@@ -63,13 +63,13 @@ func _ready() -> void:
 	var stripe := PS1.mat(null, Color(0.95, 0.95, 0.95), Vector2.ONE, 0.3)
 	var skin := PS1.mat(null, Color(0.85, 0.65, 0.55))
 	for s in [-1.0, 1.0]:
-		var leg := PS1.box(Vector3(0.14, 1.0, 0.14), suit)
+		var leg := PS1.prism(Vector3(0.14, 1.0, 0.14), suit, 0.2, 0.8)
 		leg.position = Vector3(s * 0.12, 0.5, 0)
 		add_child(leg)
 		var ls := PS1.box(Vector3(0.02, 1.0, 0.15), stripe)
 		ls.position = Vector3(s * 0.19, 0.5, 0)
 		add_child(ls)
-	var torso := PS1.box(Vector3(0.46, 0.75, 0.26), suit)
+	var torso := PS1.prism(Vector3(0.46, 0.75, 0.26), suit, 0.2, 0.8)
 	torso.position.y = 1.38
 	add_child(torso)
 	var zip := PS1.box(Vector3(0.02, 0.7, 0.01), stripe)
@@ -78,9 +78,9 @@ func _ready() -> void:
 	_head = Node3D.new()
 	_head.position.y = 1.95
 	add_child(_head)
-	var skull := PS1.box(Vector3(0.24, 0.3, 0.24), skin)
+	var skull := PS1.prism(Vector3(0.24, 0.3, 0.24), skin, 0.2, 0.8)
 	_head.add_child(skull)
-	var hair := PS1.box(Vector3(0.26, 0.08, 0.26), PS1.mat(null, Color(0.35, 0.25, 0.15)))
+	var hair := PS1.prism(Vector3(0.26, 0.08, 0.26), PS1.mat(null, Color(0.35, 0.25, 0.15)), 0.2, 0.8)
 	hair.position.y = 0.17
 	_head.add_child(hair)
 	_glasses = Node3D.new()
@@ -104,7 +104,7 @@ func _ready() -> void:
 		var pivot := Node3D.new()
 		pivot.position = Vector3(s * 0.3, 1.7, 0.0)
 		add_child(pivot)
-		var arm := PS1.box(Vector3(0.1, 0.85, 0.1), suit)
+		var arm := PS1.prism(Vector3(0.1, 0.85, 0.1), suit, 0.2, 0.8)
 		arm.position.y = -0.43
 		pivot.add_child(arm)
 		if s > 0:

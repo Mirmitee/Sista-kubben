@@ -26,9 +26,11 @@ const float BAYER[16] = float[](0.0, 8.0, 2.0, 10.0, 12.0, 4.0, 14.0, 6.0,
 varying vec3 v_light;
 varying float v_fog;
 varying vec3 v_aff;
+varying vec3 v_col;
 
 void vertex() {
 	vec3 wn = normalize((MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz);
+	v_col = COLOR.rgb;
 	v_light = AMBIENT
 		+ MOON_COL * max(dot(wn, normalize(MOON_DIR)), 0.0)
 		+ RIM_COL * max(dot(wn, normalize(RIM_DIR)), 0.0);
@@ -53,7 +55,7 @@ vec3 ps1_color(vec3 c, vec2 frag) {
 
 void fragment() {
 	vec2 uv = v_aff.xy / v_aff.z;
-	vec3 c = tint.rgb;
+	vec3 c = tint.rgb * v_col;
 	if (use_texture) {
 		c *= texture(albedo_tex, uv).rgb;
 	}

@@ -115,7 +115,7 @@ func _ready() -> void:
 		pivot.position = Vector3(s * 0.25, 1.45, 0.05)
 		pivot.rotation.z = s * 0.1
 		add_child(pivot)
-		var arm := PS1.box(Vector3(0.06, 1.1, 0.06), skin)
+		var arm := PS1.prism(Vector3(0.06, 1.1, 0.06), skin, 0.2, 0.8)
 		arm.position.y = -0.55
 		pivot.add_child(arm)
 		if s > 0:

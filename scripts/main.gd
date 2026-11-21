@@ -463,11 +463,11 @@ func _begin_match() -> void:
 	await _setup_intro()
 	if _match_over or mode != Mode.MATCH:
 		return
-	hud.banner(intro)
 	if Run.active and Run.night_mod != "stilla":
-		var nc: Color = Cards.NIGHT_MODS[Run.night_mod].col
-		hud.big(Cards.night_title(Run.night_mod).to_upper() + ": " + Cards.night_desc(Run.night_mod), nc)
+		# nattens regel hamnar i samma banner, så att två texter aldrig ligger på varandra
+		intro += "\n" + Cards.night_title(Run.night_mod).to_upper() + ": " + Cards.night_desc(Run.night_mod)
 		opponent.say("night")
+	hud.banner(intro)
 	_start_player_turn()
 
 
@@ -717,7 +717,7 @@ const TUT := [
 	"WOOF. I'm Gösta and I'll teach you kubb. A throw is three presses: CLICK (or space) once to wind up. CLICK again to lock the POWER. CLICK a third time with the marker in the green for ACCURACY. Throw a baton now."],
 	["Bra! A och D flyttar dig i sidled, musen siktar. Pinnen ska snurra som en väderkvarn, aldrig som en helikopter. Träffa mig nu. Jag lovar att stöna.",
 	"Good! A and D move you sideways, the mouse aims. The baton must spin end over end, never like a helicopter. Hit me now. I promise to groan."],
-	["UUOOH. Ser du? Jag krympte. I matchen fäller du hans kubbar. Vad kastet fäller blir en KASTTYP, som DUBBELFÄLLNING eller FÄLTSTÄDNING, och den ger MARKER (blå) gånger MULTI (röd). Fäll alla hans kubbar och sist KUNGEN i mitten. Rör kungen för tidigt och du dör. Kasta igen.",
+	["UUOOH. Ser du? Jag krympte. I matchen fäller du hans kubbar. Vad kastet fäller blir en KASTTYP, som DUBBELFÄLLNING eller FÄLTSTÄDNING, och den ger MARKER (blå) gånger MULTI (röd). Fäll alla hans kubbar och sist KUNGEN. Rör kungen för tidigt och du dör. Kasta igen.",
 	"UUOOH. See? I shrank. In a match you fell his kubbs. What a throw fells becomes a THROW TYPE, like DOUBLE FELL or FIELD CLEAN-UP, and it gives CHIPS (blue) times MULT (red). Fell all his kubbs and the KING in the middle last. Touch the king too early and you die. Throw again."],
 	["Sen kastar han tillbaka på DINA kubbar. Varje kubbkort du har ger din kubb ett FÖRSVAR, som sköld eller taggar. När han fäller dina kubbar STJÄL han poäng. Håll TAB i matchen så ser du hela planen. Kasta igen.",
 	"Then he throws back at YOUR kubbs. Every kubb card you own gives your kubb a DEFENSE, like a shield or thorns. When he fells your kubbs he STEALS points. Hold TAB in a match to see the whole field. Throw again."],
@@ -1286,6 +1286,13 @@ func _target() -> int:
 
 func _goal() -> int:
 	return _target() * TIERS[mini(_tier, TIERS.size() - 1)]
+
+
+func _any_slot_kubb() -> Kubb:
+	for k in kubbs:
+		if k.slot >= 0 and k.visible:
+			return k
+	return kubbs[0]
 
 
 func _slot_kubb(i: int) -> Kubb:
@@ -3198,7 +3205,10 @@ func _run_autotest() -> void:
 			break
 	print("   tillbaka till min tur %d. Mina stående %d (fält %d), deras stående %d (fält %d), över=%s" % [
 		turn, side_kubbs("mine", true).size(), _count_field("mine"), side_kubbs("theirs", true).size(), _count_field("theirs"), _match_over])
-	# kungen för tidigt
+	# kungen för tidigt (om matchen redan tog slut i turen ovan börjar vi en ny)
+	if _match_over:
+		Run.start("vanlig")
+		_start(Mode.MATCH, true)
 	await _wait_ready()
 	batons_left = 3
 	thrower.mouse_aim = false
@@ -3261,6 +3271,8 @@ func _run_autotest() -> void:
 	print("TEST poäng efter krutkubben: %d (krav %d, nivå %d), runor %s" % [score, _target(), _tier, str(Run.enh)])
 	# runor: glas+holo+rött sigill på en kubb, fäll den manuellt
 	var rk := _slot_kubb(3)
+	if rk == null:  # kubben kan ha krossats av krutet ovan
+		rk = _any_slot_kubb()
 	Run.enh[3] = "glas"
 	Run.ed[3] = "holo"
 	Run.seal[3] = "rott"
@@ -3273,6 +3285,8 @@ func _run_autotest() -> void:
 	Run.cards[2] = "myrstack"
 	Run.enh[2] = "barnsten"
 	var tk2 := _slot_kubb(2)
+	if tk2 == null:
+		tk2 = _any_slot_kubb()
 	tk2.set_kind("myrstack")
 	_toss_effects(tk2)
 	await get_tree().create_timer(0.5).timeout

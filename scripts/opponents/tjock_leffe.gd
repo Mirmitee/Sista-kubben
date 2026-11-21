@@ -65,10 +65,10 @@ func _ready() -> void:
 	var skin := PS1.mat(null, Color(0.80, 0.55, 0.48))
 	var shorts := PS1.mat(PS1.cloth(), Color(1.2, 1.8, 3.2))
 	for s in [-1.0, 1.0]:
-		var leg := PS1.box(Vector3(0.2, 0.55, 0.2), skin)
+		var leg := PS1.prism(Vector3(0.2, 0.55, 0.2), skin, 0.2, 0.8)
 		leg.position = Vector3(s * 0.2, 0.28, 0)
 		add_child(leg)
-	var pants := PS1.box(Vector3(0.75, 0.3, 0.5), shorts)
+	var pants := PS1.prism(Vector3(0.75, 0.3, 0.5), shorts, 0.2, 0.8)
 	pants.position.y = 0.66
 	add_child(pants)
 	_belly = PS1.sphere(0.55, shirt, 8, 5)
@@ -84,7 +84,7 @@ func _ready() -> void:
 		pivot.position = Vector3(s * 0.6, 1.5, 0.05)
 		pivot.rotation.z = s * 0.25
 		add_child(pivot)
-		var arm := PS1.box(Vector3(0.18, 0.8, 0.18), skin)
+		var arm := PS1.prism(Vector3(0.18, 0.8, 0.18), skin, 0.2, 0.8)
 		arm.position.y = -0.4
 		pivot.add_child(arm)
 		if s > 0:
@@ -100,7 +100,7 @@ func _ready() -> void:
 	var head := PS1.sphere(0.2, skin, 6, 4)
 	head.position.y = 0.12
 	_head.add_child(head)
-	var cap := PS1.box(Vector3(0.36, 0.1, 0.36), PS1.mat(null, Color(0.7, 0.08, 0.06)))
+	var cap := PS1.prism(Vector3(0.36, 0.1, 0.36), PS1.mat(null, Color(0.7, 0.08, 0.06)), 0.2, 0.8)
 	cap.position.y = 0.28
 	_head.add_child(cap)
 	var brim := PS1.box(Vector3(0.3, 0.03, 0.2), PS1.mat(null, Color(0.7, 0.08, 0.06)))

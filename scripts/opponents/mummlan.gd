@@ -64,7 +64,7 @@ func _ready() -> void:
 	hump.scale = Vector3(1.0, 0.8, 1.0)
 	_blanket.add_child(hump)
 	for i in 6:
-		var tuft := PS1.box(Vector3(0.18, 0.1, 0.18), moss)
+		var tuft := PS1.prism(Vector3(0.18, 0.1, 0.18), moss, 0.2, 0.8)
 		var a := TAU * i / 6.0
 		tuft.position = Vector3(cos(a) * 0.45, 0.9 + (i % 2) * 0.3, sin(a) * 0.45)
 		tuft.rotation.y = a
@@ -74,7 +74,7 @@ func _ready() -> void:
 	add_child(_head)
 	var hood := PS1.sphere(0.3, wool, 6, 4)
 	_head.add_child(hood)
-	var hole := PS1.box(Vector3(0.3, 0.2, 0.05), PS1.mat(null, Color(0.01, 0.0, 0.01)))
+	var hole := PS1.prism(Vector3(0.3, 0.2, 0.05), PS1.mat(null, Color(0.01, 0.0, 0.01)), 0.2, 0.8)
 	hole.position = Vector3(0, -0.02, 0.27)
 	_head.add_child(hole)
 	var eye_m := PS1.mat(null, Color(1.0, 0.85, 0.2), Vector2.ONE, 1.2)
@@ -86,7 +86,7 @@ func _ready() -> void:
 	var pivot := Node3D.new()
 	pivot.position = Vector3(0.45, 1.2, 0.1)
 	add_child(pivot)
-	var arm := PS1.box(Vector3(0.08, 1.0, 0.08), PS1.mat(null, Color(0.35, 0.3, 0.25)))
+	var arm := PS1.prism(Vector3(0.08, 1.0, 0.08), PS1.mat(null, Color(0.35, 0.3, 0.25)), 0.2, 0.8)
 	arm.position.y = -0.5
 	pivot.add_child(arm)
 	_arm_pivot = pivot

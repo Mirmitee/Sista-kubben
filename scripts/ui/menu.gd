@@ -271,7 +271,7 @@ func _toggle(label: String, key: String) -> void:
 
 func _page_title() -> void:
 	_title("SISTA KUBBEN", 24)
-	_title(_t("en midsommar du aldrig glömmer", "a midsummer you'll never forget"), 8, Color(0.7, 0.5, 0.45))
+	_title(_t("en midsommar du aldrig glömmer", "a midsummer you'll never forget") + "   v0.23", 8, Color(0.7, 0.5, 0.45))
 	if Run.lifetime.runs > 0:
 		_text(_t("Runs %d   Vinster %d   Bästa natt %d   Kubbar %d   Pinnar %d/%d", "Runs %d   Wins %d   Best night %d   Kubbs %d   Batons %d/%d") % [
 			Run.lifetime.runs, Run.lifetime.wins, mini(Run.lifetime.best_night, 3), Run.lifetime.kubbs,
@@ -470,6 +470,7 @@ func _card_panel(id: String, parent: Container, price_text: String, action_text:
 	dl.autowrap_mode = TextServer.AUTOWRAP_WORD
 	dl.add_theme_font_size_override("font_size", Settings.fs(7))
 	dl.custom_minimum_size = Vector2(112, 50)
+	dl.size_flags_vertical = Control.SIZE_EXPAND_FILL  # pris och knapp hamnar i kortets fot
 	dl.add_theme_color_override("font_color", Color(0.85, 0.78, 0.7))
 	v.add_child(dl)
 	if price_text != "":
@@ -538,11 +539,8 @@ func _page_baton() -> void:
 
 func _page_shop() -> void:
 	_title(_t("KRÅKMORS BOD", "CROW MOTHER'S SHOP"), 12)
-	var slots := ""
-	for i in Cards.MAX_CHARMS:
-		slots += "●" if i < Run.keyring.size() else "○"
-	_text(_t("Tänder %d   Uppgraderade kubbar %d/5   Natt %d   Nyckelring %s", "Teeth %d   Upgraded kubbs %d/5   Night %d   Key ring %s") % [
-		Run.teeth, Run.slots_used(), Run.night, slots], Color(1.0, 0.9, 0.6))
+	_text(_t("Tänder %d   Uppgraderade kubbar %d/5   Natt %d   Nyckelring %d/%d", "Teeth %d   Upgraded kubbs %d/5   Night %d   Key ring %d/%d") % [
+		Run.teeth, Run.slots_used(), Run.night, Run.keyring.size(), Cards.MAX_CHARMS], Color(1.0, 0.9, 0.6))
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 3)
 	_box.add_child(row)
@@ -719,6 +717,7 @@ func _mini_card(kind: String, col: Color, title: String, desc: String, foot: Str
 	dl.autowrap_mode = TextServer.AUTOWRAP_WORD
 	dl.add_theme_font_size_override("font_size", Settings.fs(7))
 	dl.custom_minimum_size = Vector2(112, 50)
+	dl.size_flags_vertical = Control.SIZE_EXPAND_FILL  # pris och knapp hamnar i kortets fot
 	dl.add_theme_color_override("font_color", Color(0.85, 0.78, 0.7))
 	v.add_child(dl)
 	if foot != "":
@@ -966,7 +965,7 @@ func _page_bragder() -> void:
 	for id in Cards.BRAGDER:
 		var l := Label.new()
 		var ok: bool = id in got
-		l.text = ("✓ " if ok else "· ") + Cards.pick_title(Cards.BRAGDER, id) + ": " + Cards.pick_desc(Cards.BRAGDER, id)
+		l.text = ("• " if ok else "· ") + Cards.pick_title(Cards.BRAGDER, id) + ": " + Cards.pick_desc(Cards.BRAGDER, id)
 		l.add_theme_color_override("font_color", Color(1.0, 0.85, 0.4) if ok else Color(0.5, 0.42, 0.4))
 		l.custom_minimum_size.x = 290
 		l.autowrap_mode = TextServer.AUTOWRAP_WORD

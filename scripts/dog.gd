@@ -48,16 +48,16 @@ func setup() -> void:
 	_visual = Node3D.new()
 	_visual.scale = Vector3.ONE * 1.4  # lagom stor för att träffa, för stor för att vara söt
 	add_child(_visual)
-	var body := PS1.box(Vector3(0.26, 0.24, 0.58), fur)
+	var body := PS1.prism(Vector3(0.26, 0.24, 0.58), fur, 0.2, 0.8)
 	body.position.y = 0.36
 	_visual.add_child(body)
-	var spot := PS1.box(Vector3(0.27, 0.12, 0.2), patch)
+	var spot := PS1.prism(Vector3(0.27, 0.12, 0.2), patch, 0.2, 0.8)
 	spot.position = Vector3(0.01, 0.42, 0.08)
 	_visual.add_child(spot)
-	var head := PS1.box(Vector3(0.24, 0.22, 0.22), fur)
+	var head := PS1.prism(Vector3(0.24, 0.22, 0.22), fur, 0.2, 0.8)
 	head.position = Vector3(0, 0.52, -0.36)
 	_visual.add_child(head)
-	var snout := PS1.box(Vector3(0.12, 0.10, 0.14), patch)
+	var snout := PS1.prism(Vector3(0.12, 0.10, 0.14), patch, 0.2, 0.8)
 	snout.position = Vector3(0.02, 0.47, -0.52)
 	_visual.add_child(snout)
 	var nose := PS1.box(Vector3(0.05, 0.04, 0.03), PS1.mat(null, Color(0.05, 0.03, 0.03)))
@@ -75,7 +75,7 @@ func setup() -> void:
 	small.position = Vector3(0.07, 0.59, -0.475)
 	_visual.add_child(small)
 	for s in [-1.0, 1.0]:
-		var ear := PS1.box(Vector3(0.05, 0.16, 0.08), patch)
+		var ear := PS1.prism(Vector3(0.05, 0.16, 0.08), patch, 0.2, 0.8)
 		ear.position = Vector3(s * 0.13, 0.55, -0.32)
 		ear.rotation.z = s * (0.5 if s > 0 else 1.2)  # ena örat hänger
 		_visual.add_child(ear)
@@ -83,7 +83,7 @@ func setup() -> void:
 		var pivot := Node3D.new()
 		pivot.position = Vector3(p.x, 0.26, p.y)
 		_visual.add_child(pivot)
-		var leg := PS1.box(Vector3(0.06, 0.26, 0.06), fur)
+		var leg := PS1.prism(Vector3(0.06, 0.26, 0.06), fur, 0.2, 0.8)
 		leg.position.y = -0.13
 		pivot.add_child(leg)
 		_legs.append(pivot)

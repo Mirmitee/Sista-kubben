@@ -87,6 +87,8 @@ func _build_trees() -> void:
 	r.seed = 1906
 	var bark := PS1.mat(PS1.birch(), Color.WHITE, Vector2(1, 4))
 	var leaves := PS1.mat(PS1.cloth(), Color(0.55, 1.6, 0.6), Vector2(2, 2))
+	var needles := PS1.mat(PS1.cloth(), Color(0.22, 0.75, 0.38), Vector2(3, 3))
+	var spruce_bark := PS1.mat(PS1.wood(7, Color(0.35, 0.24, 0.2)), Color.WHITE, Vector2(1, 3))
 	var placed := 0
 	while placed < 46:
 		var p := Vector3(r.randf_range(-26, 26), 0, r.randf_range(-34, 10))
@@ -96,6 +98,10 @@ func _build_trees() -> void:
 			continue
 		if p.z < -14.0 and absf(p.x - p.z * 0.32) < 4.0:
 			continue  # lämna en glänta mot månen och stången
+		if r.randf() < 0.55:
+			_spruce(p, r, spruce_bark, needles)
+			placed += 1
+			continue
 		var h := r.randf_range(5.0, 9.5)
 		var trunk := PS1.cylinder(r.randf_range(0.09, 0.16), h, bark, 5)
 		trunk.position = p + Vector3(0, h * 0.5, 0)
@@ -106,6 +112,25 @@ func _build_trees() -> void:
 			blob.position = p + Vector3(r.randf_range(-0.7, 0.7), h - 0.5 - k * 1.1, r.randf_range(-0.7, 0.7))
 			add_child(blob)
 		placed += 1
+
+
+## Gran: mörk stam och fyra–fem sexkantiga kjolar som smalnar av uppåt.
+func _spruce(p: Vector3, r: RandomNumberGenerator, bark: Material, needles: Material) -> void:
+	var h := r.randf_range(6.0, 11.0)
+	var trunk := PS1.cylinder(0.14, h * 0.5, bark, 5, 0.1)
+	trunk.position = p + Vector3(0, h * 0.25, 0)
+	add_child(trunk)
+	var tiers := r.randi_range(4, 5)
+	var base_r := r.randf_range(1.5, 2.2)
+	for k in tiers:
+		var f := float(k) / float(tiers)
+		var tr := base_r * (1.0 - f * 0.72)
+		var th := h * 0.36 * (1.0 - f * 0.35)
+		var cone := PS1.cylinder(tr, th, needles, 6, 0.0)
+		cone.position = p + Vector3(0, h * 0.18 + f * h * 0.72 + th * 0.5, 0)
+		cone.rotation.y = r.randf() * TAU
+		cone.rotation.z = r.randf_range(-0.05, 0.05)
+		add_child(cone)
 
 
 func _build_maypole() -> void:

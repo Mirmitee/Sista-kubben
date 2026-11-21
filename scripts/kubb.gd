@@ -37,7 +37,7 @@ func setup(king: bool, seed := 1) -> void:
 	var tint := Color(1.25, 1.15, 1.05) if king else Color(1.2, 1.15, 1.1)
 	# lite självlysande så de syns i skymningen (som att de fångar månljuset)
 	_seed = seed
-	_mesh = PS1.box(size, PS1.mat(PS1.wood(seed), tint, Vector2.ONE, 0.35))
+	_mesh = PS1.prism(size, PS1.mat(PS1.wood(seed), tint, Vector2.ONE, 0.35))
 	add_child(_mesh)
 	var col := CollisionShape3D.new()
 	var bs := BoxShape3D.new()
