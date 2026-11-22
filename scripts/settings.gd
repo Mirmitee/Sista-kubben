@@ -13,6 +13,13 @@ var wobble := 0.5          # PS1-darr 0..1
 var volume := 0.8
 var music := 0.6
 var fullscreen := false
+## Skärmläge: "windowed", "fullscreen" (kantlös helskärm) eller "exclusive".
+var window_mode := ""
+## Fönsterstorlek (index i RESOLUTIONS), -1 = största som får plats.
+var resolution := -1
+## Skalning: "pixel" = hela pixlar (skarp text, ev. svarta kanter), "fill" = fyll fönstret.
+var scaling := "pixel"
+const RESOLUTIONS: Array[Vector2i] = [Vector2i(960, 540), Vector2i(1280, 720), Vector2i(1600, 900), Vector2i(1920, 1080), Vector2i(2560, 1440), Vector2i(3200, 1800), Vector2i(3840, 2160)]
 var rules := "real"        # "real" eller "simple"
 var show_hints := true
 var throw_mode := "meter"  # "meter" (tajmade tryck) eller "drag" (musdrag)
@@ -58,6 +65,9 @@ func load_settings() -> void:
 	power_meter = cf.get_value("kast", "power_meter", power_meter)
 	wobble = cf.get_value("grafik", "wobble", wobble)
 	fullscreen = cf.get_value("grafik", "fullscreen", fullscreen)
+	window_mode = cf.get_value("grafik", "window_mode", "fullscreen" if fullscreen else "windowed")
+	resolution = cf.get_value("grafik", "resolution", resolution)
+	scaling = cf.get_value("grafik", "scaling", scaling)
 	volume = cf.get_value("ljud", "volume", volume)
 	music = cf.get_value("ljud", "music", music)
 	rules = cf.get_value("spel", "rules", rules)
@@ -78,6 +88,9 @@ func save() -> void:
 	cf.set_value("kast", "power_meter", power_meter)
 	cf.set_value("grafik", "wobble", wobble)
 	cf.set_value("grafik", "fullscreen", fullscreen)
+	cf.set_value("grafik", "window_mode", window_mode)
+	cf.set_value("grafik", "resolution", resolution)
+	cf.set_value("grafik", "scaling", scaling)
 	cf.set_value("ljud", "volume", volume)
 	cf.set_value("ljud", "music", music)
 	cf.set_value("spel", "rules", rules)
@@ -96,10 +109,44 @@ func apply() -> void:
 	RenderingServer.global_shader_parameter_set("ps1_snap", lerpf(480.0, 60.0, wobble))
 	AudioServer.set_bus_volume_db(0, linear_to_db(maxf(volume, 0.0001)))
 	if DisplayServer.get_name() != "headless":
-		var want := DisplayServer.WINDOW_MODE_FULLSCREEN if fullscreen else DisplayServer.WINDOW_MODE_WINDOWED
-		if DisplayServer.window_get_mode() != want:
-			DisplayServer.window_set_mode(want)
+		_apply_display()
 	changed.emit()
+
+
+## Största fönsterstorleken som får plats på skärmen (utan att täcka aktivitetsfältet).
+func fit_resolution() -> int:
+	var usable := DisplayServer.screen_get_usable_rect(DisplayServer.window_get_current_screen()).size
+	var best := 0
+	for i in RESOLUTIONS.size():
+		# lite marginal för fönsterramen
+		if RESOLUTIONS[i].x <= usable.x - 16 and RESOLUTIONS[i].y <= usable.y - 48:
+			best = i
+	return best
+
+
+func window_size() -> Vector2i:
+	return RESOLUTIONS[clampi(resolution if resolution >= 0 else fit_resolution(), 0, RESOLUTIONS.size() - 1)]
+
+
+func _apply_display() -> void:
+	if window_mode == "":
+		window_mode = "fullscreen" if fullscreen else "windowed"
+	fullscreen = window_mode != "windowed"
+	var root := get_tree().root
+	# hela pixlar: 640x360 skalas x2, x3, x4 ... så att varje bokstav blir lika skarp
+	root.content_scale_stretch = Window.CONTENT_SCALE_STRETCH_INTEGER if scaling == "pixel" else Window.CONTENT_SCALE_STRETCH_FRACTIONAL
+	var want := DisplayServer.WINDOW_MODE_WINDOWED
+	match window_mode:
+		"fullscreen": want = DisplayServer.WINDOW_MODE_FULLSCREEN
+		"exclusive": want = DisplayServer.WINDOW_MODE_EXCLUSIVE_FULLSCREEN
+	if DisplayServer.window_get_mode() != want:
+		DisplayServer.window_set_mode(want)
+	if want == DisplayServer.WINDOW_MODE_WINDOWED:
+		var sz := window_size()
+		if DisplayServer.window_get_size() != sz:
+			DisplayServer.window_set_size(sz)
+			var scr := DisplayServer.screen_get_usable_rect(DisplayServer.window_get_current_screen())
+			DisplayServer.window_set_position(scr.position + (scr.size - sz) / 2)
 
 
 func set_value(key: String, v) -> void:

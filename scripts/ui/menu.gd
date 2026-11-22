@@ -186,7 +186,7 @@ func show_page(p: String) -> void:
 	# radbrytande etiketter vet sin storlek först efter en bildruta till
 	for f in 2:
 		var need := box.get_combined_minimum_size()
-		scroll.custom_minimum_size = Vector2(need.x + (10.0 if need.y > 330.0 else 0.0), minf(need.y, 330.0))
+		scroll.custom_minimum_size = Vector2(minf(need.x + (10.0 if need.y > 330.0 else 0.0), 612.0), minf(need.y, 330.0))
 		await get_tree().process_frame
 		if not is_instance_valid(scroll) or box != _box:
 			return
@@ -212,11 +212,26 @@ func _title(text: String, size := 16, color := Color(0.85, 0.12, 0.08)) -> void:
 	_box.add_child(l)
 
 
-func _text(text: String, color := Color(0.75, 0.65, 0.6)) -> void:
+const MAX_TEXT_W := 596.0
+
+
+## Brödtext i menyerna. Bryts på ord så att en lång rad aldrig kan trycka
+## ut panelen utanför skärmen.
+func _text(text: String, color := Color(0.75, 0.65, 0.6)) -> Label:
 	var l := Label.new()
 	l.text = text
 	l.add_theme_color_override("font_color", color)
+	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	l.custom_minimum_size.x = minf(_text_w(text, Settings.fs(8)), MAX_TEXT_W)
 	_box.add_child(l)
+	return l
+
+
+func _text_w(text: String, size: int) -> float:
+	var w := 0.0
+	for line in text.split("\n"):
+		w = maxf(w, ThemeDB.fallback_font.get_string_size(line, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x)
+	return ceilf(w) + 2.0
 
 
 func _button(text: String, cb: Callable) -> Button:
@@ -271,7 +286,7 @@ func _toggle(label: String, key: String) -> void:
 
 func _page_title() -> void:
 	_title("SISTA KUBBEN", 24)
-	_title(_t("en midsommar du aldrig glömmer", "a midsummer you'll never forget") + "   v0.24", 8, Color(0.7, 0.5, 0.45))
+	_title(_t("en midsommar du aldrig glömmer", "a midsummer you'll never forget") + "   v0.25", 8, Color(0.7, 0.5, 0.45))
 	if Run.lifetime.runs > 0:
 		_text(_t("Runs %d   Vinster %d   Bästa natt %d   Kubbar %d   Pinnar %d/%d", "Runs %d   Wins %d   Best night %d   Kubbs %d   Batons %d/%d") % [
 			Run.lifetime.runs, Run.lifetime.wins, mini(Run.lifetime.best_night, 3), Run.lifetime.kubbs,
@@ -355,7 +370,7 @@ func _page_settings() -> void:
 	_slider(_t("MUSIK", "MUSIC"), "music", 0.0, 1.0, 0.05)
 	_slider(_t("PS1-DARR", "PS1 WOBBLE"), "wobble", 0.0, 1.0, 0.1)
 	_slider(_t("SKAKNING", "SCREEN SHAKE"), "shake", 0.0, 1.5, 0.1)
-	_toggle(_t("HELSKÄRM", "FULLSCREEN"), "fullscreen")
+	_display_options()
 	_toggle(_t("SIKTHJÄLP", "AIM ASSIST"), "aim_assist")
 	_toggle(_t("KRAFTMÄTARE", "POWER METER"), "power_meter")
 	_toggle(_t("TIPS PÅ SKÄRMEN", "ON-SCREEN TIPS"), "show_hints")
@@ -366,6 +381,38 @@ func _page_settings() -> void:
 		_root.theme = _make_theme()
 		show_page("settings"))
 	_button(_t("TILLBAKA", "BACK"), func(): show_page("pause" if paused_menu else "title"))
+
+
+## Skärmläge, fönsterstorlek och skalning.
+func _display_options() -> void:
+	var modes := ["windowed", "fullscreen", "exclusive"]
+	var mode_names := {"windowed": _t("FÖNSTER", "WINDOWED"), "fullscreen": _t("HELSKÄRM (KANTLÖS)", "FULLSCREEN (BORDERLESS)"), "exclusive": _t("HELSKÄRM (EXKLUSIV)", "FULLSCREEN (EXCLUSIVE)")}
+	var mb := _button("", func(): pass)
+	var rb := _button("", func(): pass)
+	var sb := _button("", func(): pass)
+	var upd := func():
+		mb.text = _t("SKÄRMLÄGE: ", "DISPLAY: ") + mode_names.get(Settings.window_mode, mode_names.windowed)
+		var sz := Settings.window_size()
+		rb.text = _t("FÖNSTERSTORLEK: ", "WINDOW SIZE: ") + "%d x %d" % [sz.x, sz.y] + (_t("  (passar skärmen)", "  (fits screen)") if Settings.resolution < 0 else "")
+		rb.disabled = Settings.window_mode != "windowed"
+		sb.text = _t("SKALNING: ", "SCALING: ") + (_t("HELA PIXLAR (SKARPAST)", "WHOLE PIXELS (SHARPEST)") if Settings.scaling == "pixel" else _t("FYLL SKÄRMEN", "FILL SCREEN"))
+	upd.call()
+	mb.pressed.connect(func():
+		var i := modes.find(Settings.window_mode)
+		Settings.set_value("window_mode", modes[(i + 1) % modes.size()])
+		upd.call())
+	rb.pressed.connect(func():
+		# bläddra bland storlekar som får plats, sist "passar skärmen"
+		var maxi_r := Settings.fit_resolution()
+		var r := Settings.resolution + 1
+		if r > maxi_r:
+			r = -1
+		Settings.set_value("resolution", r)
+		upd.call())
+	sb.pressed.connect(func():
+		Settings.set_value("scaling", "fill" if Settings.scaling == "pixel" else "pixel")
+		upd.call())
+	_text(_t("Spelet ritas i 640 x 360 och förstoras. HELA PIXLAR ger skarpast text; då kan svarta kanter synas om skärmen inte är en jämn multipel.", "The game is drawn at 640 x 360 and scaled up. WHOLE PIXELS gives the sharpest text; black borders may show if your screen isn't an even multiple."), Color(0.6, 0.55, 0.5))
 
 
 func _page_controls() -> void:
@@ -1168,10 +1215,9 @@ func _page_map() -> void:
 				l.add_theme_color_override("font_color", c)
 				row.add_child(l)
 	if Run.layer < Run.map.size():
-		var hints: Array[String] = []
+		# en rad per väg, så att inget sticker ut åt höger
 		for n in Run.map[Run.layer]:
-			hints.append(_node_name(n) + ": " + _node_desc(n))
-		_text("  ".join(hints), Color(0.7, 0.6, 0.55))
+			_text(_node_name(n) + ": " + _node_desc(n), Color(0.7, 0.6, 0.55))
 	_text(_t("Välj väg. Ängen minns vilken.", "Choose your path. The meadow remembers which."), Color(0.7, 0.5, 0.8))
 
 

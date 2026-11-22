@@ -3237,7 +3237,7 @@ func _unhandled_input(e: InputEvent) -> void:
 	if e is InputEventKey and e.pressed and not e.echo:
 		match e.keycode:
 			KEY_F11:
-				Settings.set_value("fullscreen", not Settings.fullscreen)
+				Settings.set_value("window_mode", "windowed" if Settings.fullscreen else "fullscreen")
 			KEY_L:
 				Lang.toggle()
 				Settings.save()
@@ -3561,6 +3561,11 @@ func _screenshots(prefix: String) -> void:
 	for i in 90:
 		await get_tree().process_frame
 	vp.get_texture().get_image().save_png(prefix + "_meny.png")
+	menu.show_page("settings")
+	for i in 5:
+		await get_tree().process_frame
+	vp.get_texture().get_image().save_png(prefix + "_installningar.png")
+	menu.show_page("title")
 	Run.start("vanlig")
 	Run.teeth = 14
 	Run.cards.assign(["krakkubb", "", "krutkubb", "tummkubb", "krutkubb"])
