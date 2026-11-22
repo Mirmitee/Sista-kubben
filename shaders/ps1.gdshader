@@ -46,7 +46,7 @@ void vertex() {
 }
 
 vec3 ps1_color(vec3 c, vec2 frag) {
-	ivec2 p = ivec2(mod(frag, 4.0));
+	ivec2 p = ivec2(mod(frag, 4.0));  // frag är redan i PS1-pixlar (se fragment)
 	float b = BAYER[p.y * 4 + p.x] / 16.0 - 0.5;
 	vec3 s = pow(max(c, vec3(0.0)), vec3(1.0 / 2.2));
 	s = floor(s * 31.0 + 0.5 + b) / 31.0;
@@ -61,5 +61,6 @@ void fragment() {
 	}
 	vec3 lit = mix(c * v_light, c, emission);
 	lit = mix(lit, FOG_COL, v_fog);
-	ALBEDO = ps1_color(lit, FRAGCOORD.xy);
+	float k = max(1.0, floor(VIEWPORT_SIZE.y / 360.0));
+	ALBEDO = ps1_color(lit, floor(FRAGCOORD.xy / k));
 }

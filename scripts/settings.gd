@@ -19,7 +19,7 @@ var window_mode := ""
 var resolution := -1
 ## Skalning: "pixel" = hela pixlar (skarp text, ev. svarta kanter), "fill" = fyll fönstret.
 var scaling := "pixel"
-const RESOLUTIONS: Array[Vector2i] = [Vector2i(960, 540), Vector2i(1280, 720), Vector2i(1600, 900), Vector2i(1920, 1080), Vector2i(2560, 1440), Vector2i(3200, 1800), Vector2i(3840, 2160)]
+const RESOLUTIONS: Array[Vector2i] = [Vector2i(1280, 720), Vector2i(1600, 900), Vector2i(1920, 1080), Vector2i(2560, 1080), Vector2i(2560, 1440), Vector2i(3440, 1440), Vector2i(3840, 1600), Vector2i(3840, 2160), Vector2i(5120, 1440)]
 var rules := "real"        # "real" eller "simple"
 var show_hints := true
 var throw_mode := "meter"  # "meter" (tajmade tryck) eller "drag" (musdrag)
@@ -116,12 +116,25 @@ func apply() -> void:
 ## Största fönsterstorleken som får plats på skärmen (utan att täcka aktivitetsfältet).
 func fit_resolution() -> int:
 	var usable := DisplayServer.screen_get_usable_rect(DisplayServer.window_get_current_screen()).size
+	# största (till ytan) som får plats, med lite marginal för fönsterramen
 	var best := 0
 	for i in RESOLUTIONS.size():
-		# lite marginal för fönsterramen
-		if RESOLUTIONS[i].x <= usable.x - 16 and RESOLUTIONS[i].y <= usable.y - 48:
+		var r := RESOLUTIONS[i]
+		if r.x <= usable.x - 16 and r.y <= usable.y - 48 and r.x * r.y > RESOLUTIONS[best].x * RESOLUTIONS[best].y:
 			best = i
 	return best
+
+
+## Storlekar som får plats på skärmen (för fönsterläge).
+func fitting_resolutions() -> Array[int]:
+	var usable := DisplayServer.screen_get_usable_rect(DisplayServer.window_get_current_screen()).size
+	var out: Array[int] = []
+	for i in RESOLUTIONS.size():
+		if RESOLUTIONS[i].x <= usable.x - 16 and RESOLUTIONS[i].y <= usable.y - 48:
+			out.append(i)
+	if out.is_empty():
+		out.append(0)
+	return out
 
 
 func window_size() -> Vector2i:
@@ -135,6 +148,9 @@ func _apply_display() -> void:
 	var root := get_tree().root
 	# hela pixlar: 640x360 skalas x2, x3, x4 ... så att varje bokstav blir lika skarp
 	root.content_scale_stretch = Window.CONTENT_SCALE_STRETCH_INTEGER if scaling == "pixel" else Window.CONTENT_SCALE_STRETCH_FRACTIONAL
+	# 3D behöver inte ritas i 4K: den delas ändå i PS1-pixlar. Spara grafikkortet.
+	var h := float(DisplayServer.window_get_size().y)
+	root.scaling_3d_scale = clampf(1080.0 / maxf(h, 1.0), 0.25, 1.0)
 	var want := DisplayServer.WINDOW_MODE_WINDOWED
 	match window_mode:
 		"fullscreen": want = DisplayServer.WINDOW_MODE_FULLSCREEN

@@ -192,6 +192,14 @@ func _ready() -> void:
 		_run_autotest()
 		return
 	for a in OS.get_cmdline_user_args():
+		if a.begins_with("--lang="):
+			Lang.current = a.substr(7)
+		if a.begins_with("--res="):
+			var wh := a.substr(6).split("x")
+			Settings.window_mode = "windowed"
+			DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED)
+			DisplayServer.window_set_size(Vector2i(int(wh[0]), int(wh[1])))
+	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--shot="):
 			_screenshots(a.substr(7))
 			return
@@ -3553,6 +3561,109 @@ func _run_autotest() -> void:
 	get_tree().quit()
 
 
+var _audit_count := 0
+
+
+## Sparar en skärmdump och kontrollerar all synlig text på den.
+func _snap(path: String) -> void:
+	get_viewport().get_texture().get_image().save_png(path)
+	_text_audit(path.get_file().get_basename())
+
+
+## Textkoll: hittar text som sticker ut ur sin ruta, utanför skärmen eller
+## ligger ovanpå annan text. Skriver "TEXTKOLL" i loggen för varje fynd.
+func _text_audit(tag: String) -> void:
+	var vr := get_viewport().get_visible_rect()
+	var items: Array = []
+	for root in [hud, menu]:
+		for l in root.find_children("*", "Label", true, false):
+			if not l.is_visible_in_tree() or l.text.strip_edges() == "":
+				continue
+			var a := 1.0
+			var n: Node = l
+			while n and n is CanvasItem:
+				a *= (n as CanvasItem).modulate.a * (n as CanvasItem).self_modulate.a
+				n = n.get_parent()
+			if a < 0.35 or (l.label_settings == null and false):
+				continue
+			var tr := _text_rect(l)
+			if tr.size.x < 1.0:
+				continue
+			# Text i en rullruta: bara den del som syns räknas.
+			var sc := _scroll_of(l)
+			if sc:
+				var sr := sc.get_global_rect()
+				if not sr.intersects(tr):
+					continue
+				if tr.position.x < sr.position.x - 1.0 or tr.end.x > sr.end.x + 1.0:
+					print("TEXTKOLL %s: bredare än rullrutan: \"%s\"" % [tag, l.text.left(40)])
+				tr = tr.intersection(sr)
+			if not vr.grow(1.0).encloses(tr):
+				print("TEXTKOLL %s: utanför skärmen: \"%s\" %s" % [tag, l.text.left(40), str(tr)])
+			var box := _box_of(l)
+			if box and (sc == null or box.is_ancestor_of(sc)) and not box.get_global_rect().grow(2.0).encloses(tr):
+				print("TEXTKOLL %s: sticker ut ur rutan: \"%s\" text %s ruta %s" % [tag, l.text.left(40), str(tr), str(box.get_global_rect())])
+			items.append([l, tr, box])
+	for i in items.size():
+		for j in range(i + 1, items.size()):
+			var A: Array = items[i]
+			var B: Array = items[j]
+			if A[2] != null and A[2] == B[2]:
+				continue  # samma ruta: lagt i en container, kan inte krocka
+			if (A[0] as Node).is_ancestor_of(B[0]) or (B[0] as Node).is_ancestor_of(A[0]):
+				continue
+			# Radhöjden har luft ovan och under bokstäverna; jämför själva bläcket.
+			var ra: Rect2 = (A[1] as Rect2).grow_individual(0, -3, 0, -3)
+			var rb: Rect2 = (B[1] as Rect2).grow_individual(0, -3, 0, -3)
+			var ov: Rect2 = ra.intersection(rb)
+			if ov.size.x > 3.0 and ov.size.y > 3.0:
+				print("TEXTKOLL %s: krock: \"%s\" / \"%s\"" % [tag, (A[0] as Label).text.left(30), (B[0] as Label).text.left(30)])
+
+
+## Ungefärlig ruta för själva texten i en etikett (inte hela etiketten).
+func _text_rect(l: Label) -> Rect2:
+	var gr := l.get_global_rect()
+	var f: Font = l.label_settings.font if l.label_settings and l.label_settings.font else l.get_theme_font("font")
+	var fsz: int = l.label_settings.font_size if l.label_settings else l.get_theme_font_size("font_size")
+	var w := 0.0
+	if l.autowrap_mode == TextServer.AUTOWRAP_OFF:
+		for line in l.text.split("\n"):
+			w = maxf(w, f.get_string_size(line, HORIZONTAL_ALIGNMENT_LEFT, -1, fsz).x)
+		if l.clip_text or l.text_overrun_behavior != TextServer.OVERRUN_NO_TRIMMING:
+			w = minf(w, gr.size.x)
+	else:
+		w = minf(f.get_multiline_string_size(l.text, HORIZONTAL_ALIGNMENT_LEFT, gr.size.x, fsz).x, gr.size.x)
+	var h := maxf(l.get_minimum_size().y, gr.size.y if l.autowrap_mode != TextServer.AUTOWRAP_OFF else 0.0)
+	h = minf(h, gr.size.y) if l.clip_text else maxf(l.get_minimum_size().y, 1.0)
+	var x := gr.position.x
+	match l.horizontal_alignment:
+		HORIZONTAL_ALIGNMENT_CENTER: x += (gr.size.x - w) * 0.5
+		HORIZONTAL_ALIGNMENT_RIGHT: x += gr.size.x - w
+	return Rect2(x, gr.position.y, w, h)
+
+
+## Rullrutan som etiketten ligger i, om någon.
+func _scroll_of(l: Label) -> ScrollContainer:
+	var n := l.get_parent()
+	while n and not (n is CanvasLayer):
+		if n is ScrollContainer:
+			return n
+		n = n.get_parent()
+	return null
+
+
+## Närmaste ruta (panel, knapp) som etiketten ligger i.
+func _box_of(l: Label) -> Control:
+	var n := l.get_parent()
+	while n:
+		if n is PanelContainer or n is Panel or n is Button:
+			return n
+		if n is CanvasLayer:
+			return null
+		n = n.get_parent()
+	return null
+
+
 # Kör: godot --rendering-driver opengl3 -- --shot=/sökväg/bild
 func _screenshots(prefix: String) -> void:
 	var vp := get_viewport()
@@ -3560,11 +3671,11 @@ func _screenshots(prefix: String) -> void:
 	_to_menu()
 	for i in 90:
 		await get_tree().process_frame
-	vp.get_texture().get_image().save_png(prefix + "_meny.png")
+	_snap(prefix + "_meny.png")
 	menu.show_page("settings")
 	for i in 5:
 		await get_tree().process_frame
-	vp.get_texture().get_image().save_png(prefix + "_installningar.png")
+	_snap(prefix + "_installningar.png")
 	menu.show_page("title")
 	Run.start("vanlig")
 	Run.teeth = 14
@@ -3572,22 +3683,22 @@ func _screenshots(prefix: String) -> void:
 	menu.open("shop")
 	for i in 5:
 		await get_tree().process_frame
-	vp.get_texture().get_image().save_png(prefix + "_butik.png")
+	_snap(prefix + "_butik.png")
 	menu._pending = menu._offers[0]
 	menu.show_page("slot")
 	for i in 5:
 		await get_tree().process_frame
-	vp.get_texture().get_image().save_png(prefix + "_plats.png")
+	_snap(prefix + "_plats.png")
 	Run.choose(0)
 	Run.step_done()
 	menu.open("map")
 	for i in 5:
 		await get_tree().process_frame
-	vp.get_texture().get_image().save_png(prefix + "_karta.png")
+	_snap(prefix + "_karta.png")
 	menu.open("baton")
 	for i in 5:
 		await get_tree().process_frame
-	vp.get_texture().get_image().save_png(prefix + "_pinne.png")
+	_snap(prefix + "_pinne.png")
 	Run.node = {"type": "match", "opp": "birgit"}
 	_start(Mode.MATCH, true)
 	thrower.mouse_aim = false
@@ -3596,31 +3707,31 @@ func _screenshots(prefix: String) -> void:
 	hud.choose_cards([_choice_view("f:gront"), _choice_view("p:pk_granat"), _choice_view("r:glas")], _tl("DRA ETT KORT", "DRAW A CARD"))
 	for i in 20:
 		await get_tree().process_frame
-	vp.get_texture().get_image().save_png(prefix + "_birgit.png")
+	_snap(prefix + "_birgit.png")
 	hud.fate_chosen.emit(0)
 	for i in 200:
 		await get_tree().process_frame
-	vp.get_texture().get_image().save_png(prefix + "_birgit2.png")
+	_snap(prefix + "_birgit2.png")
 	Run.node = {"type": "boss", "opp": "tjock_leffe"}
 	_start(Mode.MATCH, true)
 	thrower.mouse_aim = false
 	thrower.stand_x = -0.18
 	for i in 40:
 		await get_tree().process_frame
-	vp.get_texture().get_image().save_png(prefix + "_leffe.png")
+	_snap(prefix + "_leffe.png")
 	thrower.meter_phase = 1
 	thrower._meter_t = 0.75 * ThrowController.METER_TIME
-	hud.fate_card("Lånad pinne", "Istappen: Kall. Flyger 10 % längre, knuffar 40 % hårdare.", Color(0.7, 0.95, 1.0))
+	hud.fate_card(_tl("Lånad pinne", "Borrowed baton"), Cards.title("istappen") + ": " + Cards.desc("istappen"), Color(0.7, 0.95, 1.0))
 	for i in 30:
 		await get_tree().process_frame
 	thrower.meter_phase = 0
-	vp.get_texture().get_image().save_png(prefix + "_kraft.png")
+	_snap(prefix + "_kraft.png")
 	var bk: Kubb = side_kubbs("theirs")[1]
 	Fx.boom(self, bk.global_position)
 	Fx.zap(self, side_kubbs("theirs")[3].global_position)
 	for i in 4:
 		await get_tree().process_frame
-	vp.get_texture().get_image().save_png(prefix + "_effekt.png")
+	_snap(prefix + "_effekt.png")
 	_clear_batons()
 	thrower.input_enabled = false
 	phase = Phase.OPP_THROW
@@ -3628,7 +3739,7 @@ func _screenshots(prefix: String) -> void:
 	_opp_throw()
 	for i in 70:
 		await get_tree().process_frame
-	vp.get_texture().get_image().save_png(prefix + "_leffekast.png")
+	_snap(prefix + "_leffekast.png")
 	# poängräkning med eld
 	Run.node = {"type": "match", "opp": "vedgubben"}
 	Run.enh.assign(["glas", "multi", "stal", "bonus", "lycka"])
@@ -3650,37 +3761,37 @@ func _screenshots(prefix: String) -> void:
 	_score_throw()
 	for i in 40:
 		await get_tree().process_frame
-	vp.get_texture().get_image().save_png(prefix + "_poang.png")
+	_snap(prefix + "_poang.png")
 	for i in 60:
 		await get_tree().process_frame
-	vp.get_texture().get_image().save_png(prefix + "_poang2.png")
+	_snap(prefix + "_poang2.png")
 	Fx.big_boom(self, side_kubbs("theirs")[2].global_position, 1.3)
 	for i in 8:
 		await get_tree().process_frame
-	vp.get_texture().get_image().save_png(prefix + "_boom.png")
+	_snap(prefix + "_boom.png")
 	_force_tab = true
 	for i in 4:
 		await get_tree().process_frame
-	vp.get_texture().get_image().save_png(prefix + "_tab.png")
+	_snap(prefix + "_tab.png")
 	_force_tab = false
 	_shooting = false
 	Run.cards.assign(["krutkubb", "fyrverkeri", "", "tummkubb", "midnatt"])
 	_start(Mode.MATCH, true)
 	for i in 150:
 		await get_tree().process_frame
-	vp.get_texture().get_image().save_png(prefix + "_intro.png")
+	_snap(prefix + "_intro.png")
 	for i in 200:
 		await get_tree().process_frame
-	vp.get_texture().get_image().save_png(prefix + "_intro2.png")
+	_snap(prefix + "_intro2.png")
 	while _intro:
 		await get_tree().process_frame
 	_king_finale()
 	await get_tree().create_timer(1.0).timeout
-	vp.get_texture().get_image().save_png(prefix + "_kungboom.png")
+	_snap(prefix + "_kungboom.png")
 	await get_tree().create_timer(2.6).timeout
-	vp.get_texture().get_image().save_png(prefix + "_smalter.png")
+	_snap(prefix + "_smalter.png")
 	await get_tree().create_timer(1.2).timeout
-	vp.get_texture().get_image().save_png(prefix + "_smalter2.png")
+	_snap(prefix + "_smalter2.png")
 	for oid in ["mummlan", "leif"]:
 		Run.node = {"type": "match", "opp": oid}
 		Run.night_mod = "blodregn" if oid == "mummlan" else "korpnatt"
@@ -3693,17 +3804,17 @@ func _screenshots(prefix: String) -> void:
 		_spawn_tooth()
 		for i in 40:
 			await get_tree().process_frame
-		vp.get_texture().get_image().save_png(prefix + "_vader_" + oid + ".png")
+		_snap(prefix + "_vader_" + oid + ".png")
 		hud.tally(25, 3.0, true)
 		hud.tally_steal(true)
 		await get_tree().create_timer(0.3).timeout
-		vp.get_texture().get_image().save_png(prefix + "_stjal_" + oid + ".png")
+		_snap(prefix + "_stjal_" + oid + ".png")
 		hud.tally_steal(false)
 		_king_finale()
 		await get_tree().create_timer(3.6).timeout
-		vp.get_texture().get_image().save_png(prefix + "_dod_" + oid + ".png")
+		_snap(prefix + "_dod_" + oid + ".png")
 		await get_tree().create_timer(1.0).timeout
-		vp.get_texture().get_image().save_png(prefix + "_dod2_" + oid + ".png")
+		_snap(prefix + "_dod2_" + oid + ".png")
 	_to_menu()
 	Run.keyring.assign(["blodsten", "korvbit"])
 	Run.cards.assign(["krutkubb", "fyrverkeri", "", "tummkubb", "midnatt"])
@@ -3713,22 +3824,22 @@ func _screenshots(prefix: String) -> void:
 	menu.show_page("shop2")
 	for i in 5:
 		await get_tree().process_frame
-	vp.get_texture().get_image().save_png(prefix + "_bakficka.png")
+	_snap(prefix + "_bakficka.png")
 	menu.reward_pack()
 	for i in 30:
 		await get_tree().process_frame
-	vp.get_texture().get_image().save_png(prefix + "_paket.png")
+	_snap(prefix + "_paket.png")
 	_tut = 3
 	_start(Mode.TRAINING, true)
 	for i in 90:
 		await get_tree().process_frame
-	vp.get_texture().get_image().save_png(prefix + "_tutorial.png")
+	_snap(prefix + "_tutorial.png")
 	_to_menu()
 	for pg in ["difficulty", "bragder"]:
 		menu.show_page(pg)
 		for i in 10:
 			await get_tree().process_frame
-		vp.get_texture().get_image().save_png(prefix + "_" + pg + ".png")
+		_snap(prefix + "_" + pg + ".png")
 	Run.start("vanlig")
 	Run.level_hand("dubbel", 2)
 	Run.hand_played = {"dubbel": 4, "faltkubb": 7, "rensning": 1}
@@ -3738,7 +3849,7 @@ func _screenshots(prefix: String) -> void:
 		menu.open(pg)
 		for i in 10:
 			await get_tree().process_frame
-		vp.get_texture().get_image().save_png(prefix + "_" + pg + ".png")
+		_snap(prefix + "_" + pg + ".png")
 	menu.close()
 	_start(Mode.MATCH, true)
 	while _intro:
@@ -3746,11 +3857,11 @@ func _screenshots(prefix: String) -> void:
 	hud.tally(45, 6.0, true)
 	hud.tally_hand(Cards.hand_title("faltstadning"), 2, Cards.HANDS.faltstadning.col)
 	await get_tree().create_timer(0.4).timeout
-	vp.get_texture().get_image().save_png(prefix + "_kasttyp.png")
+	_snap(prefix + "_kasttyp.png")
 	hud.tally_reset()
 	hud.cash_out(Lang.t("win_title") % 21, [["Vinst", 7], ["Pinnar kvar (max 3)", 2], ["Poäng 1260 av 450", 8], ["Ränta (1 per 5 sparade)", 4], ["Han stal 140 poäng", 0]], 21)
 	await get_tree().create_timer(2.2).timeout
-	vp.get_texture().get_image().save_png(prefix + "_kassa.png")
+	_snap(prefix + "_kassa.png")
 	get_tree().quit()
 
 

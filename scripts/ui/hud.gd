@@ -7,12 +7,18 @@ const VIGNETTE := """
 shader_type canvas_item;
 void fragment() {
 	float v = smoothstep(0.82, 0.32, length(UV - 0.5));
-	float scan = mod(FRAGCOORD.y, 2.0) < 1.0 ? 0.88 : 1.0;
+	float k = max(1.0, floor((1.0 / SCREEN_PIXEL_SIZE.y) / 360.0));
+	float scan = mod(floor(FRAGCOORD.y / k), 2.0) < 1.0 ? 0.88 : 1.0;
 	COLOR = vec4(0.0, 0.0, 0.0, 1.0 - v * scan);
 }
 """
 
 var _play_root: Control
+## HUD:ens 640x360-ram, centrerad på skärmen. Allt placeras i den, och
+## kantpanelerna flyttas ut mot skärmens kanter när skärmen är bredare/högre
+## (ultrawide, 1366x768 osv.), se _relayout().
+var _ui: Control
+var _edges: Array = []  # [nod, baspos, hx, vy]
 var _speech: Label
 var _info: Label
 var _icons: Label
@@ -65,6 +71,12 @@ func _ready() -> void:
 	_play_root.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_play_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_play_root)
+	_ui = Control.new()
+	_ui.size = Vector2(640, 360)
+	_ui.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_play_root.add_child(_ui)
+	get_viewport().size_changed.connect(_relayout)
+	_setup_edges.call_deferred()
 	# LAYOUT (640x360), fasta zoner så att inget överlappar:
 	#   vänster 6-156: poängpanel uppe, info-panel nere
 	#   mitten 162-478: repliker överst, banner/flash/stora texter i mitten, notiser nere
@@ -91,12 +103,12 @@ func _ready() -> void:
 		iv.add_child(l)
 	var strip := ColorRect.new()
 	strip.color = Color(0.02, 0.0, 0.01, 0.72)
-	strip.position = Vector2(0, 345)
-	strip.size = Vector2(640, 15)
+	strip.position = Vector2(0, 342)
+	strip.size = Vector2(640, 18)
 	strip.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_play_root.add_child(strip)
+	_ui.add_child(strip)
 	_hint_strip = strip
-	_hint = _label(7, Color(0.78, 0.66, 0.62), Vector2(8, 346), Vector2(624, 13))
+	_hint = _label(7, Color(0.78, 0.66, 0.62), Vector2(8, 343), Vector2(624, 16))
 	_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_hint.clip_text = true
 	_hint.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
@@ -123,7 +135,7 @@ func _ready() -> void:
 	_banner_box.add_child(_banner)
 	_banner_box.modulate.a = 0.0
 	_build_score()
-	_toast = _label(8, Color(0.6, 1.0, 0.6), Vector2(218, 326), Vector2(280, 14))
+	_toast = _label(8, Color(0.6, 1.0, 0.6), Vector2(218, 322), Vector2(280, 16))
 	_toast.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_toast.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	_toast.modulate.a = 0.0
@@ -131,7 +143,7 @@ func _ready() -> void:
 	# golf-kraftmätare: stapel med fyllning, söt punkt och toppmarkering
 	_meter_root = Control.new()
 	_meter_root.position = Vector2(504, 266)
-	_play_root.add_child(_meter_root)
+	_ui.add_child(_meter_root)
 	var mf := Panel.new()
 	mf.add_theme_stylebox_override("panel", Art.frame_style(Color(0.55, 0.15, 0.1), Color(0.05, 0.01, 0.02, 0.9), 16, 2))
 	mf.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
@@ -164,7 +176,7 @@ func _ready() -> void:
 	# precisionsmätare för mätarläget: smal grön mitt, gula sidor, röda kanter
 	_acc_root = Control.new()
 	_acc_root.position = Vector2(504, 280)
-	_play_root.add_child(_acc_root)
+	_ui.add_child(_acc_root)
 	for seg in [[0.0, 1.0, Color(0.55, 0.08, 0.05)], [0.075, 0.925, Color(0.75, 0.55, 0.15)], [0.3, 0.7, Color(0.6, 0.65, 0.2)], [0.41, 0.59, Color(0.25, 0.8, 0.3)]]:
 		var r := ColorRect.new()
 		r.position = Vector2(1 + 120.0 * seg[0], 1)
@@ -192,8 +204,13 @@ func _ready() -> void:
 	dls.shadow_offset = Vector2(2, 2)
 	_death.label_settings = dls
 	_death.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_death.position = Vector2(0, 100)
-	_death.size = Vector2(640, 170)
+	# förankrad mot mitten av skärmen, oavsett format
+	_death.anchor_left = 0.0
+	_death.anchor_right = 1.0
+	_death.anchor_top = 0.5
+	_death.anchor_bottom = 0.5
+	_death.offset_top = -80.0
+	_death.offset_bottom = 90.0
 	_death.modulate.a = 0.0
 	add_child(_death)
 	_fade = ColorRect.new()
@@ -218,6 +235,44 @@ func _below_speech(y: float) -> float:
 	return y
 
 
+## Halva extra bredden/höjden utöver 640x360 (0 på en vanlig 16:9-skärm).
+func _mx() -> float:
+	return floorf((get_viewport().get_visible_rect().size.x - 640.0) * 0.5)
+
+
+func _my() -> float:
+	return floorf((get_viewport().get_visible_rect().size.y - 360.0) * 0.5)
+
+
+func _setup_edges() -> void:
+	_edges.clear()
+	# [nod, vänster(-1)/mitten(0)/höger(1), upp(-1)/mitten(0)/ner(1)]
+	for e in [[_score_root, -1, -1], [_info_box, -1, 1], [_teeth, 1, -1], [_cards_box, 1, -1], [_speech_box, 0, -1],
+			[_meter_root, 1, 1], [_meter_label, 1, 1], [_acc_root, 1, 1], [_fast_lbl, 1, 0], [_toast, 0, 1]]:
+		if e[0] != null:
+			_edges.append([e[0], (e[0] as Control).position, e[1], e[2]])
+	_relayout()
+
+
+## Lägg HUD:en efter skärmens form: ramen i mitten, kantpaneler ut mot kanterna.
+func _relayout() -> void:
+	if _ui == null:
+		return
+	var vs := get_viewport().get_visible_rect().size
+	var m := _mx()
+	var v := _my()
+	_ui.position = Vector2(m, v)
+	for e in _edges:
+		if is_instance_valid(e[0]):
+			(e[0] as Control).position = (e[1] as Vector2) + Vector2(e[2] * m, e[3] * v)
+	if _hint_strip:
+		_hint_strip.position = Vector2(-m, 342.0 + v)
+		_hint_strip.size = Vector2(vs.x, 18)
+	if _hint:
+		_hint.position = Vector2(8.0 - m, 343.0 + v)
+		_hint.size = Vector2(vs.x - 16.0, 16)
+
+
 ## En pixelram som växer med innehållet (PanelContainer), placerad i en zon.
 func _panel_box(pos: Vector2, w: float, edge: Color) -> PanelContainer:
 	var pc := PanelContainer.new()
@@ -232,7 +287,7 @@ func _panel_box(pos: Vector2, w: float, edge: Color) -> PanelContainer:
 	pc.custom_minimum_size = Vector2(w, 0)
 	pc.size = Vector2(w, 0)
 	pc.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_play_root.add_child(pc)
+	_ui.add_child(pc)
 	return pc
 
 
@@ -250,7 +305,7 @@ func _label(size: int, color: Color, pos: Vector2, sz := Vector2.ZERO) -> Label:
 	if sz != Vector2.ZERO:
 		l.size = sz
 	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_play_root.add_child(l)
+	_ui.add_child(l)
 	return l
 
 
@@ -341,7 +396,7 @@ func refresh(i: Dictionary) -> void:
 	_phase.visible = _phase.text != ""
 	_icons.visible = _icons.text != ""
 	_info_box.size = Vector2(206, 0)
-	_info_box.position.y = 342 - _info_box.get_combined_minimum_size().y
+	_info_box.position.y = 338 + _my() - _info_box.get_combined_minimum_size().y
 	_cards_box.visible = _cards.text != ""
 	_cards_box.size = Vector2(150, 0)
 	_hint.visible = Settings.show_hints
@@ -350,6 +405,11 @@ func refresh(i: Dictionary) -> void:
 		_hint.text = Lang.t("hint_meter2") + "   ·   " + Lang.t("hint3")
 	else:
 		_hint.text = Lang.t("hint2") + "   ·   " + Lang.t("hint3")
+	# tipsraden ska rymmas hel: krymp texten lite hellre än att klippa den
+	var hls: LabelSettings = _hint.label_settings
+	hls.font_size = Settings.fs(7)
+	while hls.font_size > 8 and ThemeDB.fallback_font.get_string_size(_hint.text, HORIZONTAL_ALIGNMENT_LEFT, -1, hls.font_size).x > _hint.size.x - 2.0:
+		hls.font_size -= 1
 	_meter_root.visible = Settings.power_meter
 	_meter_label.visible = Settings.power_meter
 
@@ -406,7 +466,7 @@ func toast(text: String) -> void:
 
 
 func teeth_popup(text: String) -> void:
-	var l := _label(8, Color(1.0, 0.95, 0.6), Vector2(6, 146), Vector2(150, 10))
+	var l := _label(8, Color(1.0, 0.95, 0.6), Vector2(6 - _mx(), 146), Vector2(150, 10))
 	l.text = text
 	l.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	var tw := create_tween().set_parallel(true)
@@ -474,6 +534,8 @@ func speech(who: String, text: String) -> void:
 	_speech_t = 4.0 + text.length() * 0.04
 	_speech.text = who + ": " + text
 	_speech.visible_ratio = 0.0
+	_speech_box.reset_size()
+	_speech_box.call_deferred("reset_size")  # rutan växer med texten, även två rader
 	if _speech_tween:
 		_speech_tween.kill()
 	_speech_tween = create_tween()
@@ -566,7 +628,7 @@ func _show_cards() -> void:
 		pc.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 		pc.custom_minimum_size = Vector2(140, 0)
 		pc.size = Vector2(140, 60)
-		pc.position = Vector2(648, 168)
+		pc.position = Vector2(648 + _mx(), 168)
 		pc.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		var v := VBoxContainer.new()
 		v.add_theme_constant_override("separation", 1)
@@ -577,15 +639,17 @@ func _show_cards() -> void:
 		d.autowrap_mode = TextServer.AUTOWRAP_WORD
 		d.custom_minimum_size = Vector2(132, 0)
 		v.add_child(d)
-		_play_root.add_child(pc)
+		_ui.add_child(pc)
+		# kortet växer uppåt så att det aldrig hamnar över kraftmätaren
+		pc.position.y = clampf(248.0 - pc.get_combined_minimum_size().y, 150.0, 188.0)
 		pc.pivot_offset = Vector2(70, 30)
 		pc.scale = Vector2(0.05, 1.0)
 		var tw := create_tween()
 		tw.set_parallel(true)
-		tw.tween_property(pc, "position:x", 489.0, 0.3).set_trans(Tween.TRANS_BACK)
+		tw.tween_property(pc, "position:x", 489.0 + _mx(), 0.3).set_trans(Tween.TRANS_BACK)
 		tw.tween_property(pc, "scale:x", 1.0, 0.35).set_delay(0.1)
 		tw.chain().tween_interval(2.6)
-		tw.chain().tween_property(pc, "position:x", 648.0, 0.3)
+		tw.chain().tween_property(pc, "position:x", 648.0 + _mx(), 0.3)
 		await tw.finished
 		pc.queue_free()
 	_card_busy = false
@@ -626,7 +690,7 @@ func show_deck(on: bool, his: Array = [], board: Array = [], opp_name := "") -> 
 		_board_bg.position = Vector2(6, 8)
 		_board_bg.size = Vector2(208, 346)
 		_board_bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		_play_root.add_child(_board_bg)
+		_ui.add_child(_board_bg)
 		_board = Board.new()
 		_board.position = Vector2(6, 10)
 		_board.size = Vector2(196, 326)
@@ -636,7 +700,7 @@ func show_deck(on: bool, his: Array = [], board: Array = [], opp_name := "") -> 
 	if on:
 		_board.items = board
 		_board.opp_name = opp_name
-		_play_root.move_child(_board_bg, -1)
+		_ui.move_child(_board_bg, -1)
 	if _deck_box == null:
 		_deck_bg = Panel.new()
 		_deck_bg.add_theme_stylebox_override("panel", Art.frame_style(Color(0.6, 0.15, 0.1), Color(0.03, 0.0, 0.02, 0.95), 16, 4))
@@ -645,7 +709,7 @@ func show_deck(on: bool, his: Array = [], board: Array = [], opp_name := "") -> 
 		_deck_bg.size = Vector2(414, 346)
 		_deck_bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		_deck_bg.clip_contents = true
-		_play_root.add_child(_deck_bg)
+		_ui.add_child(_deck_bg)
 		_deck_box = _mk(7, Color(0.95, 0.9, 0.8), "")
 		_deck_box.position = Vector2(10, 8)
 		_deck_box.size = Vector2(394, 330)
@@ -654,7 +718,7 @@ func show_deck(on: bool, his: Array = [], board: Array = [], opp_name := "") -> 
 		_deck_bg.add_child(_deck_box)
 	_deck_bg.visible = on
 	# Tab-vyn tar hela skärmen: göm övriga paneler så inget ligger under texten
-	for c in [_speech_box, _cards_box, _score_root, _info_box, _banner_box, _teeth, _meter_root, _toast, _hint, _hint_strip]:
+	for c in [_speech_box, _cards_box, _score_root, _info_box, _banner_box, _teeth, _meter_root, _meter_label, _acc_root, _fast_lbl, _toast, _hint, _hint_strip]:
 		if c == _banner_box or c == _toast:
 			if on:
 				c.modulate.a = 0.0
@@ -668,7 +732,7 @@ func show_deck(on: bool, his: Array = [], board: Array = [], opp_name := "") -> 
 	_deck_tick += 1
 	if _deck_tick % 10 != 1:
 		return
-	_play_root.move_child(_deck_bg, -1)
+	_ui.move_child(_deck_bg, -1)
 	var sv := Lang.current == "sv"
 	var lines: Array[String] = []
 	lines.append(("PINNE: " if sv else "BATON: ") + Cards.title(Run.cur_baton()) + " - " + Cards.desc(Run.cur_baton()))
@@ -716,6 +780,13 @@ func show_deck(on: bool, his: Array = [], board: Array = [], opp_name := "") -> 
 			hn.append(Cards.title(h))
 		lines.append(("PINNKORT I HANDEN: " if sv else "BATON CARDS IN HAND: ") + ", ".join(hn))
 	_deck_box.text = "\n".join(lines)
+	# en stor lek får mindre text i stället för att rinna ut under rutan
+	var ls: LabelSettings = _deck_box.label_settings
+	ls.font_size = Settings.fs(7)
+	for small in [9, 8]:
+		if _deck_box.get_minimum_size().y <= 330.0:
+			break
+		ls.font_size = small
 
 
 signal fate_chosen(index: int)
@@ -731,15 +802,19 @@ var _choice_n := 2
 
 
 ## 2-3 kort i mitten. view = [titel, text, färg, (typ)]. Klicka eller 1/2/3.
+var _choice_cancel := false
+
+
 func choose_cards(opts: Array, header: String) -> int:
 	hide_banner()
 	_choice_n = opts.size()
 	_choice_root = Control.new()
 	_choice_root.set_anchors_preset(Control.PRESET_FULL_RECT)
-	_play_root.add_child(_choice_root)
+	_ui.add_child(_choice_root)
 	var dim := ColorRect.new()
 	dim.color = Color(0.02, 0.0, 0.02, 0.6)
-	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
+	dim.position = Vector2(-2000, -2000)
+	dim.size = Vector2(4640, 4360)
 	_choice_root.add_child(dim)
 	var head := _mk(12, Color(1.0, 0.85, 0.5), header)
 	head.position = Vector2(0, 62)
@@ -749,16 +824,50 @@ func choose_cards(opts: Array, header: String) -> int:
 	var w := 180.0 if opts.size() <= 2 else 168.0
 	var gap := 20.0 if opts.size() <= 2 else 12.0
 	var x0 := (640.0 - (w * opts.size() + gap * (opts.size() - 1))) * 0.5
+	# korten blir så höga som den längsta texten kräver (alla lika höga):
+	# bygg texten först, låt Godot räkna radbrytningen, mät sedan
+	var dsz := 7 if opts.size() > 2 else 8
+	var boxes: Array = []
+	for c in opts:
+		var v := VBoxContainer.new()
+		v.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		v.position = Vector2(-4000, 0)
+		v.size = Vector2(w - 14, 10)
+		v.add_child(_mk(7, (c[2] as Color).lightened(0.2), "%d  %s" % [boxes.size() + 1, c[3] if c.size() > 3 else ""]))
+		var t := _mk(10, (c[2] as Color).lightened(0.3), c[0])
+		t.autowrap_mode = TextServer.AUTOWRAP_WORD
+		t.custom_minimum_size = Vector2(w - 14, 0)
+		v.add_child(t)
+		var d := _mk(dsz, Color(0.9, 0.85, 0.8), c[1])
+		d.autowrap_mode = TextServer.AUTOWRAP_WORD
+		d.custom_minimum_size = Vector2(w - 14, 0)
+		v.add_child(d)
+		_choice_root.add_child(v)
+		boxes.append(v)
+	_choice_cancel = false
+	await get_tree().process_frame
+	await get_tree().process_frame
+	if _choice_cancel:
+		_choice_root.queue_free()
+		_choice_root = null
+		return -1
+	var ch := 150.0
+	for v in boxes:
+		ch = maxf(ch, 49.0 + (v as Control).get_combined_minimum_size().y + 8.0)
+	ch = minf(ch, 296.0)
+	var cy := 84.0 + maxf(0.0, (150.0 - ch) * 0.5) if ch <= 150.0 else maxf(84.0 - (ch - 150.0) * 0.5, 58.0)
+	if cy < 80.0:
+		head.position.y = cy - 20.0
 	for i in opts.size():
 		var c: Array = opts[i]
 		var btn := Button.new()
-		btn.position = Vector2(x0 + i * (w + gap), 90)
-		btn.size = Vector2(w, 150)
+		btn.position = Vector2(x0 + i * (w + gap), cy + 6.0)
+		btn.size = Vector2(w, ch)
 		btn.focus_mode = Control.FOCUS_ALL
 		var kind: String = c[4] if c.size() > 4 else "fate"
 		var cc := (c[2] as Color).clamp(Color(0.2, 0.2, 0.2), Color(1, 1, 1))
-		var st := Art.card_style(kind, cc, int(w), 150, i * 7 + 3)
-		var sth := Art.card_style(kind, cc.lightened(0.3), int(w), 150, i * 7 + 3)
+		var st := Art.card_style(kind, cc, int(w), int(ch), i * 7 + 3)
+		var sth := Art.card_style(kind, cc.lightened(0.3), int(w), int(ch), i * 7 + 3)
 		btn.add_theme_stylebox_override("normal", st)
 		btn.add_theme_stylebox_override("hover", sth)
 		btn.add_theme_stylebox_override("focus", sth)
@@ -768,24 +877,14 @@ func choose_cards(opts: Array, header: String) -> int:
 		btn.focus_entered.connect(func():
 			Sfx.play("click", -12.0, 1.8)
 			var tw2 := btn.create_tween()
-			tw2.tween_property(btn, "position:y", 84.0, 0.08))
+			tw2.tween_property(btn, "position:y", cy, 0.08))
 		btn.focus_exited.connect(func():
 			var tw2 := btn.create_tween()
-			tw2.tween_property(btn, "position:y", 90.0, 0.08))
-		var v := VBoxContainer.new()
+			tw2.tween_property(btn, "position:y", cy + 6.0, 0.08))
+		var v: VBoxContainer = boxes[i]
+		v.reparent(btn, false)
 		v.position = Vector2(7, 49)
-		v.size = Vector2(w - 14, 96)
-		v.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		btn.add_child(v)
-		v.add_child(_mk(7, (c[2] as Color).lightened(0.2), "%d  %s" % [i + 1, c[3] if c.size() > 3 else ""]))
-		var t := _mk(10, (c[2] as Color).lightened(0.3), c[0])
-		t.autowrap_mode = TextServer.AUTOWRAP_WORD
-		t.custom_minimum_size = Vector2(w - 14, 0)
-		v.add_child(t)
-		var d := _mk(7 if opts.size() > 2 else 8, Color(0.9, 0.85, 0.8), c[1])
-		d.autowrap_mode = TextServer.AUTOWRAP_WORD
-		d.custom_minimum_size = Vector2(w - 14, 0)
-		v.add_child(d)
+		v.size = Vector2(w - 14, ch - 54)
 		var idx := i
 		btn.pressed.connect(func(): fate_chosen.emit(idx))
 		_choice_root.add_child(btn)
@@ -808,6 +907,7 @@ func choose_cards(opts: Array, header: String) -> int:
 
 ## Matchen avbröts med korten uppe: stäng valet utan att något väljs.
 func cancel_choice() -> void:
+	_choice_cancel = true
 	if _choice_root:
 		fate_chosen.emit(-1)
 
@@ -874,36 +974,38 @@ func _build_score() -> void:
 	_score_root = Control.new()
 	_score_root.position = Vector2(9, 9)
 	_score_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_play_root.add_child(_score_root)
+	_ui.add_child(_score_root)
 	var panel := Panel.new()
 	panel.add_theme_stylebox_override("panel", Art.frame_style(Color(0.6, 0.12, 0.08), Color(0.06, 0.01, 0.03, 0.9), 16, 4))
 	panel.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	panel.position = Vector2(-3, -3)
-	panel.size = Vector2(150, 68)
+	panel.size = Vector2(150, 80)
 	panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_score_root.add_child(panel)
 	_score_panel = panel
 	_goal_lbl = _mk(7, Color(0.85, 0.5, 0.45), "")
-	_goal_lbl.position = Vector2(4, 1)
+	_goal_lbl.position = Vector2(4, 0)
+	_goal_lbl.size = Vector2(140, 12)
+	_goal_lbl.clip_text = true
 	_score_root.add_child(_goal_lbl)
 	_goal_big = _mk(14, Color(1.0, 0.22, 0.15), "0")
-	_goal_big.position = Vector2(4, 10)
+	_goal_big.position = Vector2(4, 13)
 	_score_root.add_child(_goal_big)
 	_score_lbl = _mk(12, Color(1.0, 0.9, 0.55), "0")
-	_score_lbl.position = Vector2(4, 29)
+	_score_lbl.position = Vector2(4, 34)
 	_score_lbl.pivot_offset = Vector2(0, 8)
 	_score_root.add_child(_score_lbl)
 	_bar_bg = ColorRect.new()
 	_bar_bg.color = Color(0.15, 0.02, 0.03, 0.9)
-	_bar_bg.position = Vector2(4, 50)
+	_bar_bg.position = Vector2(4, 57)
 	_bar_bg.size = Vector2(138, 3)
 	_score_root.add_child(_bar_bg)
 	_bar = ColorRect.new()
-	_bar.position = Vector2(4, 50)
+	_bar.position = Vector2(4, 57)
 	_bar.size = Vector2(0, 3)
 	_score_root.add_child(_bar)
 	_tally_root = Control.new()
-	_tally_root.position = Vector2(4, 58)
+	_tally_root.position = Vector2(4, 64)
 	_score_root.add_child(_tally_root)
 	_chips_box = ColorRect.new()
 	_mult_box = ColorRect.new()
@@ -973,14 +1075,14 @@ func _tally_show(on: bool) -> void:
 		_tally_root.visible = true
 		_tally_root.modulate.a = 0.0
 		_tally_root.scale = Vector2(1.0, 0.2)
-		_show_tw.tween_property(_score_panel, "size:y", 126.0, 0.15)
+		_show_tw.tween_property(_score_panel, "size:y", 134.0, 0.15)
 		if _extra:
 			_extra.visible = false
 		_show_tw.tween_property(_tally_root, "modulate:a", 1.0, 0.12)
 		_show_tw.tween_property(_tally_root, "scale", Vector2.ONE, 0.2).set_trans(Tween.TRANS_BACK)
 	else:
 		_show_tw.tween_property(_tally_root, "modulate:a", 0.0, 0.25)
-		_show_tw.tween_property(_score_panel, "size:y", 68.0, 0.3).set_delay(0.15)
+		_show_tw.tween_property(_score_panel, "size:y", 80.0, 0.3).set_delay(0.15)
 		_show_tw.chain().tween_callback(func():
 			_tally_root.visible = false
 			if _extra:
@@ -1000,7 +1102,7 @@ func set_score(v: int, goal: int, instant := false) -> void:
 	_goal = maxi(goal, 1)
 	if instant:
 		_shown = v
-	_goal_lbl.text = "BLODMÅNEN KRÄVER" if Lang.current == "sv" else "THE BLOOD MOON DEMANDS"
+	_goal_lbl.text = "BLODMÅNEN KRÄVER" if Lang.current == "sv" else "THE MOON DEMANDS"
 	_goal_big.text = _fmt(_goal)
 	_pulse(_goal_big, 1.3)
 
@@ -1071,6 +1173,7 @@ var _pop_rects: Array = []  # [Rect2, tid] för popups som nyss dykt upp
 
 ## Hittar en plats för en popup som inte krockar med de senaste.
 func _place_popup(at: Vector2, text: String, size: int) -> Rect2:
+	at -= _ui.position
 	var fsz := Settings.fs(size)
 	var w := ThemeDB.fallback_font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, fsz).x + 6.0
 	var h := float(fsz) + 4.0
@@ -1121,7 +1224,7 @@ func popup_col(at: Vector2, text: String, col: Color, size := 10) -> void:
 func big(text: String, col: Color) -> void:
 	var wait := 0.7 * _big_n
 	_big_n += 1
-	var l := _label(13, col, Vector2(162, 188 + 30 * (_big_n % 3)), Vector2(316, 20))
+	var l := _label(13, col, Vector2(162, 140 + 40 * (_big_n % 3)), Vector2(316, 20))  # plats för två rader var
 	l.modulate.a = 0.0
 	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	l.autowrap_mode = TextServer.AUTOWRAP_WORD
@@ -1215,7 +1318,7 @@ func tally_reset() -> void:
 	_total_lbl.text = ""
 	_tally_root.visible = false
 	_tally_root.modulate.a = 0.0
-	_score_panel.size.y = 68.0
+	_score_panel.size.y = 80.0
 	_hand_lbl.text = ""
 	if _extra:
 		_extra.visible = true
@@ -1257,8 +1360,9 @@ var _extra: Label
 func set_extra(stolen: int, teeth: int, clock: String) -> void:
 	if _extra == null:
 		_extra = _mk(7, Color(0.85, 0.6, 0.5), "")
-		_extra.position = Vector2(4, 54)
-		_extra.size = Vector2(142, 10)
+		_extra.position = Vector2(4, 60)
+		_extra.size = Vector2(140, 12)
+		_extra.clip_text = true
 		_score_root.add_child(_extra)
 	if stolen < 0:
 		_extra.text = ""

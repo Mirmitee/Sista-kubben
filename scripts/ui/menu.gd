@@ -286,7 +286,7 @@ func _toggle(label: String, key: String) -> void:
 
 func _page_title() -> void:
 	_title("SISTA KUBBEN", 24)
-	_title(_t("en midsommar du aldrig glömmer", "a midsummer you'll never forget") + "   v0.25", 8, Color(0.7, 0.5, 0.45))
+	_title(_t("en midsommar du aldrig glömmer", "a midsummer you'll never forget") + "   v0.26", 8, Color(0.7, 0.5, 0.45))
 	if Run.lifetime.runs > 0:
 		_text(_t("Runs %d   Vinster %d   Bästa natt %d   Kubbar %d   Pinnar %d/%d", "Runs %d   Wins %d   Best night %d   Kubbs %d   Batons %d/%d") % [
 			Run.lifetime.runs, Run.lifetime.wins, mini(Run.lifetime.best_night, 3), Run.lifetime.kubbs,
@@ -383,36 +383,41 @@ func _page_settings() -> void:
 	_button(_t("TILLBAKA", "BACK"), func(): show_page("pause" if paused_menu else "title"))
 
 
-## Skärmläge, fönsterstorlek och skalning.
+## Skärmläge, upplösning och skärpa. Spelet fyller alltid hela skärmen,
+## oavsett format (16:9, ultrawide 21:9 och 32:9, 1440p, 4K): bilden blir
+## bredare i stället för att få svarta kanter, och HUD:en följer kanterna.
 func _display_options() -> void:
-	var modes := ["windowed", "fullscreen", "exclusive"]
-	var mode_names := {"windowed": _t("FÖNSTER", "WINDOWED"), "fullscreen": _t("HELSKÄRM (KANTLÖS)", "FULLSCREEN (BORDERLESS)"), "exclusive": _t("HELSKÄRM (EXKLUSIV)", "FULLSCREEN (EXCLUSIVE)")}
+	var modes := ["fullscreen", "windowed", "exclusive"]
+	var mode_names := {"windowed": _t("FÖNSTER", "WINDOWED"), "fullscreen": _t("HELSKÄRM", "FULLSCREEN"), "exclusive": _t("HELSKÄRM (EXKLUSIV)", "FULLSCREEN (EXCLUSIVE)")}
 	var mb := _button("", func(): pass)
 	var rb := _button("", func(): pass)
 	var sb := _button("", func(): pass)
 	var upd := func():
-		mb.text = _t("SKÄRMLÄGE: ", "DISPLAY: ") + mode_names.get(Settings.window_mode, mode_names.windowed)
-		var sz := Settings.window_size()
-		rb.text = _t("FÖNSTERSTORLEK: ", "WINDOW SIZE: ") + "%d x %d" % [sz.x, sz.y] + (_t("  (passar skärmen)", "  (fits screen)") if Settings.resolution < 0 else "")
-		rb.disabled = Settings.window_mode != "windowed"
-		sb.text = _t("SKALNING: ", "SCALING: ") + (_t("HELA PIXLAR (SKARPAST)", "WHOLE PIXELS (SHARPEST)") if Settings.scaling == "pixel" else _t("FYLL SKÄRMEN", "FILL SCREEN"))
+		mb.text = _t("SKÄRMLÄGE: ", "DISPLAY MODE: ") + mode_names.get(Settings.window_mode, mode_names.windowed)
+		if Settings.window_mode == "windowed":
+			var sz := Settings.window_size()
+			rb.text = _t("UPPLÖSNING: ", "RESOLUTION: ") + "%d x %d" % [sz.x, sz.y]
+			rb.disabled = false
+		else:
+			var ss := DisplayServer.screen_get_size(DisplayServer.window_get_current_screen())
+			rb.text = _t("UPPLÖSNING: SKÄRMENS EGEN (%d x %d)", "RESOLUTION: NATIVE (%d x %d)") % [ss.x, ss.y]
+			rb.disabled = true
+		sb.text = _t("SKÄRPA: ", "SHARPNESS: ") + (_t("SKARPA PIXLAR", "CRISP PIXELS") if Settings.scaling == "pixel" else _t("MJUK SKALNING", "SMOOTH SCALING"))
 	upd.call()
 	mb.pressed.connect(func():
 		var i := modes.find(Settings.window_mode)
 		Settings.set_value("window_mode", modes[(i + 1) % modes.size()])
 		upd.call())
 	rb.pressed.connect(func():
-		# bläddra bland storlekar som får plats, sist "passar skärmen"
-		var maxi_r := Settings.fit_resolution()
-		var r := Settings.resolution + 1
-		if r > maxi_r:
-			r = -1
-		Settings.set_value("resolution", r)
+		var fits := Settings.fitting_resolutions()
+		var cur := Settings.resolution if Settings.resolution >= 0 else Settings.fit_resolution()
+		var k := fits.find(cur)
+		Settings.set_value("resolution", fits[(k + 1) % fits.size()])
 		upd.call())
 	sb.pressed.connect(func():
 		Settings.set_value("scaling", "fill" if Settings.scaling == "pixel" else "pixel")
 		upd.call())
-	_text(_t("Spelet ritas i 640 x 360 och förstoras. HELA PIXLAR ger skarpast text; då kan svarta kanter synas om skärmen inte är en jämn multipel.", "The game is drawn at 640 x 360 and scaled up. WHOLE PIXELS gives the sharpest text; black borders may show if your screen isn't an even multiple."), Color(0.6, 0.55, 0.5))
+	_text(_t("Alla skärmformat fungerar: 16:9, ultrawide och 1440p/4K fyller hela skärmen. SKARPA PIXLAR ger skarpast text.", "Every screen shape works: 16:9, ultrawide and 1440p/4K fill the whole screen. CRISP PIXELS gives the sharpest text."), Color(0.6, 0.55, 0.5))
 
 
 func _page_controls() -> void:
