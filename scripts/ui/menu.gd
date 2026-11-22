@@ -75,7 +75,7 @@ func _make_theme() -> Theme:
 	t.set_color("font_shadow_color", "Label", Color(0, 0, 0, 0.9))
 	t.set_constant("shadow_offset_x", "Label", 1)
 	t.set_constant("shadow_offset_y", "Label", 1)
-	t.set_constant("outline_size", "Label", 3)
+	t.set_constant("outline_size", "Label", 2)
 	t.set_color("font_outline_color", "Label", Color(0.02, 0.0, 0.01, 0.95))
 	t.set_constant("outline_size", "Button", 2)
 	t.set_color("font_outline_color", "Button", Color(0.02, 0.0, 0.01, 0.9))
@@ -271,7 +271,7 @@ func _toggle(label: String, key: String) -> void:
 
 func _page_title() -> void:
 	_title("SISTA KUBBEN", 24)
-	_title(_t("en midsommar du aldrig glömmer", "a midsummer you'll never forget") + "   v0.23", 8, Color(0.7, 0.5, 0.45))
+	_title(_t("en midsommar du aldrig glömmer", "a midsummer you'll never forget") + "   v0.24", 8, Color(0.7, 0.5, 0.45))
 	if Run.lifetime.runs > 0:
 		_text(_t("Runs %d   Vinster %d   Bästa natt %d   Kubbar %d   Pinnar %d/%d", "Runs %d   Wins %d   Best night %d   Kubbs %d   Batons %d/%d") % [
 			Run.lifetime.runs, Run.lifetime.wins, mini(Run.lifetime.best_night, 3), Run.lifetime.kubbs,
@@ -287,6 +287,9 @@ func _page_title() -> void:
 		_t("Tips: fäller du sista kubben måste kungen falla samma tur.", "Tip: fell the last kubb and the king must fall the same turn."),
 		_t("Tips: Kråkmors bakficka har paket, berlocker och försvar.", "Tip: Crow Mother's back pocket has packs, charms and defenses."),
 		_t("Tips: det gröna fältet är exakt. Utanför sprider pinnen sig.", "Tip: the green zone is exact. Outside it the baton scatters."),
+		_t("Tips: REGEL-berlocker ändrar hur spelet räknar. Leta efter dem.", "Tip: RULE charms change how the game counts. Look for them."),
+		_t("Tips: med gnistor kan en fälld kubb fälla nästa. Kedjor ger växande multi.", "Tip: with sparks one felled kubb can fell the next. Chains give growing mult."),
+		_t("Tips: ju fler kubbar, runor och berlocker, desto högre MAKT. Den syns på pinnen.", "Tip: more kubbs, runes and charms mean higher POWER. Your baton shows it."),
 	]
 	_text(tips[(Time.get_ticks_msec() / 1000) % tips.size()], Color(0.75, 0.6, 0.85))
 	if Run.lifetime.runs == 0:
@@ -393,8 +396,8 @@ func _page_pause() -> void:
 		var kn: Array[String] = []
 		for c in Run.keyring:
 			kn.append(Cards.charm_title(c))
-		_text(_t("Natt %d (%s)   Svårighet: %s   Tänder %d", "Night %d (%s)   Difficulty: %s   Teeth %d") % [Run.night, Cards.night_title(Run.night_mod),
-			Cards.pick_title(Cards.DIFFICULTY, Run.difficulty), Run.teeth], Color(0.8, 0.8, 1.0))
+		_text(_t("Natt %d (%s)   Svårighet: %s   Tänder %d   MAKT %s", "Night %d (%s)   Difficulty: %s   Teeth %d   POWER %s") % [Run.night, Cards.night_title(Run.night_mod),
+			Cards.pick_title(Cards.DIFFICULTY, Run.difficulty), Run.teeth, Run.roman(Run.power_tier())], Color(0.8, 0.8, 1.0))
 		if not kn.is_empty():
 			_text(_t("Nyckelring: ", "Key ring: ") + ", ".join(kn), Color(0.95, 0.85, 0.45))
 		if not Run.vouchers.is_empty():
@@ -708,6 +711,16 @@ func _mini_card(kind: String, col: Color, title: String, desc: String, foot: Str
 	var v := VBoxContainer.new()
 	v.add_theme_constant_override("separation", 1)
 	pc.add_child(v)
+	# REGEL- och KEDJA-kort får en färgad etikett överst, så att man ser vad de är
+	for pre in [["REGEL: ", Color(1.0, 0.8, 0.3)], ["RULE: ", Color(1.0, 0.8, 0.3)], ["KEDJA: ", Color(0.6, 0.85, 1.0)], ["CHAIN: ", Color(0.6, 0.85, 1.0)]]:
+		if desc.begins_with(pre[0]):
+			var tg := Label.new()
+			tg.text = pre[0].strip_edges().trim_suffix(":")
+			tg.add_theme_color_override("font_color", pre[1])
+			v.add_child(tg)
+			desc = desc.substr(pre[0].length())
+			desc = desc.substr(0, 1).to_upper() + desc.substr(1)
+			break
 	var t := Label.new()
 	t.text = title
 	t.add_theme_color_override("font_color", Color(1.0, 0.85, 0.5))
@@ -739,7 +752,7 @@ func _mini_card(kind: String, col: Color, title: String, desc: String, foot: Str
 ## uppgradering av försvar.
 func _page_shop2() -> void:
 	_title(_t("KRÅKMORS BAKFICKA", "CROW MOTHER'S BACK POCKET"), 12)
-	_text(_t("Tänder %d   Nyckelring %d/%d", "Teeth %d   Key ring %d/%d") % [Run.teeth, Run.keyring.size(), Cards.MAX_CHARMS], Color(1.0, 0.9, 0.6))
+	_text(_t("Tänder %d   Nyckelring %d/%d   MAKT %s", "Teeth %d   Key ring %d/%d   POWER %s") % [Run.teeth, Run.keyring.size(), Cards.MAX_CHARMS, Run.roman(Run.power_tier())], Color(1.0, 0.9, 0.6))
 	var row := HFlowContainer.new()
 	row.custom_minimum_size.x = 512
 	row.add_theme_constant_override("h_separation", 3)
@@ -1309,6 +1322,8 @@ func _page_hands() -> void:
 			if g.get_child_count() % 5 == 4:
 				l.add_theme_font_size_override("font_size", Settings.fs(7))
 			g.add_child(l)
+	_text(_t("KEDJA: varje gnista som fäller en kubb till ger +2, +4, +6 ... multi (länk för länk).", "CHAIN: every spark that fells another kubb gives +2, +4, +6 ... mult (link by link)."), Color(0.6, 0.85, 1.0))
+	_text(_t("MAKT %s: kubbar, runor, berlocker och nivåer gör pinnen och smällarna större.", "POWER %s: kubbs, runes, charms and levels make your baton and blasts bigger.") % Run.roman(Run.power_tier()), Color(1.0, 0.7, 0.4))
 	_button(_t("TILLBAKA", "BACK"), func(): show_page(hands_back))
 
 

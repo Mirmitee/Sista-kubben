@@ -21,7 +21,7 @@ var show_timer := false    # visa tid för runnen
 var difficulty := "natten"
 
 
-const FONT := preload("res://fonts/pixelify.ttf")
+const FONT := preload("res://fonts/tiny5.ttf")
 ## Textstorlek: 1.0 = normal, 1.15 = stor.
 var text_scale := 1.0
 
@@ -30,16 +30,22 @@ func _ready() -> void:
 	load_settings()
 	apply()
 	# tydlig pixelfont överallt (menyer, HUD och 3D-siffror)
-	var fv := FontVariation.new()
-	fv.base_font = FONT
-	fv.variation_opentype = {"wght": 500}
-	ThemeDB.fallback_font = fv
+	ThemeDB.fallback_font = FONT
 	ThemeDB.fallback_font_size = fs(8)
 
 
-## Gamla storlekar var för standardfonten. Pixelfonten behöver ca 25 % mer.
+## Tiny5 är ritad på ett rutnät och blir bara skarp i vissa storlekar
+## (12, 18, 24, 36 px). Alla gamla storlekar knäpps till närmaste skarpa steg,
+## så att varje pixel i bokstäverna blir lika stor och texten lätt att läsa.
 func fs(size: int) -> int:
-	return maxi(8, int(round(size * 1.25 * text_scale)))
+	var want := size * 1.25 * text_scale
+	if want < 15.0:
+		return 12
+	if want < 21.0:
+		return 18
+	if want < 30.0:
+		return 24
+	return 36
 
 
 func load_settings() -> void:

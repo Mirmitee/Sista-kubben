@@ -124,6 +124,38 @@ static func boom(parent: Node, pos: Vector3, size := 1.0) -> void:
 
 
 ## Taggig blixt från himlen ner till pos.
+## Gnista som hoppar mellan två punkter (kedjereaktioner).
+static func arc(parent: Node, from: Vector3, to: Vector3, col := Color(0.6, 0.85, 1.4)) -> void:
+	if parent == null or not parent.is_inside_tree():
+		return
+	var holder := Node3D.new()
+	parent.add_child(holder)
+	var m := _mat(col, 1.0)
+	var a := from
+	var segs := 6
+	for i in segs:
+		var b := from.lerp(to, float(i + 1) / segs)
+		if i < segs - 1:
+			b += Vector3(randf_range(-0.08, 0.08), randf_range(0.0, 0.12), randf_range(-0.08, 0.08))
+		var sl := maxf(a.distance_to(b), 0.01)
+		var seg := PS1.box(Vector3(0.025, sl, 0.025), m)
+		holder.add_child(seg)
+		seg.global_position = (a + b) * 0.5
+		var up := (b - a).normalized()
+		var side := up.cross(Vector3.FORWARD if absf(up.z) < 0.9 else Vector3.RIGHT).normalized()
+		seg.global_basis = Basis(side, up, side.cross(up))
+		a = b
+	var tw := holder.create_tween()
+	tw.tween_interval(0.12)
+	tw.tween_callback(func(): holder.visible = false)
+	tw.tween_interval(0.04)
+	tw.tween_callback(func(): holder.visible = true)
+	tw.tween_interval(0.1)
+	tw.tween_callback(holder.queue_free)
+	sparks(parent, to + Vector3(0, 0.05, 0), col, 10)
+	flash_light(parent, to, col, 4.0, 4.0, 0.25)
+
+
 static func zap(parent: Node, pos: Vector3, col := Color(0.75, 0.85, 1.0)) -> void:
 	if parent == null or not parent.is_inside_tree():
 		return

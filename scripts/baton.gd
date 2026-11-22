@@ -19,6 +19,9 @@ var first_hit: Node = null
 
 
 var trail_color := Color(0.95, 0.8, 0.6)
+var power_tier := 0
+var _pframe := 0
+const POWER_COLS := [Color(1, 1, 1), Color(1.0, 0.85, 0.5), Color(1.0, 0.6, 0.25), Color(1.0, 0.35, 0.15), Color(1.0, 0.2, 0.5), Color(0.7, 0.5, 1.4)]
 var length := LENGTH
 
 
@@ -60,6 +63,24 @@ func setup(id := "vanlig") -> void:
 	body_entered.connect(_on_body_entered)
 
 
+## Synlig styrka (MAKT): pinnen blir tjockare, glöder och brinner i luften.
+## Bara utseendet ändras, fysiken är densamma.
+func empower(tier: int) -> void:
+	power_tier = tier
+	if tier <= 0:
+		return
+	var k := 1.0 + 0.12 * tier
+	for c in get_children():
+		if c is MeshInstance3D:
+			c.scale = Vector3(k, 1.0 + 0.04 * tier, k)
+	if tier >= 2:
+		var glow := PS1.cylinder(RADIUS * 1.25, 0.05, Fx._mat(POWER_COLS[tier], 1.0))
+		glow.position.y = 0.0
+		glow.scale = Vector3(k, 1, k)
+		add_child(glow)
+		trail_color = POWER_COLS[tier]
+
+
 func hold() -> void:
 	freeze_mode = RigidBody3D.FREEZE_MODE_KINEMATIC
 	freeze = true
@@ -95,6 +116,10 @@ func _physics_process(dt: float) -> void:
 		yaw_accum += absf(angular_velocity.y) * dt
 		if yaw_accum > HELI_LIMIT:
 			helicopter = true
+		if power_tier >= 3:
+			_pframe += 1
+			if _pframe % (7 - power_tier) == 0:
+				Fx.burst(get_parent(), global_position, POWER_COLS[power_tier], 2, 0.3, 0.35)
 
 
 func _on_body_entered(body: Node) -> void:

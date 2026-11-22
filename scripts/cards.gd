@@ -41,6 +41,10 @@ const DEFS := {
 	# ======================================================== passiva
 	"bjorkkubb": {"sv": ["Björkkubben", "+1 pinne per tur. Vit som en spökbrud."], "en": ["Birch Kubb", "+1 baton per turn. White as a ghost bride."],
 		"price": 6, "col": Color(1.5, 1.45, 1.3), "mods": {"batons_add": 1}},
+	"blixtkubb": {"sv": ["Blixtkubben", "KEDJA: +25 % chans att fällda kubbar skickar gnistor vidare. Det luktar bränt."], "en": ["Lightning Kubb", "CHAIN: +25% chance that felled kubbs send sparks on. Smells burnt."],
+		"price": 6, "col": Color(0.8, 1.0, 1.6), "mods": {"chain_chance": 0.25}},
+	"vandkubb": {"sv": ["Vändkubben", "REGEL: varje kubb du fäller räknas som fältkubb."], "en": ["Turnabout Kubb", "RULE: every kubb you fell counts as a field kubb."],
+		"price": 7, "col": Color(1.2, 1.3, 1.5), "mods": {"all_field": 1}},
 	"krakkubb": {"sv": ["Kråkkubben", "Precisionsmarkören går 30 % långsammare. Den kraxar."], "en": ["Crow Kubb", "Accuracy cursor 30% slower. It caws."],
 		"price": 4, "col": Color(0.35, 0.33, 0.4), "mods": {"acc_time_mult": 1.3}},
 	"stangkubb": {"sv": ["Midsommarkubben", "Gröna fältet är 50 % bredare. Blommor i håret."], "en": ["Midsummer Kubb", "Green zone 50% wider. Flowers in its hair."],
@@ -616,6 +620,17 @@ const CHARMS := {
 	"gammal_fiol": {"price": 6, "col": Color(0.6, 0.35, 0.2), "mods": {"fiddle_multi": 2}, "sv": ["Gammal fiol", "+2 multi per berlock på nyckelringen. Spelar själv i dimman."], "en": ["Old Fiddle", "+2 mult per charm on your key ring. Plays itself in the fog."]},
 	"kvast": {"price": 6, "col": Color(0.8, 0.7, 0.4), "mods": {"level_multi": 3}, "sv": ["Kråkmors kvast", "+3 multi per nivå på kasttypen du kastar."], "en": ["Crow Mother's Broom", "+3 mult per level of the throw type you make."]},
 	"stryktips": {"price": 5, "col": Color(0.95, 0.95, 0.9), "mods": {"batons_chips": 12}, "sv": ["Gammal tipskupong", "+12 marker per pinne du har kvar när kastet räknas."], "en": ["Old Betting Slip", "+12 chips per baton you have left when the throw scores."]},
+	# regelbrytare: de ändrar hur spelet räknar, inte bara siffrorna
+	"trollspegel": {"price": 8, "col": Color(0.7, 0.9, 1.2), "mods": {"all_field": 1}, "rule": true, "sv": ["Trollspegel", "REGEL: varje kubb du fäller räknas som fältkubb (15 marker och alla fältbonusar)."], "en": ["Troll Mirror", "RULE: every kubb you fell counts as a field kubb (15 chips and every field bonus)."]},
+	"ekot": {"price": 7, "col": Color(0.6, 0.6, 0.8), "mods": {"first_echo": 1}, "rule": true, "sv": ["Ekot i skogen", "REGEL: första kubben i varje kast räknas två gånger."], "en": ["Forest Echo", "RULE: the first kubb of every throw scores twice."]},
+	"krakstege": {"price": 8, "col": Color(0.4, 0.35, 0.45), "mods": {"hand_up": 1}, "rule": true, "sv": ["Kråkans stege", "REGEL: kasttypen räknas alltid ett steg högre. En fältkubb blir en baskubb."], "en": ["Crow's Ladder", "RULE: your throw type always counts one step higher. A field kubb becomes a base kubb."]},
+	"spegelbit": {"price": 7, "col": Color(0.85, 0.85, 0.95), "mods": {"steal_mult": 0.0, "target_mult": 1.25}, "rule": true, "sv": ["Spegelbit", "REGEL: han kan aldrig stjäla poäng, men månen kräver 25 % mer."], "en": ["Mirror Shard", "RULE: he can never steal points, but the moon demands 25% more."]},
+	"tandkrona": {"price": 6, "col": Color(1.4, 1.3, 1.0), "mods": {"teeth_multi": 1}, "rule": true, "sv": ["Tandkrona", "REGEL: +1 multi för var tredje tand du bär på. Spara eller spendera?"], "en": ["Tooth Crown", "RULE: +1 mult for every third tooth you carry. Save or spend?"]},
+	"olycksfagel": {"price": 5, "col": Color(0.25, 0.2, 0.25), "mods": {"miss_charge": 3}, "rule": true, "sv": ["Olycksfågel", "REGEL: en miss laddar +3 multi till nästa kast som fäller. Missar staplas."], "en": ["Bird of Ill Omen", "RULE: a miss charges +3 mult for the next throw that fells. Misses stack."]},
+	"treudd": {"price": 9, "col": Color(0.8, 0.8, 0.9), "mods": {"third_free": 1}, "rule": true, "sv": ["Treudd", "REGEL: var tredje pinne du kastar varje tur kommer tillbaka."], "en": ["Trident", "RULE: every third baton you throw each turn comes back."]},
+	# kedjor: fällda kubbar skickar gnistor som fäller nästa kubb
+	"gnistdosa": {"price": 7, "col": Color(0.6, 0.85, 1.4), "mods": {"chain_chance": 0.35}, "sv": ["Gnistdosa", "KEDJA: 35 % chans att en fälld kubb skickar en gnista som fäller närmaste stående kubb. Gnistor kan kedja vidare."], "en": ["Spark Tin", "CHAIN: 35% chance a felled kubb sends a spark that fells the nearest standing kubb. Sparks can chain on."]},
+	"askrot": {"price": 8, "col": Color(0.9, 0.9, 1.5), "mods": {"chain_chance": 0.2, "chain_multi": 3}, "sv": ["Åskrot", "KEDJA: +20 % gnistchans, och varje länk i en kedja ger +3 multi extra."], "en": ["Thunder Root", "CHAIN: +20% spark chance, and every link in a chain gives +3 extra mult."]},
 	"tomtenisse": {"price": 7, "col": Color(0.9, 0.2, 0.2), "mods": {"opp_batons_add": -1}, "sv": ["Liten nisse", "Han får en pinne mindre. Nissen har gömt den."], "en": ["Little Gnome", "He gets one baton fewer. The gnome hid it."]},
 }
 
@@ -644,6 +659,7 @@ static func charm_desc(id: String) -> String:
 		"midsommarstang": t += (" Nu +%d." if sv else " Now +%d.") % int(Run.charm_val("pole"))
 		"barnsten_bit": t += (" Nu X%s." if sv else " Now X%s.") % str(snappedf(1.0 + Run.charm_val("amber") * 0.2, 0.1))
 		"hembrant": t += (" Nu +%d." if sv else " Now +%d.") % (15 + int(Run.charm_val("booze")) * 10)
+		"tandkrona": t += (" Nu +%d." if sv else " Now +%d.") % int(Run.teeth / 3)
 	return t
 
 
@@ -689,6 +705,8 @@ const BRAGDER := {
 	"tusen": {"sv": ["Tusen", "1 000 poäng i ett kast."], "en": ["A Thousand", "1,000 points in one throw."]},
 	"tiotusen": {"sv": ["Månen blev rädd", "10 000 poäng i ett kast."], "en": ["The Moon Got Scared", "10,000 points in one throw."]},
 	"massaker": {"sv": ["Massaker på ängen", "Fäll 5 kubbar med ett kast."], "en": ["Meadow Massacre", "Fell 5 kubbs with one throw."]},
+	"kedja": {"sv": ["Åskväder", "Få en kedja med tre gnistor i samma kast."], "en": ["Thunderstorm", "Get a chain of three sparks in one throw."]},
+	"makt": {"sv": ["Ängens fasa", "Nå MAKT V i en run."], "en": ["Terror of the Meadow", "Reach POWER V in a run."]},
 	"perfekt5": {"sv": ["Kirurgen", "5 perfekta kast i rad."], "en": ["The Surgeon", "5 perfect throws in a row."]},
 	"full_ring": {"sv": ["Skramlet", "5 berlocker på nyckelringen."], "en": ["The Rattle", "5 charms on your key ring."]},
 	"inget_stulet": {"sv": ["Ingenting att ta", "Vinn en match utan att han stjäl en enda poäng."], "en": ["Nothing to Take", "Win a match without him stealing a single point."]},

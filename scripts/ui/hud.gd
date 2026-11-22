@@ -241,7 +241,7 @@ func _label(size: int, color: Color, pos: Vector2, sz := Vector2.ZERO) -> Label:
 	var ls := LabelSettings.new()
 	ls.font_size = Settings.fs(size)
 	ls.font_color = color
-	ls.outline_size = 3
+	ls.outline_size = 2 if ls.font_size <= 12 else 3  # tunn kontur på liten text, annars äter den bokstäverna
 	ls.outline_color = Color(0.02, 0.0, 0.01, 0.95)
 	ls.shadow_color = Color(0, 0, 0, 0.6)
 	ls.shadow_offset = Vector2(1, 1)
@@ -295,7 +295,13 @@ func refresh(i: Dictionary) -> void:
 			for si in Run.cards.size():
 				var rt := Run.runes_text(si)
 				if Run.cards[si] != "" or rt != "":
-					names.append("%d %s%s" % [si + 1, Cards.title(Run.cards[si]) if Run.cards[si] != "" else "", (" [" + rt + "]") if rt != "" else ""])
+					# bara namnet och antal runor (som prickar), hela texten finns i Tab-vyn
+					var nr := 0
+					for r in [Run.enh[si], Run.ed[si], Run.seal[si]]:
+						if r != "":
+							nr += 1
+					var nm := Cards.title(Run.cards[si]) if Run.cards[si] != "" else ("vanlig" if Lang.current == "sv" else "plain")
+					names.append("%d %s%s" % [si + 1, nm, (" " + "•".repeat(nr)) if nr > 0 else ""])
 			if not Run.hand.is_empty():
 				var hn: Array[String] = []
 				for h in Run.hand:
@@ -313,6 +319,9 @@ func refresh(i: Dictionary) -> void:
 					names.append("o " + kname)
 			for t in Run.temp_names:
 				names.append("+ " + t)
+			var pt := Run.power_tier()
+			if pt > 0:
+				names.insert(0, ("MAKT %s" if Lang.current == "sv" else "POWER %s") % Run.roman(pt))
 			_cards.text = "\n".join(names)
 			if Run.teeth != _last_teeth:
 				if _last_teeth >= 0:
@@ -326,6 +335,8 @@ func refresh(i: Dictionary) -> void:
 			_cards.text = ""
 	if not i.last.is_empty():
 		lines.append(Lang.t("last") % [i.last.speed, int(i.last.angle), i.last_dist])
+	if int(i.get("charge", 0)) > 0:
+		lines.append(("LADDAT: +%d MULTI PÅ NÄSTA TRÄFF" if Lang.current == "sv" else "CHARGED: +%d MULT ON NEXT HIT") % int(i.charge))
 	_info.text = "\n".join(lines)
 	_phase.visible = _phase.text != ""
 	_icons.visible = _icons.text != ""
@@ -503,6 +514,8 @@ func center(text: String) -> void:
 func flash(text: String) -> void:
 	_flash.text = text
 	_flash.modulate.a = 1.0
+	# popups håller sig undan från flash-raden medan den syns
+	_pop_rects.append([Rect2(162, 156, 316, 24), Time.get_ticks_msec() + 900])
 	var tw := create_tween()
 	tw.tween_interval(1.2)
 	tw.tween_property(_flash, "modulate:a", 0.0, 0.5)
@@ -514,7 +527,7 @@ func popup(at: Vector2, text: String) -> void:
 	l.text = text
 	var tw := create_tween()
 	tw.set_parallel(true)
-	tw.tween_property(l, "position:y", l.position.y - 24, 0.9)
+	tw.tween_property(l, "position:y", l.position.y - 5, 0.9)
 	tw.tween_property(l, "modulate:a", 0.0, 0.9)
 	tw.chain().tween_callback(l.queue_free)
 
@@ -583,7 +596,7 @@ func _mk(size: int, color: Color, text: String) -> Label:
 	var ls := LabelSettings.new()
 	ls.font_size = Settings.fs(size)
 	ls.font_color = color
-	ls.outline_size = 3
+	ls.outline_size = 2 if ls.font_size <= 12 else 3  # tunn kontur på liten text, annars äter den bokstäverna
 	ls.outline_color = Color(0.02, 0.0, 0.01, 0.95)
 	ls.shadow_color = Color(0, 0, 0, 0.6)
 	ls.shadow_offset = Vector2(1, 1)
@@ -659,7 +672,7 @@ func show_deck(on: bool, his: Array = [], board: Array = [], opp_name := "") -> 
 	var sv := Lang.current == "sv"
 	var lines: Array[String] = []
 	lines.append(("PINNE: " if sv else "BATON: ") + Cards.title(Run.cur_baton()) + " - " + Cards.desc(Run.cur_baton()))
-	lines.append("DINA KUBBAR (vänster till höger, på båda baslinjerna):" if sv else "YOUR KUBBS (left to right, on both baselines):")
+	lines.append("DINA KUBBAR:" if sv else "YOUR KUBBS:")
 	if not Run.keyring.is_empty():
 		var kn: Array[String] = []
 		for c in Run.keyring:
@@ -675,9 +688,9 @@ func show_deck(on: bool, his: Array = [], board: Array = [], opp_name := "") -> 
 				rn.append(Cards.rune_title(r))
 		lines.append("  %d " % (i + 1) + ((Cards.title(id) + ": " + Cards.desc(id)) if id != "" else ("vanlig kubb" if sv else "plain kubb")) + (("  [" + ", ".join(rn) + "]") if not rn.is_empty() else ""))
 		if id != "":
-			var df := Cards.def_of(id)
 			var lv: int = Run.def_lvl[i]
-			lines.append(("    FÖRSVAR " if sv else "    DEFENSE ") + Cards.def_title(df) + " " + ["I", "II", "III"][lv] + ": " + Cards.def_desc(df) + ((" " + Cards.def_level_text(df, lv)) if lv > 0 else ""))
+			if lv > 0:
+				lines[-1] += ("  Försvaret är nivå %s." if sv else "  Defense level %s.") % ["I", "II", "III"][lv]
 		if Run.grow_chips[i] > 0 or Run.grow_mult[i] > 0:
 			lines.append(("    vuxit: +%d marker, +%d multi" if sv else "    grown: +%d chips, +%d mult") % [Run.grow_chips[i], Run.grow_mult[i]])
 	if not Run.temp_names.is_empty():
@@ -685,6 +698,7 @@ func show_deck(on: bool, his: Array = [], board: Array = [], opp_name := "") -> 
 	for id in his:
 		lines.append(("  HANS " if sv else "  HIS ") + Cards.title(id) + ": " + Cards.desc(id))
 	lines.append(("Kungens nåd kvar: %d" if sv else "King's mercy left: %d") % Run.king_shield_left)
+	lines.append(("MAKT %s (%d poäng: kubbar, runor, berlocker x2, löften, kasttypsnivåer). Syns på pinnen och smällarna." if sv else "POWER %s (%d points: kubbs, runes, charms x2, vouchers, throw levels). Shows on your baton and blasts.") % [Run.roman(Run.power_tier()), Run.power_points()])
 	var hl: Array[String] = []
 	for hid in Cards.HAND_ORDER:
 		if Run.hand_level(hid) > 1:
@@ -1098,7 +1112,7 @@ func popup_col(at: Vector2, text: String, col: Color, size := 10) -> void:
 	var tw := create_tween()
 	tw.set_parallel(true)
 	tw.tween_property(l, "scale", Vector2.ONE, 0.15).set_trans(Tween.TRANS_BACK)
-	tw.tween_property(l, "position:y", l.position.y - 20, 0.9)
+	tw.tween_property(l, "position:y", l.position.y - 5, 0.9)
 	tw.tween_property(l, "modulate:a", 0.0, 0.4).set_delay(0.55)
 	tw.chain().tween_callback(l.queue_free)
 
@@ -1250,7 +1264,7 @@ func set_extra(stolen: int, teeth: int, clock: String) -> void:
 		_extra.text = ""
 		return
 	var sv := Lang.current == "sv"
-	var t := ("STULET %d  ≈%d TÄNDER" if sv else "STOLEN %d  ≈%d TEETH") % [stolen, teeth]
+	var t := ("STULET %d  ~%d TÄNDER" if sv else "STOLEN %d  ~%d TEETH") % [stolen, teeth]
 	if clock != "":
 		t += "  " + clock
 	if _extra.text != t:

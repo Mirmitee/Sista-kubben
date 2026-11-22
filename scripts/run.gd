@@ -144,8 +144,37 @@ func is_boss() -> bool:
 	return match_index == OPPONENTS.size() - 1
 
 
+## Hur stark runnen har blivit (syns i världen: pinnen, elden, smällarna).
+## Räknar specialkubbar, runor, berlocker, löften och kasttypsnivåer.
+func power_points() -> int:
+	var p := 0
+	for i in cards.size():
+		if cards[i] != "":
+			p += 1
+		for r in [enh[i], ed[i], seal[i]]:
+			if r != "":
+				p += 1
+	p += keyring.size() * 2 + vouchers.size()
+	for h in hand_lvl:
+		p += maxi(0, int(hand_lvl[h]) - 1)
+	return p
+
+
+## MAKT 0-5 (I-V visas när den är minst 1).
+func power_tier() -> int:
+	var p := power_points()
+	for t in [[26, 5], [20, 4], [14, 3], [9, 2], [5, 1]]:
+		if p >= t[0]:
+			return t[1]
+	return 0
+
+
+static func roman(n: int) -> String:
+	return ["0", "I", "II", "III", "IV", "V"][clampi(n, 0, 5)]
+
+
 func nights_text() -> String:
-	return "∞" if endless or night > NIGHTS else str(NIGHTS)
+	return ("EVIG" if Lang.current == "sv" else "END") if endless or night > NIGHTS else str(NIGHTS)
 
 
 func is_elite() -> bool:

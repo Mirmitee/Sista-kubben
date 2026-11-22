@@ -359,6 +359,7 @@ func _start(m: Mode, instant := false) -> void:
 	if not instant:
 		await hud.fade_out()
 	mode = m
+	hud.speech("", "")  # ingen gammal replik följer med in i nästa läge
 	menu.close()
 	menu.paused_menu = false
 	get_tree().paused = false
@@ -689,6 +690,8 @@ func _next_baton() -> void:
 			hud.flash(_tl("PINNKORT: ", "BATON CARD: ") + Cards.title(Run.override).to_upper())
 	var b := Baton.new()
 	b.setup(Run.cur_baton() if Run.active else "vanlig")
+	if Run.active:
+		b.empower(Run.power_tier())
 	add_child(b)
 	_trail_mat = Fx._mat(b.trail_color, 1.0)
 	b.body_entered.connect(_on_baton_hit.bind(b))
@@ -1414,6 +1417,11 @@ func _score_throw() -> void:
 	var opp_side := "theirs" if phase == Phase.PLAYER else "mine"
 	var left := side_kubbs(opp_side, true).filter(func(k): return k.visible and not k.is_king)
 	var hid := Run.hand_of(_felled_valid, left.is_empty(), left.filter(func(k): return k.field).is_empty())
+	if Run.mod("hand_up") > 0.0:
+		var hi := Cards.HAND_ORDER.find(hid)
+		if hi > 1:
+			hid = Cards.HAND_ORDER[hi - 1]  # Kråkans stege: ett steg upp (men aldrig till Öppna kungen)
+			hud.toast(_tl("KRÅKANS STEGE: KASTTYPEN KLEV UPP ETT STEG", "CROW'S LADDER: THE THROW TYPE STEPPED UP"))
 	var hb := Run.hand_base(hid)
 	var chips: int = hb[0]
 	var mult: float = hb[1]
@@ -1436,17 +1444,25 @@ func _score_throw() -> void:
 		await _tick(any, ("+%d MULTI (LADDAT)" if sv else "+%d MULT (CHARGED)") % _charge, MULT_COL, step)
 		step += 1
 		_charge = 0
+	var all_field := Run.mod("all_field") > 0.0
+	var echo := Run.mod("first_echo") > 0.0
 	for k in _felled_valid:
-		var base := 15 if k.field else 10
+		var base := 15 if (k.field or all_field) else 10
 		chips += base
+		if all_field and not k.field:
+			await _tick(k, _tl("TROLLSPEGEL: FÄLTKUBB", "TROLL MIRROR: FIELD KUBB"), Color(0.7, 0.9, 1.2), step)
+			step += 1
 		Fx.fire(self, k.global_position, 0.6, 1.4)
 		hud.tally(chips, mult)
 		await _tick(k, "+%d" % base, CHIP_COL, step)
 		step += 1
 		var reps := 2 if k.slot >= 0 and Run.seal[k.slot] == "rott" else 1
+		if echo and k == _felled_valid[0]:
+			reps += 1
 		for r in reps:
-			if r == 1:
-				await _tick(k, "IGEN!" if sv else "AGAIN!", Color(1, 0.2, 0.2), step, 12)
+			if r >= 1:
+				var is_echo: bool = echo and k == _felled_valid[0] and r == reps - 1
+				await _tick(k, (_tl("EKO!", "ECHO!") if is_echo else ("IGEN!" if sv else "AGAIN!")), Color(0.6, 0.6, 1.0) if is_echo else Color(1, 0.2, 0.2), step, 12)
 				step += 1
 			for st in _kubb_steps(k, n, r == 0):
 				var label: String = st[2]
@@ -1471,6 +1487,16 @@ func _score_throw() -> void:
 				hud.tally(chips, mult)
 				await _tick(k, label, st[3], step, 12 if st[0] == "x" else 10)
 				step += 1
+	if _chain_links > 0:
+		var cm := int(Run.mod("chain_multi"))
+		for li in _chain_links:
+			var add := 2 * (li + 1) + cm
+			mult += add
+			hud.tally(chips, mult)
+			await _tick(_chain_hit[li] if li < _chain_hit.size() and is_instance_valid(_chain_hit[li]) else any, ("+%d MULTI KEDJA %d" if sv else "+%d MULT CHAIN %d") % [add, li + 1], Color(0.6, 0.85, 1.0), step, 12)
+			step += 1
+		_chain_links = 0
+		_chain_hit.clear()
 	if _last_info.get("grade", "") == "perfect":
 		mult += 2
 		hud.tally(chips, mult)
@@ -1513,11 +1539,12 @@ func _score_throw() -> void:
 	Run.lifetime.best_score = maxi(Run.lifetime.get("best_score", 0), Run.score_total)
 	_shake = clampf(0.2 + total / 400.0, 0.2, 1.2)
 	Sfx.play("coin", -2.0, clampf(1.6 - total / 2000.0, 0.7, 1.6))
+	var pw := Run.power_tier()
 	if total >= 100:
 		for k in _felled_valid:
-			Fx.fire(self, k.global_position, clampf(total / 300.0, 0.8, 2.2), 2.2)
-	if total >= 200:
-		Fx.big_boom(self, any.global_position, clampf(total / 600.0, 0.6, 1.6))
+			Fx.fire(self, k.global_position, clampf(total / 300.0, 0.8, 2.2) * (1.0 + 0.1 * pw), 2.2)
+	if total >= 200 or pw >= 3:
+		Fx.big_boom(self, any.global_position, clampf(total / 600.0, 0.6, 1.6) * (1.0 + 0.12 * pw))
 		Sfx.play("boom", -3.0, 0.9)
 	if total >= _target() * 0.5:
 		opponent.say("big_score")
@@ -1549,7 +1576,7 @@ func _charm_steps(n: int, any: Node3D, step: int, cm: Array) -> int:
 		steps.append(["c", fc, ("+%d ROSTIG NYCKEL" if sv else "+%d RUSTY KEY") % fc, CHIP_COL])
 	var fm := int(Run.mod("field_multi"))
 	if fm > 0:
-		var nf := _felled_valid.filter(func(k): return k.field).size()
+		var nf := _felled_valid.size() if Run.mod("all_field") > 0.0 else _felled_valid.filter(func(k): return k.field).size()
 		if nf > 0:
 			steps.append(["m", fm * nf, ("+%d MULTI KRÅKFJÄDER" if sv else "+%d MULT CROW FEATHER") % (fm * nf), MULT_COL])
 	var gm := int(Run.mod("grow_multi"))
@@ -1560,6 +1587,9 @@ func _charm_steps(n: int, any: Node3D, step: int, cm: Array) -> int:
 		var ns := kubbs.filter(func(k): return k.side == "mine" and k.visible and not k.is_king and not k.is_fallen()).size()
 		if ns > 0:
 			steps.append(["c", sc * ns, ("+%d LJUSSTUMP" if sv else "+%d CANDLE") % (sc * ns), CHIP_COL])
+	var tm := int(Run.mod("teeth_multi"))
+	if tm > 0 and Run.teeth >= 3:
+		steps.append(["m", tm * int(Run.teeth / 3), ("+%d MULTI TANDKRONA" if sv else "+%d MULT TOOTH CROWN") % (tm * int(Run.teeth / 3)), MULT_COL])
 	var flat := int(Run.mod("flat_multi"))
 	if flat > 0:
 		steps.append(["m", flat, ("+%d MULTI" if sv else "+%d MULT") % flat, MULT_COL])
@@ -2184,6 +2214,11 @@ func _evaluate() -> void:
 			_king_touched_early()
 			return
 
+	if newly > 0 and Run.active and mode == Mode.MATCH:
+		var mid := _match_id
+		newly += await _chain_reaction()
+		if _gone(mid):
+			return
 	if newly > 0:
 		var fe := _fell_effects()
 		var dm := 2.0 if _double_next else 1.0
@@ -2193,6 +2228,10 @@ func _evaluate() -> void:
 		if _match_over:
 			return
 	elif Run.active:
+		var mc := int(Run.mod("miss_charge"))
+		if mc > 0:
+			_charge += mc
+			hud.flash((_tl("OLYCKSFÅGELN LADDAR: +%d MULTI", "ILL OMEN CHARGES: +%d MULT")) % _charge)
 		# envisa kubben växer av dina missar
 		for i in 5:
 			if Run.cards[i] != "" and Cards.DEFS[Run.cards[i]].get("score", {}).has("miss_grow"):
@@ -2226,6 +2265,10 @@ func _evaluate() -> void:
 			Sfx.play("sparkle", 0.0, 0.6)
 	if newly > 0 and Run.active:
 		await _fate_after_throw(newly)
+	if Run.active and Run.mod("third_free") > 0.0 and _throw_no > 0 and _throw_no % 3 == 0:
+		batons_left += 1
+		hud.toast(_tl("TREUDDEN: PINNE %d KOM TILLBAKA", "TRIDENT: BATON %d CAME BACK") % _throw_no)
+		Sfx.play("whoosh", -4.0, 1.2)
 	if newly == 0 and not _hit_this_throw and _bdef().has("boomerang"):
 		# bumerangen kommer tillbaka
 		batons_left += 1
@@ -2237,6 +2280,106 @@ func _evaluate() -> void:
 		tw.tween_callback(b.queue_free)
 		batons.erase(b)
 	_after_throw()
+
+
+var _chain_links := 0
+var _chain_hit: Array = []
+
+
+## Autotest för regelbrytare, kedjor och MAKT.
+func _test_v024() -> void:
+	Run.start("vanlig")
+	_start(Mode.MATCH, true)
+	await _wait_ready()
+	var their := side_kubbs("theirs", true).filter(func(k): return not k.is_king)
+	_snapshot.clear()
+	for k in kubbs:
+		_snapshot[k] = k.global_transform
+	# fäll en kubb för hand, och tvinga gnistchansen till 100 %
+	var first: Kubb = their[0]
+	first.teleport(Transform3D(Basis(Vector3.RIGHT, PI * 0.5), first.global_position + Vector3(0, -0.04, 0)))
+	_felled_valid.clear()
+	_felled_valid.append(first)
+	Run.temp_mods["chain_chance"] = 1.0
+	var links := await _chain_reaction()
+	print("TEST kedja: %d länkar, fällda nu %d, kung nere %s" % [links, _felled_valid.size(), king.is_fallen()])
+	var s0 := score
+	await _score_throw()
+	print("TEST kedjepoäng: +%d" % (score - s0))
+	Run.temp_mods.erase("chain_chance")
+	# regelbrytare: samma fällning med och utan
+	Run.keyring = ["trollspegel", "ekot", "krakstege", "tandkrona"]
+	Run.teeth = 30
+	_felled_valid.clear()
+	_felled_valid.append(first)
+	s0 = score
+	await _score_throw()
+	print("TEST regelbrytare: +%d poäng, kasttyp %s (stege), tandkrona +%d" % [score - s0, _cur_hand, int(Run.teeth / 3)])
+	Run.keyring = ["treudd", "olycksfagel"]
+	print("TEST treudd %s, olycksfågel %d" % [Run.mod("third_free"), int(Run.mod("miss_charge"))])
+	print("TEST MAKT: poäng %d, nivå %s" % [Run.power_points(), Run.roman(Run.power_tier())])
+	Run.keyring = []
+
+
+## Kedjereaktion (som proc-kedjor): varje fälld kubb kan skicka en gnista
+## till närmaste stående kubb. Fälls den kan den i sin tur skicka vidare,
+## med lägre chans för varje länk. Kungen träffas aldrig av gnistor.
+func _chain_reaction() -> int:
+	var chance := Run.mod("chain_chance")
+	_chain_links = 0
+	_chain_hit.clear()
+	if chance <= 0.0:
+		return 0
+	var mid := _match_id
+	var king_was_down := king.is_fallen()
+	var queue: Array = _felled_valid.duplicate()
+	var added := 0
+	var depth_chance := {}
+	for k in queue:
+		depth_chance[k] = chance + (0.15 if k.kind != "" else 0.0)
+	var guard := 0
+	while not queue.is_empty() and guard < 12:
+		guard += 1
+		var src: Kubb = queue.pop_front()
+		var c: float = depth_chance.get(src, chance)
+		if randf() >= c:
+			continue
+		# fältkubbar först, precis som för pinnar
+		var standing := side_kubbs("theirs", true).filter(func(k): return k.visible and not k.is_king and not k.is_fallen() and not _felled_valid.has(k))
+		if standing.is_empty():
+			break
+		var fields := standing.filter(func(k): return k.field)
+		var pool: Array = fields if not fields.is_empty() else standing
+		pool.sort_custom(func(a, b): return a.global_position.distance_to(src.global_position) < b.global_position.distance_to(src.global_position))
+		var dst: Kubb = pool[0]
+		Fx.arc(self, src.global_position + Vector3(0, 0.08, 0), dst.global_position + Vector3(0, 0.1, 0))
+		Sfx.play("zap", -6.0, 1.2 + 0.1 * _chain_links)
+		var dir := (dst.global_position - src.global_position)
+		dir.y = 0.0
+		dir = dir.normalized() if dir.length() > 0.01 else Vector3(0, 0, -1)
+		dst.sleeping = false
+		dst.apply_impulse(dir * 0.32, Vector3(0, 0.06, 0))
+		await get_tree().create_timer(0.75, false).timeout
+		if _gone(mid):
+			return added
+		_log("   gnista -> %s fälld %s" % [str(dst.global_position.snapped(Vector3.ONE * 0.01)), dst.is_fallen()])
+		if dst.is_fallen():
+			_felled_valid.append(dst)
+			_chain_hit.append(dst)
+			_chain_links += 1
+			added += 1
+			hud.flash((_tl("KEDJA x%d!", "CHAIN x%d!")) % (_chain_links + 1))
+			if not Run.lifetime.get("seen_chain", false):
+				Run.lifetime.seen_chain = true
+				hud.toast(_tl("GNISTOR: en fälld kubb fällde nästa. Varje länk ger mer multi.", "SPARKS: a felled kubb felled the next. Every link gives more mult."))
+			depth_chance[dst] = c * 0.65
+			queue.append(dst)
+	# en gnista får aldrig döda dig: kungen ställs upp igen
+	if not king_was_down and king.is_fallen():
+		king.teleport(_snapshot[king])
+	if _chain_links >= 3:
+		Run.grant("kedja")
+	return added
 
 
 ## Tänder och kombos för ett kast.
@@ -3128,8 +3271,28 @@ func _refresh_ui() -> void:
 		"phase": phase, "opp": opponent.display_name[Lang.current],
 		"toss": thrower.payload_kubb,
 		"opp_left": _opp_left, "opp_total": _opp_total,
+		"charge": _charge,
 	}
 	hud.refresh(info)
+	_check_power()
+
+
+var _last_power := -1
+
+
+## När MAKT stiger ropas det ut och en ring tänds kring dig.
+func _check_power() -> void:
+	if not Run.active or mode != Mode.MATCH:
+		_last_power = -1 if not Run.active else _last_power
+		return
+	var p := Run.power_tier()
+	if _last_power >= 0 and p > _last_power:
+		hud.big((_tl("DU BLIR STARKARE: MAKT %s", "YOU GROW STRONGER: POWER %s")) % Run.roman(p), Baton.POWER_COLS[p])
+		Fx.ring(self, thrower.global_position + Vector3(0, 0.02, 0), Baton.POWER_COLS[p], 1.2)
+		Sfx.play("sparkle", -2.0, 0.7)
+		if p >= 5:
+			Run.grant("makt")
+	_last_power = p
 
 
 func _count_field(side: String) -> int:
@@ -3379,6 +3542,7 @@ func _run_autotest() -> void:
 		while state == State.FLYING or state == State.BUSY:
 			await get_tree().physics_frame
 	print("TEST hundträffar %d/3" % dog.hits)
+	await _test_v024()
 	var mt := Time.get_ticks_msec()
 	while Sfx._music_stream == null and Time.get_ticks_msec() - mt < 20000:
 		await get_tree().process_frame
